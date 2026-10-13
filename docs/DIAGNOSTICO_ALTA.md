@@ -1,5 +1,9 @@
 # Error INTERNAL_ERROR al crear perfiles de prueba
 
+## Estado actual
+
+El propietario confirmó después de la corrección que el alta, login y CRUD funcionan y dio por terminada la viabilidad. La investigación anterior que figura abajo es histórica; no representa un bloqueo actual. Se conserva para trazabilidad.
+
 ## Causa confirmada en producción y corrección
 
 El propietario ha aportado el log correlacionado: stage=password_derive_bits, errorName=NotSupportedError y reason=PBKDF2_ITERATION_LIMIT. Confirma un límite de la implementación nativa desplegada; no falta una carpeta PGT. El workerd local permite 600.000 iteraciones, por lo que las pruebas nativas anteriores no reprodujeron ese límite.

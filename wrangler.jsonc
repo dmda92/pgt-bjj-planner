@@ -4,9 +4,20 @@
   "main": "worker/index.ts",
   "compatibility_date": "2026-10-13",
   "workers_dev": true,
-  "observability": {"enabled": false},
-  "vars": {"DATA_BRANCH": "main", "ALLOWED_ORIGIN": "https://replace-with-your-worker.workers.dev"},
-  "assets": {"directory": "./dist", "binding": "ASSETS", "run_worker_first": ["/api/*"]},
-  "durable_objects": {"bindings": [{"name": "SECURITY", "class_name": "ProbeSecurity"}]},
-  "migrations": [{"tag": "github-probe-v1", "new_sqlite_classes": ["ProbeSecurity"]}]
+  "observability": { "enabled": false },
+  "vars": {
+    "DATA_BRANCH": "main",
+    "ALLOWED_ORIGIN": "https://replace-with-your-worker.workers.dev",
+  },
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"],
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "SECURITY", "class_name": "ProbeSecurity" }],
+  },
+  "migrations": [
+    { "tag": "github-probe-v1", "new_sqlite_classes": ["ProbeSecurity"] },
+  ],
 }
