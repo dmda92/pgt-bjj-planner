@@ -1,3 +1,6 @@
+import {pbkdf2Async} from '@noble/hashes/pbkdf2.js';
+import {sha256} from '@noble/hashes/sha2.js';
+import {isPbkdf2IterationLimit} from './diagnostics.ts';
 export class ApiError extends Error {
   status: number;
   retryAfter?: number;
@@ -24,9 +27,19 @@ export async function passwordHash(value:unknown,salt=opaqueToken(),onStage?:(st
   onStage?.('password_key_import');
   const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(value),'PBKDF2',false,['deriveBits']);
   onStage?.('password_derive_bits');
-  const bits=await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:new TextEncoder().encode(salt),iterations:600000},key,256);
+  let bytes:Uint8Array;
+  try{
+    bytes=new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:new TextEncoder().encode(salt),iterations:600000},key,256));
+  }catch(error){
+    // Some deployed Workers cap native PBKDF2 iterations. Keep the identical KDF,
+    // salt encoding, work factor and output length; never lower iterations.
+    if(!isPbkdf2IterationLimit(error))throw error;
+    const passwordBytes=new TextEncoder().encode(value),saltBytes=new TextEncoder().encode(salt);
+    try{bytes=await pbkdf2Async(sha256,passwordBytes,saltBytes,{c:600000,dkLen:32,asyncTick:10});}
+    finally{passwordBytes.fill(0);saltBytes.fill(0);}
+  }
   onStage?.('password_encode');
-  return `pbkdf2-sha256$600000$${salt}$${base64(new Uint8Array(bits))}`;
+  try{return `pbkdf2-sha256$600000$${salt}$${base64(bytes)}`;}finally{bytes.fill(0);}
 }
 export async function passwordMatches(value:unknown,stored:string,onStage?:(stage:PasswordStage)=>void):Promise<boolean>{
   const [kind,rounds,salt,hash,...extra]=stored.split('$');

@@ -51,10 +51,22 @@ try{
 
 // Full deployed route in a SQLite Durable Object, native WebCrypto and native fetch.
 // All GitHub requests are intercepted; profiles exist only in this process-local map.
+async function testUserFlow(forceNativeLimit){
 const profiles=new Map();let writes=0,githubMode='success';
 const admin='synthetic-admin-key-with-more-than-32-characters';
 const fixturePassword='synthetic-test-password';
-const userRuntime=new Miniflare(convertV4MiniflareOptions({modules:true,scriptPath:'.worker-build/index.js',compatibilityDate:'2026-10-13',durableObjects:{SECURITY:{className:'ProbeSecurity',useSQLite:true}},bindings:{ALLOWED_ORIGIN:'https://pgt.example',DATA_BRANCH:'main',PROBE_ADMIN_KEY:admin,GITHUB_DATA_TOKEN:'synthetic-runtime-token'},outboundService:async request=>{
+const limitBundle=forceNativeLimit?await build({stdin:{contents:`
+  import worker from './worker/index.ts';
+  export {ProbeSecurity} from './worker/index.ts';
+  const native=crypto.subtle.deriveBits.bind(crypto.subtle);
+  crypto.subtle.deriveBits=async (algorithm,key,length)=>{
+    if(algorithm.name==='PBKDF2'&&algorithm.iterations>100000)
+      throw new DOMException('PBKDF2 iteration count exceeds maximum of 100000','NotSupportedError');
+    return native(algorithm,key,length);
+  };
+  export default worker;`,resolveDir:process.cwd()},bundle:true,write:false,format:'esm',target:'es2022'}):null;
+const started=Date.now();
+const userRuntime=new Miniflare(convertV4MiniflareOptions({modules:true,...(limitBundle?{script:limitBundle.outputFiles[0].text}:{scriptPath:'.worker-build/index.js'}),compatibilityDate:'2026-10-13',durableObjects:{SECURITY:{className:'ProbeSecurity',useSQLite:true}},bindings:{ALLOWED_ORIGIN:'https://pgt.example',DATA_BRANCH:'main',PROBE_ADMIN_KEY:admin,GITHUB_DATA_TOKEN:'synthetic-runtime-token'},outboundService:async request=>{
   const url=new URL(request.url);assert.equal(url.hostname,'api.github.com');assert.equal(request.headers.get('Authorization'),'Bearer synthetic-runtime-token');
   if(githubMode==='unauthorized')return new Response('{}',{status:401});
   if(githubMode==='forbidden')return new Response('{}',{status:403});
@@ -97,5 +109,8 @@ try{
   }
   githubMode='conflict';assert.equal((await api('/api/admin/test-user',{mail:'c@c.es',password:fixturePassword})).status,409);assert.equal(writes,2);
   githubMode='invalid-json';const unexpected=await api('/api/admin/check',{});assert.equal(unexpected.status,500);const failure=await unexpected.json();assert.equal(failure.error,'INTERNAL_ERROR');assert.match(failure.diagnosticId,/^[0-9a-f-]{36}$/);
-  console.log('Runtime DO completo: altas 201, PBKDF2 600000 validado contra Node, login correcto/incorrecto, aislamiento y errores GitHub verificados. Ningún usuario ni dato real creado.');
+  console.log(`Runtime DO completo (${forceNativeLimit?'límite nativo inyectado + fallback':'WebCrypto nativo'}): altas 201, PBKDF2 600000 contra Node, login, aislamiento y errores GitHub OK. Duración local total: ${Date.now()-started} ms. Ningún dato real creado.`);
 }finally{await userRuntime.dispose();}
+}
+await testUserFlow(false);
+await testUserFlow(true);

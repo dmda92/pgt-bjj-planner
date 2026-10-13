@@ -1,5 +1,17 @@
 # Error INTERNAL_ERROR al crear perfiles de prueba
 
+## Causa confirmada en producción y corrección
+
+El propietario ha aportado el log correlacionado: stage=password_derive_bits, errorName=NotSupportedError y reason=PBKDF2_ITERATION_LIMIT. Confirma un límite de la implementación nativa desplegada; no falta una carpeta PGT. El workerd local permite 600.000 iteraciones, por lo que las pruebas nativas anteriores no reprodujeron ese límite.
+
+La corrección mantiene **PBKDF2-HMAC-SHA256, 600.000 iteraciones, sal aleatoria independiente y salida de 256 bits**, además del formato almacenado. Primero intenta WebCrypto nativo. Solo cuando reconoce NotSupportedError de límite de iteraciones utiliza pbkdf2Async de **@noble/hashes 2.4.0**, incluida en el bundle del Worker. No es un servicio externo ni un proveedor nuevo. Otros fallos criptográficos se propagan al diagnóstico existente.
+
+La alternativa calcula exactamente la misma KDF y se coteja con Node/OpenSSL, también para contraseñas Unicode. No se reduce el contador ni se divide en seis derivaciones independientes, lo cual cambiaría el algoritmo. Se borran buffers temporales mutables; no se registra ninguna credencial. Los hashes son compatibles y no necesitan migración.
+
+Las pruebas ejecutan alta/login en SQLite DO con fetch nativo y GitHub interceptado, tanto en modo nativo como **inyectando el mismo NotSupportedError de límite** para ejercitar la alternativa. No se confunde la inyección con una reproducción nativa de producción. Comprobar CPU y duración reales después de desplegar, sin activar Paid. Se mantienen límites de frecuencia y cálculo dentro de DO.
+
+Referencia: https://github.com/paulmillr/noble-hashes (pbkdf2Async). Versión exacta fijada en package.json y package-lock.json. La investigación siguiente es el antecedente anterior a recibir el log.
+
 ## Resultado de la investigación
 
 No se ha reproducido el 500 comunicado en producción. En el mismo workerd/Miniflare usado con Wrangler 4.150.0 y fecha de compatibilidad 2026-10-13:
@@ -11,7 +23,7 @@ No se ha reproducido el 500 comunicado en producción. En el mismo workerd/Minif
 
 **GitHub está simulado en esta prueba de runtime. No se ha accedido al Worker desplegado ni creado/modificado ningún usuario o dato real.** La comprobación READ_ACCESS_CONFIRMED del propietario no demuestra permiso de escritura, pero la falta de permiso debería producir DATA_TOKEN_PERMISSION_OR_SECONDARY_LIMIT, no INTERNAL_ERROR.
 
-No se ha identificado aún la excepción exacta de producción. La entrega añade instrumentación segura para identificarla tras el siguiente despliegue; no se presenta como solución demostrada del 500. No se cambia algoritmo, salt, formato ni parámetros de seguridad; no se añade dependencia criptográfica, servicio o proveedor.
+En esa entrega anterior aún no se había identificado la excepción exacta. Posteriormente el log del propietario confirmó el límite y permitió aplicar la corrección de arriba. La escritura real con el Worker corregido sigue pendiente de validación del propietario.
 
 ## Diagnóstico nuevo
 

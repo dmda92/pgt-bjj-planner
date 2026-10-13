@@ -21,7 +21,7 @@ Se conserva literalmente el adjunto en REQUISITOS_PGT_APP.md. El propietario con
 
 ## Pruebas de código
 
-23 casos: rutas, repositorio privado, UTF8/base64, SHA, CRUD, errores/credenciales/rate limits, backoff y no repetición de mutaciones ambiguas; correo, PBKDF2 con sal, CORS, roles no inyectables, altas de prueba, login/logout, acceso cruzado, no-op sin commits, revocación y límites. Incluye diagnóstico de transporte y excepciones inesperadas con vocabulario cerrado, correlación por UUID, hash cotejado contra Node/OpenSSL y comprobaciones de que errores, mensajes y destinos con secretos ficticios nunca aparecen en logs.
+25 casos: rutas, repositorio privado, UTF8/base64, SHA, CRUD, errores/credenciales/rate limits, backoff y no repetición de mutaciones ambiguas; correo, PBKDF2 con sal, CORS, roles no inyectables, altas de prueba, login/logout, acceso cruzado, no-op sin commits, revocación y límites. Incluye diagnóstico seguro, hash nativo y alternativo cotejados contra Node/OpenSSL, Unicode y rechazo de fallos criptográficos distintos del límite. El runtime completo se prueba tanto con WebCrypto nativo como con el límite observado inyectado.
 
 Comandos de entrega: npm test, npm run typecheck, npm run build y npm run check:worker. Además, npm run test:runtime ejecuta el bundle en Miniflare/workerd local con Durable Object SQLite: verificados 401 sin sesión y 404 para endpoint inexistente. También reproduce incompatibilidades de receptor de fetch y redirect:error anteriores, verifica el transporte corregido con fetch nativo y salida interceptada, el rechazo de redirecciones y la distinción de 401 GitHub. Las pruebas de dominio API usan almacenamiento cloud falso; el runtime local no equivale a despliegue remoto ni valida el token GitHub. No se afirma cobertura porcentual del proyecto final: sigue sin implementarse. Ver DIAGNOSTICO_CONEXION.md para el análisis y pasos de actualización.
 
@@ -46,7 +46,7 @@ Fuentes oficiales consultadas:
 
 ## Pendiente / bloqueo antes de aplicación completa
 
-El propietario ha informado de admin/check 200 y de test-user 500 en el despliegue. La prueba completa local de alta dentro de SQLite DO funciona con PBKDF2 nativo 600.000 y GitHub interceptado; el error de producción no se ha reproducido. Ver DIAGNOSTICO_ALTA.md. No considerar el problema solucionado ni la escritura real validada hasta recibir la excepción diagnosticada y completar las pruebas remotas.
+El propietario ha informado de admin/check 200 y de test-user 500. El log confirma password_derive_bits / NotSupportedError / PBKDF2_ITERATION_LIMIT. Se mantiene la KDF completa mediante alternativa compatible cuando la implementación nativa rechaza el límite; pruebas de alta/login dentro de workerd con SQLite DO y GitHub interceptado. Ver DIAGNOSTICO_ALTA.md. La escritura real y las cuotas de producción siguen pendientes del despliegue y pruebas del propietario; no se declara superada la viabilidad.
 
 Propietario debe configurar token secreto limitado y desplegar Worker Free; validar CRUD real, permisos, revocación, conflictos, aislamiento y dispositivos. Work no accede a Cloudflare ni despliega. No sustituir prueba con mocks.
 

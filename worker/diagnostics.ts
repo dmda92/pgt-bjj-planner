@@ -35,6 +35,10 @@ export function logGithubDiagnostic(diagnostic:GithubDiagnostic):void{console.er
 
 export type RequestStage='dispatch'|'validate_origin'|'throttle'|'route'|'authorize_admin'|'parse_body'|'validate_body'|'password_key_import'|'password_derive_bits'|'password_encode'|'verify_private_repository'|'read_user_profile'|'write_user_profile'|'validate_credentials'|'create_session'|'validate_session'|'revoke_session'|'authorize_resource'|'read_probe_json'|'write_probe_json'|'delete_probe_json';
 export interface RequestContext {diagnosticId:string;operation:string;method:string;stage:RequestStage;started:number}
+export function isPbkdf2IterationLimit(error:unknown):boolean{
+  const root=fields(error),cause=fields(root.cause),message=root.message+' '+cause.message;
+  return root.name==='NotSupportedError'&&/pbkdf2|iteration/i.test(message)&&/limit|maximum|too (?:many|large)|exceed|100.?000/i.test(message);
+}
 export function requestContext(request:Request):RequestContext{
   const path=new URL(request.url).pathname;
   const operation=path==='/api/admin/test-user'?'create_test_user':path==='/api/admin/check'?'admin_check':path==='/api/auth/login'?'login':path==='/api/auth/logout'?'logout':/^\/api\/probe\/users\/[^/]+\/json$/.test(path)?'probe_json':'other';

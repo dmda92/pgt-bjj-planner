@@ -19,5 +19,8 @@
     "miniflare": "^5.20261006.2-beta",
     "typescript": "^5.9.3",
     "wrangler": "4.150.0"
+  },
+  "dependencies": {
+    "@noble/hashes": "2.4.0"
   }
 }

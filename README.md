@@ -6,7 +6,7 @@ Proyecto reiniciado desde cero según requisitos versión 2.0. El árbol actual 
 - Configuración y pruebas reales del propietario: [docs/CONFIGURACION_PRUEBA.md](docs/CONFIGURACION_PRUEBA.md).
 - Validaciones, cuotas y decisiones: [docs/VALIDACION.md](docs/VALIDACION.md).
 - Error DATA_NETWORK_RETRY: [diagnóstico seguro y corrección de fetch](docs/DIAGNOSTICO_CONEXION.md).
-- Error INTERNAL_ERROR durante alta: [investigación y diagnóstico por etapas](docs/DIAGNOSTICO_ALTA.md). No reproducido localmente; pendiente excepción de producción.
+- Error INTERNAL_ERROR durante alta: [causa confirmada y compatibilidad PBKDF2](docs/DIAGNOSTICO_ALTA.md). Límite nativo de iteraciones confirmado por el log de producción; pendiente validación remota de la corrección.
 
 El propietario confirmó que la frase «No usar GitHub privado, GitHub REST API» del apartado 2.1 es una errata. La arquitectura aplicable es repositorio privado GitHub y API Contents mediante Worker, según el resto del documento. Se conserva el adjunto sin modificarlo.
 
@@ -16,7 +16,7 @@ Código (frontend src/ y API worker/): dmda92/pgt-bjj-planner. Datos JSON exclus
 
 GitHub Contents API es el adaptador detrás de CloudStorageProvider. Las escrituras actualizan solo con SHA esperado; errores 409/422 se conservan como conflictos, nunca sobrescritura. Creación omite SHA y no sustituye archivos existentes. Lecturas fallidas de forma transitoria reintentan una vez con backoff; mutaciones ambiguas no se repiten automáticamente. La prueba evita commits cuando se guarda el mismo texto sin cambios. La app futura agrupará pendientes desde IndexedDB, sin polling ni escritura por pulsación.
 
-Durable Object SQLite gratuito únicamente para sesiones, límites de frecuencia y serialización de operaciones. Ningún dato de negocio se almacena ahí. No se necesita KV, D1 ni otra BD de negocio. PBKDF2-SHA256 con 600.000 iteraciones y sal independiente mediante Web Crypto, ejecutado dentro de DO para comprobar compatibilidad/CPU real en el plan gratuito. La calibración remota sigue pendiente.
+Durable Object SQLite gratuito únicamente para sesiones, límites de frecuencia y serialización de operaciones. Ningún dato de negocio se almacena ahí. No se necesita KV, D1 ni otra BD de negocio. PBKDF2-SHA256 con 600.000 iteraciones y sal independiente dentro de DO: WebCrypto nativo o, si rechaza específicamente el límite, implementación idéntica con @noble/hashes 2.4.0 incluida en el Worker. No se reducen parámetros ni se migran hashes. La medición remota de CPU/duración sigue pendiente.
 
 ## Desarrollo local
 
