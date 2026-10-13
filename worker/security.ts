@@ -18,16 +18,20 @@ export function equal(a:string,b:string):boolean {
 function base64(bytes:Uint8Array):string {return btoa(String.fromCharCode(...bytes));}
 export function opaqueToken():string {return base64(crypto.getRandomValues(new Uint8Array(32))).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');}
 export async function fingerprint(value:string):Promise<string>{return base64(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value))));}
-export async function passwordHash(value:unknown,salt=opaqueToken()):Promise<string>{
+export type PasswordStage='password_key_import'|'password_derive_bits'|'password_encode';
+export async function passwordHash(value:unknown,salt=opaqueToken(),onStage?:(stage:PasswordStage)=>void):Promise<string>{
   if(typeof value!=='string'||value.length<12||value.length>128)return reject(400,'PASSWORD_LENGTH_12_128');
+  onStage?.('password_key_import');
   const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(value),'PBKDF2',false,['deriveBits']);
+  onStage?.('password_derive_bits');
   const bits=await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:new TextEncoder().encode(salt),iterations:600000},key,256);
+  onStage?.('password_encode');
   return `pbkdf2-sha256$600000$${salt}$${base64(new Uint8Array(bits))}`;
 }
-export async function passwordMatches(value:unknown,stored:string):Promise<boolean>{
+export async function passwordMatches(value:unknown,stored:string,onStage?:(stage:PasswordStage)=>void):Promise<boolean>{
   const [kind,rounds,salt,hash,...extra]=stored.split('$');
   if(kind!=='pbkdf2-sha256'||rounds!=='600000'||!salt||!hash||extra.length)return false;
-  return equal(await passwordHash(value,salt),stored);
+  return equal(await passwordHash(value,salt,onStage),stored);
 }
 export function ownResource(sessionMail:string,requestedMail:string):void{
   if(normalizedMail(sessionMail)!==normalizedMail(requestedMail))reject(403,'OTHER_USER_FORBIDDEN');
