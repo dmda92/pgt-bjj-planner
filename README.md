@@ -1,35 +1,44 @@
-# PGT — prueba de concepto OneDrive
+# PGT — GitHub privado + Worker
 
-**Estado: prueba bloqueante preparada; Microsoft real y dispositivos pendientes. La aplicación completa todavía no se ha desarrollado.**
+Proyecto reiniciado desde cero según requisitos versión 2.0. El árbol actual sustituye completamente al prototipo anterior. **Solo contiene la prueba bloqueante de almacenamiento y autenticación; todavía no es la aplicación PWA completa.**
 
-Especificación íntegra: [docs/REQUISITOS_PGT_APP.md](docs/REQUISITOS_PGT_APP.md). Frontend y Worker irán en este mismo repositorio. Esta entrega solo permite validar la arquitectura antes de implementar el dominio, IndexedDB, PWA, planes y PDF. No contiene posiciones inventadas ni una plantilla sustitutiva.
+- Especificación adjunta íntegra: [docs/REQUISITOS_PGT_APP.md](docs/REQUISITOS_PGT_APP.md).
+- Configuración y pruebas reales del propietario: [docs/CONFIGURACION_PRUEBA.md](docs/CONFIGURACION_PRUEBA.md).
+- Validaciones, cuotas y decisiones: [docs/VALIDACION.md](docs/VALIDACION.md).
 
-## Pruebas locales
+El propietario confirmó que la frase «No usar GitHub privado, GitHub REST API» del apartado 2.1 es una errata. La arquitectura aplicable es repositorio privado GitHub y API Contents mediante Worker, según el resto del documento. Se conserva el adjunto sin modificarlo.
 
-Requiere Node 24 y npm. `npm ci`, `npm test`, `npm run typecheck`, `npm run check:worker` (compilación local sin publicar). Los tests usan Graph simulado, nunca demuestran OAuth real. `npm run dev:poc` inicia el Worker y un Durable Object SQLite local; utiliza `.dev.vars` a partir del ejemplo, nunca versionar ese archivo.
+## Repositorios y arquitectura
 
-## Configuración y validación real
+Código (frontend src/ y API worker/): dmda92/pgt-bjj-planner. Datos JSON exclusivamente en **dmda92/pgt-bjj-data PRIVADO**, bajo PGT/. El Worker comprueba la privacidad del repositorio antes de acceder a datos. El cliente solo recibe una sesión PGT opaca; nunca token GitHub ni hashes de contraseña. No hay API GitHub genérica, rutas arbitrarias ni operaciones fuera de PGT.
 
-Seguir [docs/PRUEBA_ONEDRIVE.md](docs/PRUEBA_ONEDRIVE.md). Solo el propietario inicia sesión en Microsoft y despliega Cloudflare. Work no necesita ni debe recibir secretos. No ejecutar `deploy:worker` desde Work.
+GitHub Contents API es el adaptador detrás de CloudStorageProvider. Las escrituras actualizan solo con SHA esperado; errores 409/422 se conservan como conflictos, nunca sobrescritura. Creación omite SHA y no sustituye archivos existentes. Lecturas fallidas de forma transitoria reintentan una vez con backoff; mutaciones ambiguas no se repiten automáticamente. La prueba evita commits cuando se guarda el mismo texto sin cambios. La app futura agrupará pendientes desde IndexedDB, sin polling ni escritura por pulsación.
 
-El prototipo contiene una página de prueba servida por el Worker, sin cookies ni almacenamiento de sesiones en navegador: usa un bearer PGT en memoria con duración de 12 horas. Las sesiones son revocables en el servidor y el logout las elimina. Esto es deliberadamente una prueba, no implementa aún la persistencia de sesión requerida para la aplicación final. Las cuentas de prueba tienen `pocOnly: true`; no utilizarlas como altas completas. No hay bootstrap de entrenador ni registro público: el propietario crea los perfiles de prueba mediante clave administrativa. Se sustituirá por los casos de uso definitivos después de superar la validación.
+Durable Object SQLite gratuito únicamente para sesiones, límites de frecuencia y serialización de operaciones. Ningún dato de negocio se almacena ahí. No se necesita KV, D1 ni otra BD de negocio. PBKDF2-SHA256 con 600.000 iteraciones y sal independiente mediante Web Crypto, ejecutado dentro de DO para comprobar compatibilidad/CPU real en el plan gratuito. La calibración remota sigue pendiente.
 
-## Arquitectura del prototipo
+## Desarrollo local
 
-Worker → Durable Object SQLite único → Microsoft Graph delegado → `PGT/` en una única cuenta personal. Se serializan operaciones completas para evitar rotaciones concurrentes. Tokens AES-GCM cifrados, estados OAuth PKCE de un solo uso, sesiones opacas guardadas por hash, límites de frecuencia y tamaño, CORS con origen exacto. Contraseñas de prueba PBKDF2-SHA256 con 600.000 iteraciones y sal independiente mediante Web Crypto dentro del Durable Object (su cuota de CPU es distinta del Worker de entrada). El frontend no recibe tokens Graph ni contraseñas cifradas. El API no admite URL/ruta Graph arbitraria.
+Node 24. Desde checkout:
 
-Solo se almacenan tokens, sesiones, estados OAuth y límites en Durable Objects. Los perfiles y JSON de prueba están en OneDrive. Los cambios existentes requieren If-Match y una revisión consecutiva; una creación usa conflictBehavior=fail. Estos comportamientos deben verificarse contra Graph real, especialmente conflictos/creación; no dar por suficiente el mock.
+```sh
+npm ci
+npm test
+npm run typecheck
+npm run build
+npm run check:worker
+npm run test:runtime
+```
 
-## Cuotas y coste
+`build` produce `dist` con **cliente técnico de prueba**, no PWA completa. `check:worker` compila localmente en modo dry-run sin publicar. Para ejecutar simulador local, configurar `.dev.vars` privadamente a partir del ejemplo y ejecutar `npm run dev:worker`. Nunca versionar `.dev.vars`, `.env` real, tokens ni contraseñas. `.env.example` solo tiene URL pública de API; `.dev.vars.example` tiene marcadores de secretos.
 
-Plan gratuito exclusivamente. Workers: 100.000 peticiones/día y 10 ms de CPU por petición de entrada. Durable Objects **SQLite** gratuito: 100.000 peticiones/día, 13.000 GB-s/día de duración, 5 millones de filas leídas/día, 100.000 escritas/día y 5 GB de almacenamiento total. Cada petición puede implicar varias operaciones; no interpretar estas cuotas como número de alumnos. El prototipo no hace consultas periódicas. Al superar cuotas gratuitas fallan operaciones; no activar Paid. Revisar rendimiento de PBKDF2 y CPU/duración con la prueba real. OneDrive personal gratuito normalmente ofrece 5 GB compartidos con el almacenamiento Microsoft de la cuenta; confirmar cuota efectiva con el propietario. Las condiciones pueden cambiar.
+El cliente estático se sirve por el mismo Worker para simplificar la prueba. Puede compilarse con VITE_API_BASE_URL si se sirve desde otro origen; ALLOWED_ORIGIN debe coincidir exactamente. No hay login GitHub/Microsoft para alumnos. Las sesiones del prototipo duran 12 horas y solo se guardan en memoria del navegador: esto no satisface todavía el requisito de persistencia de sesión de la aplicación final. Los perfiles probeOnly no son registros de negocio completos; el propietario los crea con una clave administrativa. No se habilita registro público ni bootstrap de entrenador en esta fase.
 
-Fuentes consultadas: https://developers.cloudflare.com/workers/platform/limits/ ; https://developers.cloudflare.com/durable-objects/platform/pricing/ ; https://developers.cloudflare.com/durable-objects/platform/limits/ ; https://learn.microsoft.com/en-us/graph/api/driveitem-put-content ; https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow .
+## Configuración y despliegue
 
-## Aplicación final (pendiente del gate)
+**Work no accede a la cuenta Cloudflare ni despliega.** El propietario configura Worker Free, binding SQLite, variables y secretos; instrucciones en CONFIGURACION_PRUEBA.md. El token GitHub es fine-grained, solo pgt-bjj-data y Contents Read and write. Rotarlo antes de caducidad con `wrangler secret put GITHUB_DATA_TOKEN`; no enviarlo por chat. El API indica credencial inválida, sin permisos, repo invisible o límites sin exponer respuesta privada.
 
-Después de validar: React/TypeScript/Vite, IndexedDB y sincronización; `npm run build` producirá `dist`. **Ese comando aún no existe: esta entrega no es la app final.** Pages será configurado por el propietario con rama main, comando npm run build y salida dist. No conectar Pages a este prototipo como si fuera la aplicación terminada. El Worker se configura y publica separadamente desde el mismo repositorio. No hay ningún despliegue efectuado por Work.
+Después de superar el gate se desarrollará React/TypeScript/Vite, PWA, IndexedDB, planes, PDF, sincronización y roles completos. Pages se conectará manualmente a main, comando npm run build, salida dist. **No conectar Pages todavía pensando que esto ya es la app terminada.** Worker y Pages se publican por separado desde este mismo monorepo.
 
-## Recuperación
+## Backup y recuperación
 
-Si Microsoft revoca acceso, API devuelve MICROSOFT_REAUTH_REQUIRED y el propietario repite consentimiento. No borrar JSON de negocio. La clave de cifrado debe conservarse en un gestor privado: cambiarla hace ilegibles los tokens guardados y requiere reautorizar. El panel `Eliminar autorización local` elimina tokens del prototipo pero no revoca Microsoft; revocar consentimiento desde la cuenta Microsoft. Exportación/restauración de datos de la aplicación completa está pendiente; esta prueba no altera planes ni técnicas.
+El historial privado de GitHub permite recuperar versiones de JSON. La restauración debe volver a escribir con el SHA actual; no restaurar por fuerza una rama ni perder versiones de otros alumnos. Al revocar/caducar el token, las operaciones remotas fallan hasta que el propietario lo rote. Esta prueba no implementa aún IndexedDB/pendientes ni importación/exportación: son parte del desarrollo posterior al gate. Borrar un archivo no elimina su contenido del historial Git; no guardar secretos ni contraseñas en texto claro en el repo de datos.

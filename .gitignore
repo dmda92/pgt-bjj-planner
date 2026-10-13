@@ -1,7 +1,11 @@
 node_modules/
-.wrangler/
-.worker-build/
-.dev.vars
-.env
 dist/
+.worker-build/
+.wrangler/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.env
+.env.*
+!.env.example
 coverage/

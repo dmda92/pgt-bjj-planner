@@ -1,10 +1,10 @@
 # PGT — Especificación funcional y técnica para implementación
 
-**Versión:** 1.0 · **Estado:** listo para prototipo técnico y desarrollo, sujeto a validación del acceso OneDrive.
+**Versión:** 2.0 · **Estado:** listo para prototipo técnico y desarrollo, sujeto a validar GitHub privado como almacenamiento mediante Cloudflare Worker gratuito.
 
 ## 0. Encargo para ChatGPT Work
 
-Construir, probar y preparar el despliegue de una aplicación PWA de planificación de competición de jiu-jitsu. Implementar exactamente los requisitos de este documento. No inventar posiciones ni técnicas: utilizar el JSON oficial del proyecto `posiciones a trabajar mínimos.json` como origen de `master_data/tecnics_base.json`. Solicitar acceso a dicho fichero si no está disponible. Preparar el código para el repositorio GitHub `dmda92/pgt-bjj-planner`, README.md y AGENTS.md. Guardar una copia íntegra de este documento de requisitos en `docs/REQUISITOS_PGT_APP.md` dentro del repositorio y referenciarla expresamente desde `AGENTS.md` como especificación inicial del proyecto. Con autorización del propietario y acceso a GitHub, subir el código probado a la rama `main`. NO acceder a Cloudflare, NO crear ni configurar un proyecto Cloudflare y NO realizar el despliegue: el propietario conectará GitHub con Cloudflare Pages manualmente. Validar primero una prueba de concepto real de acceso a la única cuenta OneDrive del propietario a través de un Cloudflare Worker mínimo con Microsoft Graph y OAuth, sin inicio de sesión Microsoft de los alumnos. El propietario autorizará Microsoft inicialmente y configurará Cloudflare; Work preparará código e instrucciones, sin desplegar ni acceder a la cuenta Cloudflare.
+Construir, probar y preparar el despliegue de una aplicación PWA de planificación de competición de jiu-jitsu. Implementar exactamente los requisitos de este documento. No inventar posiciones ni técnicas: utilizar el JSON oficial del proyecto `posiciones a trabajar mínimos.json` como origen de `master_data/tecnics_base.json`. Solicitar acceso a dicho fichero si no está disponible. Preparar el código para el repositorio GitHub `dmda92/pgt-bjj-planner`, README.md y AGENTS.md. Guardar una copia íntegra de este documento de requisitos en `docs/REQUISITOS_PGT_APP.md` dentro del repositorio y referenciarla expresamente desde `AGENTS.md` como especificación inicial del proyecto. Con autorización del propietario y acceso a GitHub, subir el código probado a la rama `main`. NO acceder a Cloudflare, NO crear ni configurar un proyecto Cloudflare y NO realizar el despliegue: el propietario conectará GitHub con Cloudflare Pages manualmente. Validar primero una prueba de concepto real de lectura/escritura en un repositorio GitHub PRIVADO de datos mediante un Cloudflare Worker mínimo, sin inicio de sesión GitHub de los alumnos. El propietario creará el repositorio privado de datos, autorizará un token GitHub de alcance limitado y configurará Cloudflare cuando Work facilite instrucciones; Work preparará código y pruebas sin desplegar ni acceder a Cloudflare.
 
 **Datos por completar por el propietario:**
 
@@ -12,13 +12,11 @@ Construir, probar y preparar el despliegue de una aplicación PWA de planificaci
 
 - Nombre del repositorio GitHub: `pgt-bjj-planner`
 
-- Cuenta Microsoft/OneDrive del propietario: `pgt.bjj@outlook.es`
-- Carpeta raíz de datos de la aplicación en OneDrive: `PGT/` (dentro de esta carpeta se crearán `master_data/` y `users_data/`).
-
-- Autorización Microsoft OAuth para el Worker: `[PENDIENTE DE PRUEBA DE CONCEPTO Y CONSENTIMIENTO DEL PROPIETARIO]`. Nunca introducir la contraseña de Microsoft en el código ni en este documento.
-- Cloudflare Worker (nombre, URL, identificadores, KV y secretos): `[POR CONFIGURAR POR EL PROPIETARIO CON LAS INSTRUCCIONES DE WORK]`. No se exige conocerlos antes del desarrollo.
-
-- Identificador de aplicación Microsoft Entra (Client ID) y configuración OAuth: `[PENDIENTE DE REGISTRO/VALIDACIÓN]`; registrar una aplicación compatible con cuentas Microsoft personales si la prueba lo requiere.
+- Repositorio de código: `dmda92/pgt-bjj-planner` (mantener como repositorio independiente del almacenamiento de datos).
+- Repositorio de datos: `dmda92/pgt-bjj-data` (**privado**, a crear por el propietario; no debe hacerse público). Carpeta raíz de datos `PGT/` con `master_data/` y `users_data/`.
+- Acceso de API a datos: token GitHub de permisos mínimos para `dmda92/pgt-bjj-data`, exclusivamente como secreto del Worker. **No incluir el valor del token en el Markdown, Git, archivos `.env` versionados ni navegador.**
+- Cloudflare Worker (nombre, URL, bindings y secretos): `[POR CONFIGURAR POR EL PROPIETARIO CON LAS INSTRUCCIONES DE WORK]`. No se exige conocerlos antes del desarrollo.
+- Cuenta Microsoft/OneDrive y registro Microsoft Entra: **no necesarios** para esta arquitectura.
 
 ### 0.1 Acceso de ChatGPT Work a GitHub
 
@@ -40,13 +38,13 @@ Construir, probar y preparar el despliegue de una aplicación PWA de planificaci
 
 - Entrenador: consultar alumnos, comentar técnicas, crear competiciones y asignar alumnos.
 
-- Coste objetivo obligatorio de 0 €: sin dominio de pago, IP fija, servidor propio ni servicios de pago. Usar Cloudflare Pages, un Cloudflare Worker mínimo y almacenamiento auxiliar de secretos/estado dentro de cuotas gratuitas, más OneDrive gratuito. Work debe comprobar límites y compatibilidad de cuotas antes de continuar; no activar planes de pago sin permiso. Advertir sobre límites y cambios futuros.
+- Coste objetivo obligatorio de 0 €: sin dominio de pago, IP fija, servidor propio ni servicios de pago. Usar Cloudflare Pages, un Cloudflare Worker mínimo y almacenamiento auxiliar de secretos/estado dentro de cuotas gratuitas, más GitHub Free con repositorio privado de datos. Work debe comprobar límites y compatibilidad de cuotas antes de continuar; no activar planes de pago sin permiso. Advertir sobre límites y cambios futuros.
 
-- PWA estática offline-first con IndexedDB local y sincronización bidireccional por JSON en OneDrive, pasando por un Cloudflare Worker para autorización y operaciones remotas. No utilizar OneDrive como base de datos de consulta interactiva.
+- PWA estática offline-first con IndexedDB local y sincronización bidireccional por JSON en repositorio privado GitHub, pasando por un Cloudflare Worker para autorización y operaciones remotas. No utilizar GitHub privado como base de datos de consulta interactiva.
 
 - Arquitectura simple, SOLID aplicado pragmáticamente, TypeScript, alta cobertura de tests, código mantenible.
 
-- Proveedor cloud intercambiable mediante interfaz (OneDrive como primera implementación).
+- Proveedor cloud intercambiable mediante interfaz (GitHub Contents API como primera implementación).
 
 - La misma PWA sirve ambos roles, mostrando permisos y pantallas correspondientes.
 
@@ -56,48 +54,43 @@ Construir, probar y preparar el despliegue de una aplicación PWA de planificaci
 
 - Persistencia local: IndexedDB mediante Dexie.js (propuesta). Persistir datos de negocio, versiones y cola de cambios pendientes.
 
-- Distribución prevista: Cloudflare Pages para frontend estático HTTPS y Cloudflare Worker para API de autenticación/autorización y OneDrive. Work implementará y probará localmente ambos componentes, con instrucciones de configuración; el propietario configurará y desplegará Pages y Worker desde su cuenta Cloudflare. Work no necesita credenciales ni URL real de Cloudflare para desarrollar.
+- Distribución prevista: Cloudflare Pages para frontend estático HTTPS y Cloudflare Worker para API de autenticación/autorización y GitHub privado. Work implementará y probará localmente ambos componentes, con instrucciones de configuración; el propietario configurará y desplegará Pages y Worker desde su cuenta Cloudflare. Work no necesita credenciales ni URL real de Cloudflare para desarrollar.
 
 - Entrega preparada para despliegue: `package.json` con `npm run build` operativo, salida estática en `dist`, configuración SPA para navegación por rutas si se utiliza, manifest y service worker PWA. Implementar detección de nueva versión y aviso de actualización sin descartar cambios locales pendientes ni provocar pérdida de datos.
 
 - GitHub es el origen del despliegue: Work debe entregar código y pruebas en el repositorio indicado cuando esté autorizado. Tras la configuración manual inicial del propietario, Cloudflare Pages publicará nuevas compilaciones automáticamente al recibir cambios en `main`. No depender de un despliegue previo para poder desarrollar o probar localmente.
 
-- Nube: una sola cuenta personal de OneDrive del propietario, con todos los JSON dentro de `PGT/`. La PWA llamará al Worker; solo el Worker se comunicará con Microsoft Graph mediante OAuth delegado autorizado por el propietario. Validar el flujo real con cuenta Microsoft personal y renovación de acceso. La lógica de dominio no dependerá de la API concreta.
+- Nube: un repositorio GitHub privado de datos `dmda92/pgt-bjj-data`, propiedad de `dmda92`, con todos los JSON dentro de `PGT/`. La PWA llamará al Worker; solo el Worker accederá a GitHub REST API con un token de alcance limitado. La lógica de dominio no dependerá de la API concreta.
 
-- Capas: domain (modelos, reglas, generador puro); application (casos de uso); infrastructure (IndexedDB, cliente API PGT, Worker, Microsoft Graph y autenticación); ui (pantallas).
+- Capas: domain (modelos, reglas, generador puro); application (casos de uso); infrastructure (IndexedDB, cliente API PGT, Worker, GitHub REST API y autenticación); ui (pantallas).
 
-- Interfaces mínimas: `LocalRepository`, `CloudStorageProvider`, `AuthenticationProvider`, `SyncService`. Implementar adaptador de API Worker sin exponer credenciales Graph al navegador.
+- Interfaces mínimas: `LocalRepository`, `CloudStorageProvider`, `AuthenticationProvider`, `SyncService`. Implementar adaptador de API Worker sin exponer credenciales GitHub al navegador.
 
 - Funcionamiento offline: consultar y editar datos cacheados sin red; las operaciones remotas quedan pendientes y se reintentan.
 
-### 2.1 Decisión obligatoria: una sola cuenta OneDrive y Cloudflare Worker mínimo
+### 2.1 Decisión obligatoria: GitHub privado como almacenamiento y Cloudflare Worker mínimo
 
-- **Decisión expresa del propietario:** todos los JSON estarán en UNA sola cuenta personal gratuita de OneDrive, perteneciente al propietario. Ningún alumno necesita cuenta, contraseña ni consentimiento de Microsoft. Cada alumno entra exclusivamente con credenciales PGT. Se autoriza exclusivamente un Cloudflare Worker mínimo como intermediario entre la PWA y OneDrive para autenticar usuarios PGT, comprobar permisos y acceder a Microsoft Graph. No añadir otros servidores ni proveedores sin permiso. Priorizar simplicidad y coste cero.
+- **Decisión expresa del propietario:** todos los JSON estarán en UN repositorio GitHub PRIVADO `dmda92/pgt-bjj-data` bajo su única cuenta GitHub. El código estará separado en `dmda92/pgt-bjj-planner`, con frontend y Worker en un monorepo. Los alumnos no necesitan cuentas GitHub ni Microsoft; entran solo con credenciales PGT. No usar GitHub privado, GitHub REST API ni Microsoft Entra.
+- **Seguridad:** el Worker guarda el token GitHub exclusivamente como secreto, nunca en navegador, repositorio, logs ni Markdown. Verifica identidad, rol y propiedad de cada recurso; no permite rutas arbitrarias, traversal ni operaciones GitHub genéricas. El repositorio de datos nunca será público.
+- **Token GitHub:** preferir fine-grained personal access token limitado al repositorio `dmda92/pgt-bjj-data`, con permiso **Contents: Read and write** y sin permisos innecesarios. El propietario lo crea y lo carga manualmente como secreto de Cloudflare. Documentar caducidad, rotación, revocación y comportamiento cuando expire; nunca pedir que se pegue en el chat. Si GitHub ofrece una opción más segura y gratuita compatible, justificarla y obtener aprobación antes de sustituirla.
+- **Prueba bloqueante:** comprobar mediante GitHub REST API real que el token puede leer, crear y actualizar JSON en el repositorio privado, respetando el SHA de versión para escrituras condicionales; verificar rechazo de SHA obsoleto, credenciales incorrectas y acceso cruzado entre alumnos mediante Worker. Si el acceso real depende de secretos que solo puede configurar el propietario, detenerse y solicitar pasos concretos sin dar por superada la prueba con mocks. Si no es viable sin coste o tarjeta, informar y detenerse sin cambiar proveedor unilateralmente.
+- **Login PGT:** el Worker valida contraseñas almacenadas como hash robusto con sal (Argon2id o alternativa compatible y justificada) y expide sesiones protegidas; comprueba autorización en cada operación. Proteger registro, recuperación, roles, sesiones y bootstrap inicial del entrenador. No confiar en el campo `perfil` del navegador.
 
-- **Seguridad de credenciales:** el Worker guardará los tokens de Microsoft fuera del navegador y del repositorio, mediante secretos y almacenamiento persistente protegido apropiado. Nunca enviar tokens Microsoft a los alumnos ni incluirlos en el bundle, repositorio, logs o Markdown. El Worker debe verificar la identidad y rol PGT y restringir por servidor las rutas/operaciones a los archivos autorizados dentro de `PGT/`; no confiar en controles de interfaz ni aceptar rutas arbitrarias del cliente.
+### 2.2 Worker, GitHub y configuración a cargo del propietario
 
-- **OAuth:** el propietario inicia sesión y consiente la autorización Microsoft solo durante la configuración inicial (y cuando Microsoft exija reautorización). El Worker utiliza OAuth delegado y renueva tokens según las políticas de Microsoft. No usar usuario/contraseña embebidos, client secret en frontend ni asumir que la autorización es indefinida. Validar soporte de cuentas Microsoft personales, scopes mínimos y revocación.
+- El Worker es la única API remota. Aplicar control de acceso por alumno/entrenador, validación estricta de payloads y rutas, límites de tamaño/frecuencia, CORS restringido, protección CSRF si se usan cookies y gestión segura de sesiones. No exponer endpoints genéricos de GitHub ni tokens.
+- GitHub Contents API: leer archivos con contenido codificado y metadatos SHA; crear/actualizar con PUT y SHA esperado, borrar con SHA, y gestionar errores 401/403/404/409/422, rate limits y reintentos con backoff. No usar GitHub como BD de consulta en cada interacción: IndexedDB sigue siendo la persistencia local. No hacer commits para lecturas ni escrituras innecesarias.
+- **Concurrencia:** el SHA del archivo es la versión remota para compare-and-swap. Ante conflicto, descargar versión actual y aplicar reglas de fusión del apartado 6; nunca sobrescribir silenciosamente. Las operaciones que afecten varios JSON no son transacciones atómicas: diseñar reintentos idempotentes, pasos recuperables y reconciliación para evitar estados incoherentes.
+- **Cuotas y escala:** comprobar antes de desarrollar límites actuales del plan gratuito de GitHub (API, tamaño de archivos, commits y uso razonable), Cloudflare Workers y almacenamiento auxiliar. Evitar sincronización excesiva, polling continuo y escritura de cada pulsación; agrupar cambios. Si el volumen real supera el uso razonable de GitHub como almacenamiento de JSON, advertir antes de implementar.
+- **Persistencia auxiliar:** usar KV, D1, Durable Objects u otra opción gratuita solo para sesiones, revocación, coordinación o seguridad cuando sea necesario, justificando cuotas y consistencia. Los JSON de negocio siguen teniendo como fuente de verdad el repositorio privado. No crear otra base de datos de negocio sin autorización.
+- **Alta pública y bootstrap:** un usuario nunca puede asignarse rol entrenador. Definir un procedimiento controlado y de un solo uso para el primer entrenador, que no dependa de modificar manualmente hashes o permisos sin validación.
+- Work preparará `worker/`, configuración versionable sin secretos (`wrangler.jsonc` o equivalente), scripts de prueba y despliegue, `.env.example` sin valores reales y documentación de la configuración manual. El propietario configurará y desplegará Cloudflare Pages y Worker. Frontend: `VITE_API_BASE_URL` pública, nunca el token GitHub.
+- **Monorepo:** mantener `src/` y `worker/` dentro de `dmda92/pgt-bjj-planner`. `dmda92/pgt-bjj-data` contendrá únicamente datos privados. Work no debe confundir permisos de escritura sobre el repo de código con permisos de API sobre el repo de datos.
+- No exigir nombre/URL del Worker, token ni identificadores de Cloudflare antes de iniciar el desarrollo. Cuando se requiera la prueba real, pedir al propietario crear el repo privado y configurar el token/entorno seguro, y dar instrucciones exactas. No dar por probada la integración si solo hay mocks.
 
-- **Prueba bloqueante antes del desarrollo:** construir un Worker y cliente mínimos que prueben autorización inicial del propietario, lectura, creación, actualización y sincronización de un JSON bajo `PGT/` mediante Microsoft Graph; renovación de token y respuesta a revocación/caducidad; inicio de sesión PGT de prueba y rechazo de acceso cruzado entre alumnos. Verificar escritorio, Android e iOS sin login Microsoft del alumno. Si falla, documentar el bloqueo y detenerse para consultar al propietario: NO sustituir OneDrive ni exigir cuentas Microsoft a alumnos unilateralmente.
+## 3. Estructura de archivos en el repositorio GitHub privado
 
-- **Credenciales y configuración:** Work solicitará al propietario solo identificadores públicos, permisos y acciones de configuración cuando sean necesarios. Client ID y URL pública del Worker pueden figurar en configuración; tokens OAuth, secretos de sesión y credenciales no se escribirán en el documento ni se versionarán. Entregar `.env.example`/ejemplos de configuración sin valores reales y pasos de carga de secretos en Cloudflare.
-
-- **Login PGT:** las contraseñas de alumnos se guardan como hash con sal (Argon2id o alternativa robusta compatible), nunca cifrado reversible. El Worker valida las credenciales y expide sesiones PGT protegidas; verifica autorización en cada operación. La PWA no recibe acceso general a OneDrive. Proteger altas, recuperación, cambios de rol, restablecimiento de contraseña y sesiones contra acceso no autorizado; diseñar un procedimiento seguro de alta del primer entrenador.
-
-### 2.2 Worker, autorización y configuración a cargo del propietario
-
-- El Worker es la única API remota de la PWA. Aplicar autenticación PGT del lado servidor, control de acceso por alumno/entrenador, validación estricta de operaciones y rutas, límites de tamaño y frecuencia, CORS limitado al origen de la PWA, protección CSRF si se usan cookies y gestión segura de sesiones. No implementar endpoints genéricos que expongan Graph o el token de Microsoft.
-- OAuth Microsoft: registrar/validar aplicación que admita cuentas Microsoft personales; usar flujo de código de autorización y PKCE cuando proceda, scopes delegados mínimos para los archivos de `PGT/` y consentimiento interactivo del propietario. No utilizar client credentials como sustituto del consentimiento de una cuenta personal. Documentar URI de redirección exacta una vez exista la URL del Worker.
-- Tokens Microsoft: almacenar refresh token y metadatos de forma persistente y protegida mediante mecanismos compatibles con Workers, nunca solo en variables de entorno efímeras si el token rota. Diseñar actualización atómica, cifrado en reposo cuando corresponda, recuperación ante rotación concurrente y procedimiento de reautorización por el propietario. Las claves de cifrado y firma deben ser secretos de Cloudflare, no variables públicas de Vite.
-- Persistencia auxiliar: utilizar KV, Durable Objects u otro servicio gratuito compatible únicamente si resulta necesario para tokens, sesiones o coordinación; verificar consistencia, límites y cuotas antes de elegir. OneDrive continúa siendo la fuente de verdad de los JSON de negocio; no introducir una segunda base de datos de negocio sin autorización.
-- Registro abierto: el Worker debe evitar que un usuario se asigne el rol de entrenador o restablezca contraseñas ajenas. Definir un procedimiento controlado para crear el primer entrenador y para gestionar sesiones revocadas. No confiar en el campo `perfil` recibido del navegador.
-- Preparar configuración del Worker versionable sin secretos (`wrangler.jsonc` o equivalente), scripts de desarrollo/prueba y despliegue documentados. El propietario creará/configurará la cuenta/proyecto Cloudflare, bindings, almacenamiento, variables secretas y dominio o URL del Worker; Work no accederá a Cloudflare. El frontend recibirá únicamente la URL pública de la API mediante variable de compilación, por ejemplo `VITE_API_BASE_URL`.
-- No exigir al propietario un nombre de Worker, URL, identificador de KV, Client ID o redirect URI antes de iniciar el desarrollo. Work debe indicar exactamente cuándo y cómo obtenerlos; el propietario los facilitará tras configurarlos. Para pruebas previas al despliegue usar simuladores locales y, cuando sea indispensable, pedir al propietario que ejecute la autorización/prueba remota y aporte resultados no secretos.
-- Antes de considerar viable la arquitectura, probar OAuth real con la cuenta personal, renovación persistente y operaciones Graph, además de la autenticación/autorización PGT. Si la validación remota requiere configuración que solo puede hacer el propietario, detenerse en ese punto y pedirla; no dar por superada la prueba con mocks.
-
-## 3. Estructura de archivos en OneDrive
-
-Todas las rutas de esta sección son relativas a la carpeta `PGT/` situada en la raíz del OneDrive de `pgt.bjj@outlook.es`. La PWA no debe crear ni buscar estos JSON fuera de `PGT/`.
+Todas las rutas de esta sección son relativas a la carpeta `PGT/` en la rama principal del repositorio privado `dmda92/pgt-bjj-data`. El Worker no debe crear ni buscar estos JSON fuera de `PGT/`; el navegador nunca accede directamente a este repositorio.
 
 ```text
 PGT/
@@ -132,7 +125,7 @@ PGT/
 
 - No crear `users_data/<mail>/master_training_plans/plans.json`: ruta eliminada.
 
-- Incluir `schemaVersion`, `revision`, `updatedAt` en los archivos sincronizados y conservar metadatos de versión remota (`eTag` u homólogo) en IndexedDB.
+- Incluir `schemaVersion`, `revision`, `updatedAt` en los archivos sincronizados y conservar metadatos de versión remota (`sha` de GitHub) en IndexedDB.
 
 ## 4. Modelos de datos y validaciones
 
@@ -160,9 +153,9 @@ PGT/
 
 - `cinturon`: Blanco, Azul, Morado, Marrón o Negro.
 
-- `perfil`: alumno (por defecto) o entrenador. Solo entrenador puede cambiarlo desde la UI; primer entrenador: registro normal y edición manual inicial de JSON por propietario.
+- `perfil`: alumno (por defecto) o entrenador. Solo entrenador puede cambiarlo desde la UI; primer entrenador: bootstrap administrativo de un solo uso, protegido y documentado; no permitir elevación desde el registro público.
 
-- `pwd`: hash de contraseña con sal, verificable sin descifrar. No mostrarlo ni permitir editarlo directamente; ofrecer cambio de contraseña mediante formulario.
+- `pwd`: hash de contraseña con sal, verificable sin descifrar. El Worker nunca devolverá este campo en respuestas de perfil ni en exportaciones accesibles al alumno. No mostrarlo ni permitir editarlo directamente; ofrecer cambio de contraseña mediante formulario.
 
 - Recuperación: enlace «¿Olvidó su contraseña?» muestra «Contacte con el administrador». No se envían correos automáticos. El entrenador, como administrador, puede restablecer manualmente la contraseña de un alumno desde su perfil.
 
@@ -274,7 +267,7 @@ PGT/
 
 - Al confirmar el restablecimiento, calcular un nuevo hash con sal y actualizar exclusivamente el campo `pwd` de `users_data/<mail>/user_data.json` del alumno mediante escritura condicional con control de versión. No modificar sus técnicas, comentarios, planes ni otros datos de perfil. No mostrar ni registrar la contraseña en texto claro.
 
-- El restablecimiento administrativo requiere conexión y confirmación de escritura en OneDrive antes de informar de éxito. El Worker debe invalidar o revocar las sesiones PGT afectadas al cambiar/restablecer contraseña y documentar el mecanismo de revocación.
+- El restablecimiento administrativo requiere conexión y confirmación de escritura en GitHub privado antes de informar de éxito. El Worker debe invalidar o revocar las sesiones PGT afectadas al cambiar/restablecer contraseña y documentar el mecanismo de revocación.
 
 - Entrenador ve usuarios, técnicas, comentarios y planes; alumno solo ve su información desde la UI. La restricción de UI no equivale a seguridad de acceso a archivos.
 
@@ -286,17 +279,17 @@ PGT/
 
 - Offline-first: cada edición se persiste localmente inmediatamente y se marca pendiente.
 
-- Detectar cambios mediante dirty flags, revisiones, hashes/etags y, cuando esté disponible, API delta de Microsoft Graph; no descargar ni subir todos los JSON si no han cambiado.
+- Detectar cambios mediante dirty flags, revisiones, hashes/SHA y metadatos de GitHub; usar manifiesto de revisiones o consultas condicionales cuando resulte viable; no descargar ni subir todos los JSON si no han cambiado.
 
 - La operación de sincronización procesa **todos** los pendientes necesarios; no mostrar «Sincronizado» si queda alguno sin confirmar. Si falla un archivo, conservar pendientes y permitir reintentar de forma idempotente.
 
-- Para escrituras, utilizar precondiciones de versión (por ejemplo `If-Match`) y tratar conflictos 412. Nunca sobrescribir silenciosamente cambios remotos.
+- Para escrituras, utilizar SHA esperado del archivo en GitHub Contents API y tratar conflictos 409/422 o equivalente. Nunca sobrescribir silenciosamente cambios remotos.
 
 - Multidispositivo offline: descargar y fusionar cuando los cambios afecten campos/entidades diferentes; cuando ambas copias editen el mismo dato, presentar conflicto al usuario para escoger versión o conservar ambas. No elegir automáticamente «último en escribir» para conflictos reales.
 
 - Borrados: registrar tombstones o equivalentes hasta confirmar propagación para evitar resurrecciones.
 
-- Al cambiar de dispositivo, restaurar todos los archivos y reconstruir IndexedDB desde OneDrive.
+- Al cambiar de dispositivo, restaurar todos los archivos y reconstruir IndexedDB desde GitHub privado.
 
 ### 6.1 Aislamiento de datos locales y cambio de usuario
 
@@ -308,13 +301,13 @@ PGT/
 
 - Antes de permitir cambiar a otro usuario, comprobar si existen cambios locales pendientes. Intentar sincronizarlos; si no se consigue completar, impedir el cambio de usuario y mostrar un error con opción de reintento. No descartar cambios silenciosamente.
 
-- Para iniciar sesión con un usuario distinto se requiere conexión a Internet. Tras validar sus credenciales, descargar de OneDrive todos los datos necesarios de ese usuario, sin utilizar los marcadores incrementales del usuario anterior, y validarlos en un área temporal antes de sustituir los datos locales.
+- Para iniciar sesión con un usuario distinto se requiere conexión a Internet. Tras validar sus credenciales, descargar de GitHub privado todos los datos necesarios de ese usuario, sin utilizar los marcadores incrementales del usuario anterior, y validarlos en un área temporal antes de sustituir los datos locales.
 
 - La sustitución de IndexedDB será atómica o tendrá un mecanismo de recuperación equivalente: nunca dejar una mezcla de datos de dos usuarios ni presentar una importación incompleta como correcta. Solo habilitar la interfaz del nuevo usuario después de completar la importación y establecer la propiedad de la base de datos.
 
 - Si falla la descarga o validación del nuevo usuario, no iniciar su sesión ni exponer los datos del usuario anterior. Conservar los datos previos de forma inaccesible hasta un reintento o restauración segura.
 
-- La primera carga de un usuario en un dispositivo y cualquier cambio de usuario exigen descarga completa desde OneDrive. Las sincronizaciones posteriores del mismo usuario serán incrementales. Tras la carga inicial, el usuario activo podrá trabajar offline.
+- La primera carga de un usuario en un dispositivo y cualquier cambio de usuario exigen descarga completa desde GitHub privado. Las sincronizaciones posteriores del mismo usuario serán incrementales. Tras la carga inicial, el usuario activo podrá trabajar offline.
 
 - Coordinar todas las pestañas/ventanas de la misma PWA mediante BroadcastChannel o mecanismo equivalente y comprobaciones de identidad antes de cada operación. Ante un cambio de sesión, bloquear las pestañas antiguas e impedir escrituras o sincronizaciones de la sesión anterior.
 
@@ -422,7 +415,7 @@ La configuración del Tábata **se obtiene exclusivamente de los valores guardad
 
 - Gestionar roles de usuarios desde la UI de entrenador, sujeto a las limitaciones de seguridad documentadas.
 
-- Actuar como administrador para restablecer contraseñas de alumnos desde el perfil del entrenador: correo del alumno, contraseña nueva y confirmación; validar existencia y coincidencia, guardar hash con sal en OneDrive y mostrar confirmación solo tras escritura correcta.
+- Actuar como administrador para restablecer contraseñas de alumnos desde el perfil del entrenador: correo del alumno, contraseña nueva y confirmación; validar existencia y coincidencia, guardar hash con sal en GitHub privado y mostrar confirmación solo tras escritura correcta.
 
 ### PDF
 
@@ -440,17 +433,17 @@ No tienen por qué ser todas desde exactamente la misma situación. Por ejemplo,
 
 - Accesible, responsive, táctil, usable en Safari iOS, Chrome Android y navegadores modernos Windows.
 
-- No publicar contraseñas, tokens OAuth, secretos de sesión ni claves de GitHub, Microsoft o Cloudflare en el repositorio o frontend; `.env.example` con valores de ejemplo. Usar secretos del Worker y almacenamiento persistente adecuado para tokens renovables. Los identificadores públicos no son secretos. Nunca registrar credenciales en logs.
+- No publicar contraseñas, tokens GitHub, secretos de sesión ni claves de Cloudflare en el repositorio o frontend; `.env.example` con valores de ejemplo. Usar secretos del Worker y almacenamiento persistente adecuado para sesiones y revocación. Los identificadores públicos no son secretos. Nunca registrar credenciales en logs.
 
-- Validación de JSON y migraciones por `schemaVersion`; recuperación desde OneDrive, exportación/importación manual como contingencia.
+- Validación de JSON y migraciones por `schemaVersion`; recuperación desde GitHub privado, exportación/importación manual como contingencia.
 
 - Tests unitarios: generador de planes 100 % de ramas críticas; sincronización/conflictos ≥95 %; validación de modelos ≥95 %; casos de uso ≥90 % como objetivos, no sustitutos de tests de integración.
 
-- Tests de integración: IndexedDB, almacenamiento cloud simulado, Worker/API, sesiones y permisos por rol/usuario, sincronización bidireccional, borrados, conflictos, fallos parciales y restauración. Simular token caducado, renovación, revocación y acceso cruzado; validar Graph real por separado en la prueba de concepto.
+- Tests de integración: IndexedDB, almacenamiento cloud simulado, Worker/API, sesiones y permisos por rol/usuario, sincronización bidireccional, borrados, conflictos, fallos parciales y restauración. Simular token GitHub caducado, revocado o sin permisos y acceso cruzado; validar GitHub REST API real por separado en la prueba de concepto.
 
 - Tests end-to-end: registro, login, creación de técnicas, asignación de plan, generación, edición manual, comentarios, exportación PDF, instalación PWA y modo offline. Incluir cambio de contraseña propia, restablecimiento por entrenador (correo válido/inexistente, contraseñas distintas, error de red, conflicto de versión), verificación de nuevo hash y conservación del resto del perfil. Añadir pruebas de cambio de usuario A → B, cierre con cambios pendientes, fallo de descarga inicial, restauración completa, sesiones en pestañas simultáneas y ausencia de datos de A en la sesión de B (incluido tras recarga y en modo offline). Incluir planes con distintos valores de `ejercicios_por_sesion`, `tiempo_por_tecnica_segundos`, `descanso_entre_ciclos_segundos` y `descanso_entre_tecnicas_segundos` (incluidos descansos cero), validar los límites y comprobar que PDF, Tábata y duración efectiva reflejan los valores configurados.
 
-- `README.md`: instalación, comandos, arquitectura, cuentas a configurar, instrucciones para que el propietario conecte manualmente `dmda92/pgt-bjj-planner` a Cloudflare Pages (`main`, `npm run build`, `dist`) y configure/despliegue el Worker, sus bindings/almacenamiento, secretos, ruta/API pública, OAuth Microsoft, URI de redirección y autorización inicial. Explicar costes/cuotas, copias de seguridad, recuperación, límites, pruebas y despliegues posteriores de Pages/Worker.
+- `README.md`: instalación, comandos, arquitectura, cuentas a configurar, instrucciones para que el propietario conecte manualmente `dmda92/pgt-bjj-planner` a Cloudflare Pages (`main`, `npm run build`, `dist`) y configure/despliegue el Worker, sus bindings/almacenamiento, secretos, ruta/API pública, repositorio privado de datos, token GitHub de permisos mínimos y rotación. Explicar costes/cuotas, copias de seguridad, recuperación, límites, pruebas y despliegues posteriores de Pages/Worker.
 
 - `AGENTS.md`: reglas de negocio, algoritmo circular, fuente JSON, estructura, convenciones, tests obligatorios, prohibición de inventar técnicas y límites de seguridad. Incluir una referencia explícita a `docs/REQUISITOS_PGT_APP.md`, identificándolo como el documento de requisitos iniciales del proyecto, que debe consultarse antes de implementar o modificar funcionalidades.
 
@@ -476,26 +469,23 @@ No tienen por qué ser todas desde exactamente la misma situación. Por ejemplo,
 
 9. Desasignar alumno retira referencia sin eliminar plan ya descargado; eliminar un plan entero sí limpia sus referencias y archivos.
 
-10. Una sincronización con conflicto nunca pierde datos silenciosamente; una restauración desde OneDrive reconstruye la BD local.
+10. Una sincronización con conflicto nunca pierde datos silenciosamente; una restauración desde GitHub privado reconstruye la BD local.
 
 11. Los PDFs no dividen sesiones entre páginas e incluyen todos los campos e introducción literal.
 
-12. No se activa ningún servicio de pago. Se permite exclusivamente un Cloudflare Worker mínimo y almacenamiento auxiliar gratuito para autenticar PGT y conectar con la única cuenta OneDrive del propietario. Los tokens y secretos no se publican en cliente ni repositorio. El propietario configura y despliega Cloudflare.
+12. No se activa ningún servicio de pago. Se permite un Cloudflare Worker mínimo y almacenamiento auxiliar gratuito para autenticar PGT y conectar con el repositorio GitHub privado de datos del propietario. Los tokens y secretos no se publican en cliente ni repositorio. El propietario configura y despliega Cloudflare.
 
 13. Cambiar de usuario exige sincronizar previamente los cambios pendientes, descargar y validar todos los datos del nuevo usuario y sustituir IndexedDB sin mezclar información; las pestañas anteriores quedan bloqueadas y ningún dato del usuario previo aparece en la nueva sesión.
 
-14. El entrenador puede restablecer la contraseña de un alumno mediante correo y doble introducción, con persistencia confirmada en OneDrive; el alumno puede cambiar su propia contraseña desde su perfil. Ninguna de estas operaciones altera técnicas, comentarios o planes.
+14. El entrenador puede restablecer la contraseña de un alumno mediante correo y doble introducción, con persistencia confirmada en GitHub privado; el alumno puede cambiar su propia contraseña desde su perfil. Ninguna de estas operaciones altera técnicas, comentarios o planes.
 
 ## 11. Decisiones técnicas pendientes de validación (no inventar)
 
-- Viabilidad real de acceso del Worker a la única cuenta OneDrive personal del propietario mediante Microsoft Graph OAuth delegado, sin login Microsoft de alumnos: registro compatible, consentimiento, redirección, scopes, almacenamiento y renovación de tokens, caducidad y revocación.
-
-- Autenticación y autorización efectivas en el Worker: sesiones PGT, permisos por rol y usuario, prevención de acceso cruzado, altas, revocación y protección de rutas.
-
-- Disponibilidad de la cuenta Microsoft, cuota gratuita, permisos de lectura/escritura y política de uso de Graph; cuotas gratuitas de Workers y almacenamiento auxiliar, y mecanismo real de configuración sin que Work acceda a Cloudflare.
-
+- Acceso real de Cloudflare Worker a `dmda92/pgt-bjj-data` mediante token GitHub de alcance mínimo: lectura, creación, actualización condicional por SHA, borrado y rechazo de token revocado o sin permisos.
+- Seguridad efectiva del Worker: sesiones PGT, roles, aislamiento entre alumnos, bootstrap del primer entrenador, alta pública, revocación y protección de rutas.
+- Cuotas y uso razonable de GitHub Free para JSON versionados, límites de REST API y frecuencia de commits; cuotas de Workers y persistencia auxiliar gratuitas, sin tarjeta ni activación de pago.
 - Comportamiento exacto ante eliminación de un plan no descargado o datos antiguos offline.
+- Compatibilidad de algoritmos de hash de contraseña con Workers y migración si se adoptara otro proveedor de identidad en el futuro.
+- Limitaciones de transacciones multiarchivo de GitHub Contents API; recuperación de fallos parciales y conflictos entre dispositivos.
 
-- Compatibilidad de algoritmos de hash de contraseña en navegador y migración si se adoptara un proveedor de identidad en el futuro.
-
-**Instrucción final a Work:** primero validar mediante prueba funcional mínima un Cloudflare Worker con Microsoft Graph OAuth delegado para la única cuenta OneDrive personal del propietario: consentimiento inicial del propietario, lectura/escritura de JSON en `PGT/`, renovación y revocación, login PGT y autorización por usuario, sin cuentas Microsoft de alumnos. Si la prueba falla, detenerse y explicar el bloqueo, sin cambiar de proveedor ni exigir cuentas Microsoft. Después desarrollar y probar frontend y Worker, documentar los pasos exactos que debe ejecutar el propietario en Microsoft y Cloudflare, guardar íntegro este documento en `docs/REQUISITOS_PGT_APP.md` y referenciarlo desde `AGENTS.md`, comprobar `npm run build` y, si existe autorización GitHub, subir el código a `dmda92/pgt-bjj-planner` en `main`. Work no debe acceder a Cloudflare ni realizar allí el despliegue; el propietario configura Pages, Worker, secretos, OAuth y conexión GitHub–Cloudflare.
+**Instrucción final a Work:** primero comprobar permisos de GitHub sobre el repositorio de código y preparar una prueba funcional mínima del Worker con un repositorio GitHub privado de datos propiedad de `dmda92`: lectura/escritura de JSON bajo `PGT/`, escritura condicional por SHA y conflictos, login PGT y aislamiento de usuarios, sin cuentas GitHub de alumnos. El propietario creará `dmda92/pgt-bjj-data` privado y configurará el token GitHub de permisos mínimos en el entorno seguro cuando sea necesario. Si la prueba real no es viable gratuitamente y sin tarjeta, detenerse y explicar el bloqueo; no sustituir el proveedor sin permiso. Después desarrollar y probar frontend y Worker, documentar los pasos exactos de GitHub y Cloudflare para el propietario, guardar íntegro este documento en `docs/REQUISITOS_PGT_APP.md` y referenciarlo desde `AGENTS.md`, comprobar `npm run build` y, si existe autorización GitHub, subir el código a `dmda92/pgt-bjj-planner` en `main`. Work no debe acceder a Cloudflare ni realizar allí el despliegue; el propietario configura Pages, Worker, secretos y conexión GitHub–Cloudflare.

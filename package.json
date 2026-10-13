@@ -1,19 +1,23 @@
 {
   "name": "pgt-bjj-planner",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --experimental-transform-types --test tests/*.test.ts",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "dev:poc": "wrangler dev",
+    "test:runtime": "node scripts/test-runtime.mjs",
+    "build": "node scripts/build.mjs",
+    "dev:worker": "wrangler dev --local",
     "check:worker": "wrangler deploy --dry-run --outdir .worker-build",
     "deploy:worker": "wrangler deploy"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261013.1",
+    "@types/node": "^24.0.0",
+    "esbuild": "0.28.2",
+    "miniflare": "^5.20261006.2-beta",
     "typescript": "^5.9.3",
-    "wrangler": "^4.150.0",
-    "@types/node": "^24.0.0"
+    "wrangler": "4.150.0"
   }
 }

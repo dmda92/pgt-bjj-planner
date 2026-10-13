@@ -1,6 +1,3 @@
-MS_CLIENT_ID=public-application-id
-MS_CLIENT_SECRET=load-locally-do-not-commit
-TOKEN_ENCRYPTION_KEY=base64-32-random-bytes
-ADMIN_SETUP_KEY=independent-long-random-secret
-PUBLIC_BASE_URL=http://localhost:8787
+GITHUB_DATA_TOKEN=load-in-your-local-private-environment-only
+PROBE_ADMIN_KEY=independent-random-secret-at-least-32-characters
 ALLOWED_ORIGIN=http://localhost:8787
