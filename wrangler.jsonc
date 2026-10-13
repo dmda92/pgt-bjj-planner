@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pgt-bjj-planner-poc",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-13",
+  "workers_dev": true,
+  "observability": {"enabled": false},
+  "vars": {"OWNER_MAIL": "pgt.bjj@outlook.es"},
+  "durable_objects": {"bindings": [{"name": "CONTROL", "class_name": "PgtControl"}]},
+  "migrations": [{"tag": "v1", "new_sqlite_classes": ["PgtControl"]}]
+}

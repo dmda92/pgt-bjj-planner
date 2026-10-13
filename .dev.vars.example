@@ -1,0 +1,6 @@
+MS_CLIENT_ID=public-application-id
+MS_CLIENT_SECRET=load-locally-do-not-commit
+TOKEN_ENCRYPTION_KEY=base64-32-random-bytes
+ADMIN_SETUP_KEY=independent-long-random-secret
+PUBLIC_BASE_URL=http://localhost:8787
+ALLOWED_ORIGIN=http://localhost:8787
