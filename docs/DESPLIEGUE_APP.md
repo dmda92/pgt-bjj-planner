@@ -100,3 +100,7 @@ npm.cmd run test:browser
 ```
 
 Comprobar la matriz de aceptación de docs/VALIDACION.md tras publicar, particularmente login con cuenta nueva, edición offline, comentario de entrenador, asignación, PDF, conflicto real entre dos dispositivos y eliminación/desasignación.
+
+## Error 100324: redirección circular
+
+La regla `/* /index.html 200` del primer commit de la aplicación fue rechazada por Workers Assets por su interacción con la normalización de index.html. Se ha eliminado public/_redirects: la aplicación actual navega entre secciones mediante estado React y no utiliza rutas de navegador que necesiten un fallback SPA. La raíz se sirve como index.html mediante ASSETS y las rutas /api/* siguen entrando primero al Worker. Ejecutar git pull --ff-only y npm.cmd run build antes de repetir el despliegue; Vite limpia dist y elimina el _redirects antiguo. No modificar secretos ni el binding SQLite.
