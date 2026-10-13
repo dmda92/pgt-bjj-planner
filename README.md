@@ -5,6 +5,7 @@ Proyecto reiniciado desde cero según requisitos versión 2.0. El árbol actual 
 - Especificación adjunta íntegra: [docs/REQUISITOS_PGT_APP.md](docs/REQUISITOS_PGT_APP.md).
 - Configuración y pruebas reales del propietario: [docs/CONFIGURACION_PRUEBA.md](docs/CONFIGURACION_PRUEBA.md).
 - Validaciones, cuotas y decisiones: [docs/VALIDACION.md](docs/VALIDACION.md).
+- Error DATA_NETWORK_RETRY: [diagnóstico seguro y corrección de fetch](docs/DIAGNOSTICO_CONEXION.md).
 
 El propietario confirmó que la frase «No usar GitHub privado, GitHub REST API» del apartado 2.1 es una errata. La arquitectura aplicable es repositorio privado GitHub y API Contents mediante Worker, según el resto del documento. Se conserva el adjunto sin modificarlo.
 

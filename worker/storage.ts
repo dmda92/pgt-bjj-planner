@@ -1,4 +1,5 @@
 import {reject} from './security.ts';
+import {classifyTransportFailure,logGithubDiagnostic} from './diagnostics.ts';
 export interface CloudRecord<T=Record<string,unknown>> {data:T;sha:string}
 export interface CloudStorageProvider {
   verifyPrivate():Promise<void>;
@@ -18,15 +19,35 @@ function encoded(value:unknown):string{
 }
 export class GithubContentsStorage implements CloudStorageProvider {
   private token:string;private branch:string;private transport:typeof fetch;
-  constructor(token:string,branch='main',transport:typeof fetch=fetch){this.token=token;this.branch=branch;this.transport=transport;if(!/^[a-zA-Z0-9_-]+$/.test(branch))reject(500,'BRANCH_INVALID');}
+  // Wrap the native global function: calling a stored fetch as this.transport(...)
+  // gives it the storage instance as receiver and workerd rejects that invocation.
+  constructor(token:string,branch='main',transport:typeof fetch=(input,init)=>fetch(input,init)){this.token=token;this.branch=branch;this.transport=transport;if(!/^[a-zA-Z0-9_-]+$/.test(branch))reject(500,'BRANCH_INVALID');}
   private async request(url:string,init:RequestInit={}):Promise<Response>{
     if(!this.token) return reject(503,'DATA_TOKEN_NOT_CONFIGURED');
     const method=init.method||'GET';
     const headers=new Headers(init.headers);headers.set('Authorization',`Bearer ${this.token}`);headers.set('Accept','application/vnd.github+json');headers.set('X-GitHub-Api-Version','2026-03-10');headers.set('User-Agent','PGT-viability-worker');
     let response:Response;
+    const diagnosticId=crypto.randomUUID();
+    const context={diagnosticId,host:'api.github.com' as const,operation:url===ROOT?'repository_metadata' as const:'json_content' as const,method};
     // Only retry idempotent reads, bounded delay; never replay an ambiguous mutation blindly.
     for(let attempt=0;;attempt++){
-      try{response=await this.transport(url,{...init,headers,redirect:'error',signal:AbortSignal.timeout(15000)});}catch{if(method==='GET'&&attempt===0){await new Promise(resolve=>setTimeout(resolve,250));continue;}return reject(503,'DATA_NETWORK_RETRY');}
+      const started=Date.now();
+      try{
+        // workerd rejects redirect:'error' before sending the request. Manual preserves
+        // our no-redirect policy without forwarding credentials to another destination.
+        response=await this.transport(url,{...init,headers,redirect:'manual',signal:AbortSignal.timeout(15000)});
+      }catch(error){
+        const failure=classifyTransportFailure(error);
+        const retrying=method==='GET'&&attempt===0&&!['UNSUPPORTED_REDIRECT_MODE','ABORT_API_UNAVAILABLE','FETCH_INVALID_RECEIVER'].includes(failure.reason);
+        logGithubDiagnostic({event:'pgt.github.transport_failure',...context,...failure,attempt:attempt+1,elapsedMs:Math.max(0,Date.now()-started),retrying});
+        if(retrying){await new Promise(resolve=>setTimeout(resolve,250));continue;}
+        return reject(503,'DATA_NETWORK_RETRY');
+      }
+      if(response.status>=300&&response.status<400){
+        await response.body?.cancel();
+        logGithubDiagnostic({event:'pgt.github.redirect_rejected',...context,attempt:attempt+1,elapsedMs:Math.max(0,Date.now()-started),retrying:false,httpStatus:response.status});
+        return reject(503,'DATA_REDIRECT_REJECTED');
+      }
       if(method==='GET'&&response.status>=500&&attempt===0){await response.body?.cancel();await new Promise(resolve=>setTimeout(resolve,250));continue;}
       break;
     }

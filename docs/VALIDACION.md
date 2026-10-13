@@ -21,9 +21,9 @@ Se conserva literalmente el adjunto en REQUISITOS_PGT_APP.md. El propietario con
 
 ## Pruebas de código
 
-15 casos: rutas, repositorio privado, UTF8/base64, SHA, CRUD, errores/credenciales/rate limits, backoff y no repetición de mutaciones ambiguas; correo, PBKDF2 con sal, CORS, roles no inyectables, altas de prueba, login/logout, acceso cruzado, no-op sin commits, revocación y límites.
+20 casos: rutas, repositorio privado, UTF8/base64, SHA, CRUD, errores/credenciales/rate limits, backoff y no repetición de mutaciones ambiguas; correo, PBKDF2 con sal, CORS, roles no inyectables, altas de prueba, login/logout, acceso cruzado, no-op sin commits, revocación y límites. Incluye diagnóstico de transporte con vocabulario cerrado y comprobaciones de que errores, mensajes y destinos con secretos ficticios nunca aparecen en logs.
 
-Comandos de entrega: npm test, npm run typecheck, npm run build y npm run check:worker. Además, npm run test:runtime ejecuta el bundle en Miniflare/workerd local con Durable Object SQLite: verificados 401 sin sesión y 404 para endpoint inexistente. Las pruebas de dominio API usan almacenamiento cloud falso; el runtime local no equivale a despliegue remoto ni valida el token GitHub. No se afirma cobertura porcentual del proyecto final: sigue sin implementarse.
+Comandos de entrega: npm test, npm run typecheck, npm run build y npm run check:worker. Además, npm run test:runtime ejecuta el bundle en Miniflare/workerd local con Durable Object SQLite: verificados 401 sin sesión y 404 para endpoint inexistente. También reproduce incompatibilidades de receptor de fetch y redirect:error anteriores, verifica el transporte corregido con fetch nativo y salida interceptada, el rechazo de redirecciones y la distinción de 401 GitHub. Las pruebas de dominio API usan almacenamiento cloud falso; el runtime local no equivale a despliegue remoto ni valida el token GitHub. No se afirma cobertura porcentual del proyecto final: sigue sin implementarse. Ver DIAGNOSTICO_CONEXION.md para el análisis y pasos de actualización.
 
 ## Cuotas verificadas en documentación oficial
 
