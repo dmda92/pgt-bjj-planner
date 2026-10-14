@@ -587,3 +587,8 @@ El formulario señala el campo de fecha incorrecto, con mensaje asociado y valid
 ### Mínimo de descansos en nuevas competiciones (15/10/2026)
 
 Corrección del propietario: Cambio de roles y Entre técnicas requieren enteros entre 1 y 3600 segundos al crear competición. Formulario señala el campo mediante min=1 y validación nativa; Worker rechaza cero antes de escribir. Sustituye admisión de descansos cero para nuevas altas. Leer/exportar/recalcular planes históricos con cero sigue permitido sin modificar sus parámetros. Regresión: cero rechazado sin petición/escritura y uno aceptado.
+
+
+### Feedback de borrado de competición (15/10/2026)
+
+Tras confirmar el borrado completo, mostrar inmediatamente spinner y texto Borrando competición en la tarjeta afectada; impedir doble envío y edición mientras se procesa. Recuperar controles si falla. Presentación de espera del entrenador más compacta, manteniendo mensaje inicial y estados de carga/error.

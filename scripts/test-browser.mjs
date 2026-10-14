@@ -578,6 +578,24 @@ try {
   await saveParticipants.click();
   await page.waitForFunction(() => [...document.querySelectorAll('.dashboard-overview dd')].at(-1)?.textContent === '2');
   assert.equal(assignmentRequests,2);
+  // A second competition lets us verify deletion feedback without affecting later fixtures.
+  await page.locator('.competition-create').getByRole('button',{name:'Crear competición',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelectorAll('.competition-card').length===2);
+  let releaseDelete;
+  const deleteGate=new Promise(resolve=>{releaseDelete=resolve;});
+  const deleteRoute='**/api/app/delete-competition';
+  const delayedDelete=async route=>{await deleteGate;await route.continue();};
+  await page.route(deleteRoute,delayedDelete);
+  const deletingCard=page.locator('.competition-card').last();
+  await deletingCard.getByRole('button',{name:'Borrar competición completa',exact:true}).click();
+  await visible(deletingCard.getByRole('status',{name:'Borrando competición'}));
+  assert.equal(await deletingCard.getByRole('button',{name:'Borrar competición completa',exact:true}).isDisabled(),true);
+  assert.equal(await deletingCard.getByRole('checkbox').first().isDisabled(),true);
+  await deletingCard.screenshot({path:'.browser-artifacts/competition-deleting.png'});
+  releaseDelete();
+  await page.waitForFunction(()=>document.querySelectorAll('.competition-card').length===1);
+  await page.unroute(deleteRoute,delayedDelete);
+
 
   assert.deepEqual(
     await page.locator(".dashboard-overview dd").allTextContents(),

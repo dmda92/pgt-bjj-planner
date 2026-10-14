@@ -66,3 +66,8 @@ La ficha guardada se muestra inmediatamente, con indicador discreto «Actualizan
 ### Feedback de acciones y lectura del repertorio
 
 Verde de éxito #397354, solo en texto «Sincronizado» con peso 600: sin fondo llamativo. Pendientes, offline, errores, bloqueos y borradores sin guardar conservan estados distintos del éxito. Spinner de 20 px junto a «Crear competición», con texto accesible mientras se procesa; respetar movimiento reducido. Descripción del alumno en caja textarea readOnly con fondo canvas, tamaño táctil y texto seleccionable.
+
+
+### Feedback de borrado y espera del entrenador (15/10/2026)
+
+Borrado de competición con estado inmediato y spinner accesible en su tarjeta; impedir doble envío y ediciones durante borrado, retirar estado ante fallo. Placeholder de alumno más compacto, título 21 px, texto 15 px; carga horizontal con spinner 28 px y título 18 px. Mantener diseño pizarra/azul y movimiento reducido. Prueba Chromium con petición de borrado retenida y confirmación de retirada de tarjeta.

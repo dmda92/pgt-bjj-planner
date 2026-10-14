@@ -837,7 +837,7 @@ function App() {
                         {studentLoading && (
                           <section className="student-placeholder student-loading" role="status" aria-live="polite" aria-label="Cargando alumno">
                             <span className="loading-spinner" aria-hidden="true" />
-                            <h3>Cargando información del alumno…</h3>
+                            <div className="student-loading-copy"><h3>Cargando alumno</h3><p>Preparando sus técnicas y planes…</p></div>
                           </section>
                         )}
                         {studentLoadFailed && !studentLoading && (
@@ -1695,6 +1695,7 @@ function CompetitionCard({competition:c, students, sha, run, reload}: {
 }) {
   const [draft, setDraft] = useState<{alumnos:string[];base:string[];sha:string|null} | null>(null);
   const [saving,setSaving] = useState(false);
+  const [deleting,setDeleting] = useState(false);
   const selected = draft?.alumnos ?? c.alumnos;
   const changed = selected.length !== c.alumnos.length || selected.some(mail => !c.alumnos.includes(mail));
   return <article className="card competition-card">
@@ -1703,7 +1704,7 @@ function CompetitionCard({competition:c, students, sha, run, reload}: {
     <p>Configuración fijada al crear la competición.</p>
     <p>Al guardar, desasignar un participante elimina su plan individual.</p>
     {students.map(s => <label className="check" key={s.profile.mail}>
-      <input type="checkbox" checked={selected.includes(s.profile.mail)} disabled={saving}
+      <input type="checkbox" checked={selected.includes(s.profile.mail)} disabled={saving || deleting}
         onChange={e => {
           const checked=e.currentTarget.checked;
           setDraft(previous => {
@@ -1715,7 +1716,7 @@ function CompetitionCard({competition:c, students, sha, run, reload}: {
         }} />{s.profile.nombre || s.profile.mail}
     </label>)}
     <div className="competition-submit">
-      <button disabled={!changed || saving} onClick={() => {
+      <button disabled={!changed || saving || deleting} onClick={() => {
         if(!draft || saving)return;
         const baseUnchanged=draft.base.length===c.alumnos.length && draft.base.every(mail=>c.alumnos.includes(mail));
         const payload={planId:c.planId,alumnos:[...draft.alumnos],sha:baseUnchanged ? sha : draft.sha};
@@ -1730,13 +1731,18 @@ function CompetitionCard({competition:c, students, sha, run, reload}: {
       }}>Guardar datos</button>
       {saving && <span role="status" className="competition-loading"><span className="loading-spinner" aria-hidden="true" />Guardando participantes…</span>}
       {changed && !saving && <span className="competition-loading">Cambios sin guardar</span>}
-      <button className="danger" disabled={saving} onClick={()=>{
-        if(confirm('¿Borrar esta competición y todos sus planes individuales? Para desasignar un alumno, desmarca su casilla y pulsa Guardar datos.'))
-          void run(async()=>{
+      <button className="danger" disabled={saving || deleting} onClick={()=>{
+        if(deleting || saving)return;
+        if(!confirm('¿Borrar esta competición y todos sus planes individuales? Para desasignar un alumno, desmarca su casilla y pulsa Guardar datos.'))return;
+        setDeleting(true);
+        void run(async()=>{
+          try {
             await client.request('/api/app/delete-competition','POST',{planId:c.planId,sha});
             await reload();
-          });
+          } finally {setDeleting(false);}
+        });
       }}>Borrar competición completa</button>
+      {deleting && <span role="status" aria-label="Borrando competición" className="competition-loading"><span className="loading-spinner" aria-hidden="true" />Borrando competición…</span>}
     </div>
   </article>;
 }
