@@ -127,3 +127,12 @@ test('Subsequent offline deletions continue from newly protected boundary, not o
   p.sessions[1].exercises.reverse();const blocked=updateFutureDeletions(p,next,notes,'2026-10-01');
   assert.ok(blocked.structuralUpdateError);assert.deepEqual(blocked.sessions,p.sessions);
  });
+
+ test('Deleting the same UUID again after recovery is a new removal event, not an already-applied checkpoint',()=>{
+  const {t,p,notes}=sample();const removed=deletion(t,t=>{t.positions=[];});removed.deletionRevision=1;
+  const blocked=updateFutureDeletions(p,removed,notes,'2026-10-01');
+  const recovered=updateFutureDeletions(blocked,{...t,deletedIds:removed.deletedIds,deletionRevision:1},notes,'2026-10-01');
+  assert.equal(recovered.structuralUpdateError,undefined);
+  const repeated=updateFutureDeletions(recovered,{...removed,deletionRevision:2},notes,'2026-10-01');
+  assert.match(repeated.structuralUpdateError!,/No quedan técnicas/);assert.deepEqual(repeated.sessions,recovered.sessions);
+ });

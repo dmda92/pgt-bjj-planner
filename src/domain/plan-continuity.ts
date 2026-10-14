@@ -88,11 +88,12 @@ function legacyContinuity(plan: TrainingPlan, reference?: CatalogPosition[]): Co
 export function updateFutureDeletions(plan: TrainingPlan, techniques: Techniques, comments: Comments, today: string): TrainingPlan {
   if (plan.fecha_torneo<=today || !plan.sessions.some(s=>s.date>today)) return plan;
   const applied=new Set(plan.appliedDeletions || []);
-  const deletions=(techniques.deletedIds || []).filter(id=>!applied.has(id));
+  const newRemovalEvent=(techniques.deletionRevision || 0)!==(plan.appliedDeletionRevision || 0);
+  const deletions=(techniques.deletedIds || []).filter(id=>newRemovalEvent || !applied.has(id));
   if (!deletions.length && !plan.structuralUpdateError) return plan;
   const appliedDeletions=[...new Set([...(plan.appliedDeletions||[]),...(techniques.deletedIds||[])])];
   if (!plan.structuralUpdateError && !plan.sessions.some(s=>s.date>today&&s.exercises.some(e=>deletions.includes(e.positionId)||deletions.includes(e.techniqueId))))
-    return {...plan,appliedDeletions};
+    return {...plan,appliedDeletions,appliedDeletionRevision:techniques.deletionRevision || 0};
   try {
     let continuity=plan.continuity;
     if (!continuity) {
@@ -128,7 +129,7 @@ export function updateFutureDeletions(plan: TrainingPlan, techniques: Techniques
       return {...s,exercises};
     });
     const {structuralUpdateError:_,...rest}=plan;
-    return {...rest,sessions,continuity:{version:1,catalog,boundaries},appliedDeletions};
+    return {...rest,sessions,continuity:{version:1,catalog,boundaries},appliedDeletions,appliedDeletionRevision:techniques.deletionRevision || 0};
   } catch (e) {
     const message=e instanceof Error ? e.message : 'No se puede actualizar el plan';
     return plan.structuralUpdateError===message ? plan : {...plan,structuralUpdateError:message};

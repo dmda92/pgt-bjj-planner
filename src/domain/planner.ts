@@ -79,6 +79,7 @@ export function generatePlan(
     sessions,
     continuity: {version:1,catalog,boundaries},
     appliedDeletions: [...(techniques.deletedIds || [])],
+    appliedDeletionRevision: techniques.deletionRevision || 0,
   };
 }
 export function coverage(plan: TrainingPlan, before?: string) {

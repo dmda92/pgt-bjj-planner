@@ -292,7 +292,7 @@ export class Client implements AuthenticationProvider, SyncService {
             (entry.data as TrainingPlan).mail !== identity.mail
           )
             continue;
-          const incoming = {...data as Techniques, deletionCatalog:(old.data as Techniques).deletionCatalog || catalogOf(old.data as Techniques), deletedIds:[...new Set([...(old.data as Techniques).deletedIds || [], ...deletedUUIDs(old.data as Techniques, data as Techniques)])]};
+          const incoming = {...data as Techniques, deletionRevision:((old.data as Techniques).deletionRevision || 0) + Number(deletedUUIDs(old.data as Techniques, data as Techniques).length > 0), deletionCatalog:(old.data as Techniques).deletionCatalog || catalogOf(old.data as Techniques), deletedIds:[...new Set([...(old.data as Techniques).deletedIds || [], ...deletedUUIDs(old.data as Techniques, data as Techniques)])]};
           const projected = projectFutureDescriptions(
             updateFutureDeletions(entry.data as TrainingPlan, incoming, (await db.entries.get("comments"))!.data as import("../domain/models.ts").Comments, madridDate()),
             old.data as Techniques,

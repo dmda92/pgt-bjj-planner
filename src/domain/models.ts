@@ -17,6 +17,7 @@ export interface Position {
 }
 export interface Techniques extends Version {
   deletedIds?: string[];
+  deletionRevision?: number;
   deletionCatalog?: import("./plan-continuity.ts").CatalogPosition[];
   descriptionUpdates?: Record<string, string>;
   positions: Position[];
@@ -75,6 +76,7 @@ export interface Exercise {
 export interface TrainingPlan extends Version, Competition {
   continuity?: import("./plan-continuity.ts").Continuity;
   appliedDeletions?: string[];
+  appliedDeletionRevision?: number;
   structuralUpdateError?: string;
   appliedDescriptionUpdates?: Record<string, string>;
   appliedCommentUpdates?: Record<string, string>;

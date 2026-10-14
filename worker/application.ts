@@ -620,6 +620,8 @@ export class AppApi {
       validate(() => validateTechniques(next));
       // Tombstones are server-owned and survive partial plan writes and subsequent retries.
       const removed = deletedUUIDs(old!.data as unknown as Techniques, next);
+      next.deletionRevision = ((old!.data as unknown as Techniques).deletionRevision || 0) + Number(removed.length > 0);
+      if (!next.deletionRevision) delete next.deletionRevision;
       next.deletionCatalog = (old!.data as unknown as Techniques).deletionCatalog || (removed.length ? catalogOf(old!.data as unknown as Techniques) : undefined);
       if (!next.deletionCatalog) delete next.deletionCatalog;
       next.deletedIds = [...new Set([...((old!.data as unknown as Techniques).deletedIds || []), ...removed])];
