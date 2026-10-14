@@ -42,3 +42,7 @@ No cambiar autenticación, permisos de API, modelos guardados, generador, sincro
 ## Verificación
 
 Ejecutar todas las verificaciones de AGENTS.md y `npm run test:browser`. Revisar acceso, repertorio, planes, perfil, equipo, competiciones y cobertura a 360, 390, 768, 1280 y 1440 px. Validar fechas inclusivas/exclusivas, repeticiones, parciales y que alumnos no vean el apartado exclusivo. Los datos sintéticos y anchos emulados no acreditan aceptación en dispositivos físicos o Safari/iOS.
+
+## Exportación PDF del plan (petición expresa 14/10/2026)
+
+La exportación adopta la misma paleta pizarra/azul y Barlow embebida. Resumen inicial con datos del snapshot, introducción literal y Tábata; sesiones en tarjetas por orden de lectura izquierda-derecha y arriba-abajo. Cada tarjeta muestra fecha, ordinal, posición/prioridad/pasada, tipos destacados y todos los textos guardados. No se imprimen encabezados del navegador ni URL de hosting. Logo original arriba a la derecha y páginas numeradas. Una sesión densa ocupa ancho completo y nunca se divide; si no cabe tras compactar, se informa antes de descargar. Esta autorización específica permite modificar el diseño PDF sin tocar datos ni planificación.

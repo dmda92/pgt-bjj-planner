@@ -76,3 +76,13 @@ Retirados formulario/estado y operación de bootstrap; ruta antigua 404. AppApi 
 Peso validado en HTML, dominio y Client.edit antes de persistir; API rechaza inválidos sin escrituras. Decimal y null se sincronizan posteriormente. Se conservan pendientes antiguos y bloqueo de cambio de cuenta para evitar pérdida de datos.
 
 Validación: 66/66 tests, typecheck, build, check:worker, runtime y Chromium local correctos. Regresión de allowlist/preflight, mismatch independientemente de peso, bootstrap retirado, registro alumno y peso sin escrituras. Runtime completo alterna Worker/Pages en Origin incluso durante login/logout/escrituras. Browser prueba ausencia de formulario, peso negativo, offline, reentrada, aislamiento y perfil entre dispositivos. Producción y PWA móvil real/Safari/iOS pendientes de aceptación del propietario.
+
+## Rediseño de exportación PDF — 14/10/2026
+
+Petición expresa del propietario: mejorar la exportación inspirándose en tarjetas de sesión y resumen de sus capturas. El permiso sustituye la restricción de no modificar PDF por cambios visuales del frontend. Exportación nativa jsPDF con Barlow local embebida, paleta pizarra/azul, resumen inicial de datos guardados, configuración Tábata en cinco campos, tarjetas cronológicas en dos columnas, posición/prioridad/pasada y tipo en negrita, descripciones y comentarios diferenciados, logo y numeración en todas las páginas. No incluye porcentajes de catálogo ni convierte cobertura en asistencia.
+
+Se mide cada sesión antes de dibujar: traslado entero, ancho completo para textos densos, compactación hasta 7 pt y error explícito si aun así no cabe. Nunca se divide ni se regenera. Función buildPlanPdf devuelve posiciones para comprobar paginación; exportPlan mantiene descarga y recursos locales offline.
+
+Validación: 69/69 tests; tres regresiones nuevas de no mutación/orden/páginas sin solapamiento, sesión densa de ancho completo/error por exceso y tiempos variables/descansos cero/nombres largos/plan vacío. Typecheck, build, check:worker, runtime y navegador local correctos, incluida descarga PDF offline sin exportación previa. Ejemplo de 19 sesiones y 95 ejercicios con descripciones/comentarios ilustrativos: 11 páginas renderizadas y revisadas; márgenes de todo el texto y logo de cada página verificados. No usa datos reales ni cambia técnicas, algoritmo, sincronización, permisos o planes guardados. Pendiente publicar y revisar en dispositivos físicos/Safari.
+
+Ejemplo reproducible local: node scripts/preview-plan-pdf.mjs. Usa plantilla oficial y descripciones ilustrativas; no constituye un plan real de alumno.
