@@ -51,6 +51,8 @@ jobs:
         run: npx --no-install playwright install --with-deps chromium
       - name: Browser and offline PDF tests
         run: npm run test:browser
+      - name: Trainer performance regression
+        run: npm run test:performance
       - name: Check latest main commit
         id: head
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.CLOUDFLARE_DEPLOY_ENABLED == 'true'

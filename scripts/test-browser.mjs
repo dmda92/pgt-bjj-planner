@@ -367,7 +367,7 @@ try {
   await page.getByLabel("Buscar alumnos", { exact: true }).fill("student");
   let releaseStudent;
   const studentGate = new Promise(resolve => { releaseStudent=resolve; });
-  const studentRoute='**/api/app/users/browser-student%40example.com/snapshot';
+  const studentRoute='**/api/app/users/browser-student%40example.com/view?*';
   const delayedStudent=async route=>{await studentGate;await route.continue();};
   await page.route(studentRoute,delayedStudent);
   await page.getByRole("button", { name: /Student Fixture/ }).click();
@@ -382,6 +382,20 @@ try {
   );
   assert.equal(await page.locator(".student-selected").count(), 1);
   await page.unroute(studentRoute,delayedStudent);
+  let releaseRefresh;const refreshGate=new Promise(resolve=>{releaseRefresh=resolve;});
+  const slowRefresh=async route=>{await refreshGate;await route.continue();};
+  await page.route(studentRoute,slowRefresh);
+  const warmStart=Date.now();await page.getByRole('button',{name:/Student Fixture/}).click();
+  await visible(page.getByRole('heading',{name:'Student Fixture',exact:true}));
+  const warmRenderMs=Date.now()-warmStart;
+  await visible(page.getByRole('status',{name:'Actualizando ficha'}));
+  assert.equal(await page.getByRole('status',{name:'Cargando alumno'}).count(),0);
+  releaseRefresh();await page.getByRole("status",{name:"Actualizando ficha"}).waitFor({state:"hidden"});await page.unroute(studentRoute,slowRefresh);await context.setOffline(true);
+  await page.getByRole('button',{name:/Student Fixture/}).click();await visible(page.getByRole('heading',{name:'Student Fixture',exact:true}));
+  assert.equal(await page.getByRole('status',{name:'Cargando alumno'}).count(),0);
+  await context.setOffline(false);
+  console.log(`Trainer warm React view: ${warmRenderMs} ms while remote request retained; cached offline view OK.`);
+
   const studentPanel=page.locator('.student-detail');
   assert.equal(await studentPanel.getByRole('button',{name:'Técnicas',exact:true}).getAttribute('aria-pressed'),'true');
   assert.equal(await studentPanel.getByLabel('Rol',{exact:true}).count(),0);
@@ -491,6 +505,16 @@ try {
   await visible(page.getByRole("heading", { name: "Torneo · 2026-10-23" }));
   assert.match(await page.locator(".timer").innerText(), /32:10/);
   await page.getByRole("button", { name: "Entrenador", exact: true }).click();
+  await page.getByRole('button',{name:'Equipo',exact:true}).click();
+  await page.getByRole('button',{name:/Trainer Fixture/}).click();
+  await visible(page.locator('.student-detail').getByRole('button',{name:'Planes',exact:true}));
+  await page.locator('.student-detail').getByRole('button',{name:'Planes',exact:true}).click();
+  await visible(page.getByLabel('Plan del alumno',{exact:true}));
+  assert.equal(await page.locator('.student-detail .plan-card').count(),0);
+  const selectedPlan=await page.getByLabel('Plan del alumno',{exact:true}).locator('option').nth(1).getAttribute('value');
+  await page.getByLabel('Plan del alumno',{exact:true}).selectOption(selectedPlan);
+  await visible(page.locator('.student-detail .plan-card'));
+  assert.equal(await page.locator('.student-detail .plan-card').count(),1);
   await page
     .getByRole("button", { name: "Cobertura por fecha", exact: true })
     .click();

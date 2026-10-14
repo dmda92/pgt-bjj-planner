@@ -1,3 +1,4 @@
+import {trainerCache,trainerKey,validateTrainerView,type TrainerView,type TrainerSection} from "./trainer-cache.ts";
 import {catalogOf, deletedUUIDs, updateFutureDeletions} from "../domain/plan-continuity.ts";
 import {MAX_JSON_BYTES, MAX_APP_BODY_BYTES, jsonBytes, documentFile, sizeMessage} from "../domain/json-limits.ts";
 import type {
@@ -50,6 +51,8 @@ export class ApiFailure extends Error {
   }
 }
 export class Client implements AuthenticationProvider, SyncService {
+  private trainerDeniedToken = "";
+  private trainerLoads = new Map<string,Promise<TrainerView>>();
   identity: Identity | null = null;
   locked = false;
   status = "Sin sesión";
@@ -111,7 +114,8 @@ export class Client implements AuthenticationProvider, SyncService {
     });
     const value = (await response.json()) as any;
     if (!response.ok) {
-      if (response.status === 401 && credential === undefined) {
+      if (response.status === 401 && credential === undefined && this.identity?.token === token) {
+        if(this.identity)await trainerCache.clear(this.identity.mail);
         this.locked = true;
         this.status = "La sesión remota fue revocada. Vuelve a entrar.";
         this.onChange();
@@ -265,6 +269,61 @@ export class Client implements AuthenticationProvider, SyncService {
         restore("plan:" + (r.planId || r.data?.planId), r),
       ),
     };
+  }
+  private async trainerIdentity() {
+    const identity=this.requireIdentity();
+    const entry=await db.entries.get("profile");
+    if(this.requireIdentity().token!==identity.token)throw Error("Sesión cambiada");
+    // The last confirmed profile may be newer than the profile captured at login.
+    const profile=entry?.mail===identity.mail&&(entry.base as Profile)?.mail===identity.mail ? entry.base as Profile : identity.profile;
+    if(this.trainerDeniedToken===identity.token || profile.perfil!=="entrenador"){
+      await trainerCache.clear(identity.mail);
+      throw Error("Solo entrenadores pueden consultar fichas");
+    }
+    return identity;
+  }
+  async cachedTrainer(mail:string,section:TrainerSection,planId=""):Promise<TrainerView|undefined> {
+    const identity=await this.trainerIdentity();
+    const entry=await trainerCache.get(identity.mail,mail,section,planId);
+    if(this.requireIdentity().token!==identity.token)throw Error("Sesión cambiada");
+    return entry ? this.overlayTrainerLocal(entry.data,mail) : undefined;
+  }
+  private async overlayTrainerLocal(view:TrainerView,mail:string):Promise<TrainerView> {
+    if(this.requireIdentity().mail!==mail)return view;
+    const entries=await repository.entries(mail);
+    const local=new Map(entries.filter(e=>e.dirty).map(e=>[e.key,e]));
+    return {...view,
+      profile:local.has("profile")?{data:local.get("profile")!.data as Profile,sha:local.get("profile")!.sha!}:view.profile,
+      techniques:view.techniques&&local.has("techniques")?{data:local.get("techniques")!.data as Techniques,sha:local.get("techniques")!.sha!}:view.techniques,
+      plans:view.plans?.map(p=>{const e=entries.find(e=>e.key==="plan:"+p.data.planId);return e && (e.dirty || local.has("techniques") || local.has("comments") || e.data.revision>p.data.revision) ? {data:e.data as TrainingPlan,sha:e.sha!}:p;}),
+    };
+  }
+  async trainerView(mail:string,section:TrainerSection,force=false,planId=""):Promise<TrainerView> {
+    const identity=await this.trainerIdentity(),key=trainerKey(identity.mail,mail,section,planId),requestKey=key+identity.token;
+    const pending=this.trainerLoads.get(requestKey);
+    if(pending){if(!force)return pending;await pending.catch(()=>{});if(this.requireIdentity().token!==identity.token)throw Error("Sesión cambiada");}
+    const load=(async()=>{
+      const cached=await trainerCache.get(identity.mail,mail,section,planId);
+      if(!navigator.onLine){if(cached)return this.overlayTrainerLocal(cached.data,mail);throw Error("Sin conexión y sin copia disponible de esta sección");}
+      const known:Record<string,string>={};
+      for(const [name,r] of Object.entries(cached?.data||{}))if(r&&!Array.isArray(r)&&name!=="planSummaries")known[name]=(r as RemoteRecord).sha;
+      for(const r of cached?.data.plans||[])known["plan:"+r.data.planId]=r.sha;
+      let raw:any;
+      try {raw=await this.request<any>(`/api/app/users/${encodeURIComponent(mail)}/view?section=${section}&planId=${planId}&known=${encodeURIComponent(JSON.stringify(known))}`);}
+      catch(error){if(error instanceof ApiFailure&&error.status===403&&this.identity?.token===identity.token){this.trainerDeniedToken=identity.token;await trainerCache.clear(identity.mail);}throw error;}
+      const restore=(name:string,r:any)=>r?.unchanged ? (cached?.data as any)?.[name] : r;
+      const data:TrainerView={profile:restore("profile",raw.profile)};
+      if(section==="techniques"){data.techniques=restore("techniques",raw.techniques);data.comments=restore("comments",raw.comments);}
+      if(section==="plans"){data.planSummaries=raw.planSummaries;data.plans=raw.plans.map((r:any)=>r.unchanged?cached?.data.plans?.find(p=>p.data.planId===r.planId&&p.sha===r.sha):r);}
+      validateTrainerView(data,mail,section);
+      await db.transaction("rw",db.trainerViews,async()=>{
+        if(this.requireIdentity().token!==identity.token)throw Error("Sesión cambiada; ficha descartada");
+        await db.trainerViews.put({key,owner:identity.mail,mail,section,data,checkedAt:Date.now()});
+      });
+      return this.overlayTrainerLocal(data,mail);
+    })();
+    this.trainerLoads.set(requestKey,load);
+    try{return await load;}finally{if(this.trainerLoads.get(requestKey)===load)this.trainerLoads.delete(requestKey);}
   }
   async load() {
     if (!this.identity || this.locked) return [];
@@ -554,6 +613,7 @@ export class Client implements AuthenticationProvider, SyncService {
     // Lock immediately, retain local business data and queue. Remote token revoked best-effort.
     this.locked = true;
     this.onChange();
+    await trainerCache.clear(identity.mail);
     try {
       if (navigator.onLine && !revoked)
         await this.request("/api/app/logout", "POST", {}, identity.token);

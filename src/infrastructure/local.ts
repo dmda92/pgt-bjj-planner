@@ -18,9 +18,11 @@ export interface Meta {
 export class LocalDb extends Dexie {
   entries!: Table<LocalEntry, string>;
   meta!: Table<Meta, string>;
+  trainerViews!: Table<import("../application/trainer-cache.ts").TrainerCacheEntry,string>;
   constructor() {
     super("pgt-active-user-v1");
     this.version(1).stores({ entries: "key,mail,dirty", meta: "key" });
+    this.version(2).stores({entries:"key,mail,dirty",meta:"key",trainerViews:"key,owner,mail"});
   }
 }
 export const db = new LocalDb();

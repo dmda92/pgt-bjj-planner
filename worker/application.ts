@@ -53,6 +53,11 @@ const unchanged = (a: unknown, b: unknown) => {
 };
 const respond = (data: unknown, status = 200) =>
   Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
+async function concurrentMap<T,R>(values:T[],fn:(value:T)=>Promise<R>,limit=4):Promise<R[]> {
+  const result:R[]=new Array(values.length);let index=0;
+  await Promise.all(Array.from({length:Math.min(limit,values.length)},async()=>{for(;;){const i=index++;if(i>=values.length)return;result[i]=await fn(values[i]);}}));
+  return result;
+}
 export class AppApi {
   constructor(
     privateStore: DurableObjectStorage,
@@ -136,66 +141,38 @@ export class AppApi {
     }))
       if (s.mail === mail) await this.store.delete(key);
   }
-  private async updatePlanTexts(mail: string) {
-    const planFiles = (
-      (await this.cloud.list?.(`${root(mail)}/training_plans`)) || []
-    ).filter(
-      (f) => f.type === "file" && /^plan_[0-9a-f-]{36}\.json$/.test(f.name),
-    );
-    if (!planFiles.length) return;
-    const techniques = await this.cloud.read<Techniques>(
-      `${root(mail)}/tecnics.json`,
-    );
-    const comments = await this.cloud.read<Comments>(
-      `${root(mail)}/trainer_comments.json`,
-    );
-    if (
-      !techniques ||
-      !comments ||
-      (!techniques.data.descriptionUpdates && !comments.data.commentUpdates && !techniques.data.deletedIds?.length)
-    )
-      return;
-    for (const file of planFiles) {
-      const path = `${root(mail)}/training_plans/${file.name}`;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const current = await this.cloud.read<TrainingPlan>(path);
-        if (
-          !current ||
-          current.data.mail !== mail ||
-          current.data.fecha_torneo <= madridDate(this.clock())
-        )
-          break;
-        const latestTechniques = await this.cloud.read<Techniques>(
-          `${root(mail)}/tecnics.json`,
-        );
-        const latestComments = await this.cloud.read<Comments>(
-          `${root(mail)}/trainer_comments.json`,
-        );
-        if (!latestTechniques || !latestComments) break;
-        const next = updateFuturePlanText(
-          updateFutureDeletions(current.data, latestTechniques.data, latestComments.data, madridDate(this.clock())),
-          latestTechniques.data,
-          latestComments.data,
-          madridDate(this.clock()),
-        );
-        if (next === current.data) break;
-        try {
-          await this.cloud.write(
-            path,
-            { ...next, revision: current.data.revision + 1, updatedAt: now() },
-            current.sha,
-          );
-          break;
-        } catch (error) {
-          if (
-            !(error instanceof ApiError) ||
-            ![409, 422].includes(error.status) ||
-            attempt === 2
-          )
-            throw error;
-        }
+  private async updatePlanTexts(mail: string,onlyPlanId?:string) {
+    const loaded=new Map<string,CloudRecord<TrainingPlan>>();
+    const [metadata,files]=await Promise.all([this.cloud.list?.(root(mail)),this.cloud.list?.(`${root(mail)}/training_plans`)]);
+    const planFiles=(files||[]).filter(f=>(!onlyPlanId||f.name===`plan_${onlyPlanId}.json`)&&f.type==="file"&&/^plan_[0-9a-f-]{36}\.json$/.test(f.name));
+    const today=madridDate(this.clock());
+    const tSha=metadata?.find(f=>f.name==="tecnics.json")?.sha,cSha=metadata?.find(f=>f.name==="trainer_comments.json")?.sha;
+    const pending=(await Promise.all(planFiles.map(async file=>{
+      const marker=await this.store.get<{t:string;c:string;p:string;day:string}>(`plan-update:${mail}:${file.name}`);
+      return file.sha&&tSha&&cSha&&marker?.t===tSha&&marker.c===cSha&&marker.p===file.sha&&marker.day===today ? null : file;
+    }))).filter((file):file is NonNullable<typeof file>=>file!==null);
+    if(!pending.length)return loaded;
+    const [techniques,comments]=await Promise.all([this.cloud.read<Techniques>(`${root(mail)}/tecnics.json`),this.cloud.read<Comments>(`${root(mail)}/trainer_comments.json`)]);
+    if(!techniques||!comments)return loaded;
+    await concurrentMap(pending,async file=>{
+      const key=`plan-update:${mail}:${file.name}`;
+      const mark=(sha:string,t=techniques,c=comments)=>this.store.put(key,{t:t.sha,c:c.sha,p:sha,day:today});
+      if(!techniques.data.descriptionUpdates&&!comments.data.commentUpdates&&!techniques.data.deletedIds?.length){if(file.sha)await mark(file.sha);return;}
+      const path=`${root(mail)}/training_plans/${file.name}`;
+      for(let attempt=0;attempt<3;attempt++){
+        const current=await this.cloud.read<TrainingPlan>(path);
+        if(!current||current.data.mail!==mail)return;
+        loaded.set(file.name,current);
+        if(current.data.fecha_torneo<=today){await mark(current.sha);return;}
+        const [t,c]=attempt ? await Promise.all([this.cloud.read<Techniques>(`${root(mail)}/tecnics.json`),this.cloud.read<Comments>(`${root(mail)}/trainer_comments.json`)]) : [techniques,comments];
+        if(!t||!c)return;
+        const next=updateFuturePlanText(updateFutureDeletions(current.data,t.data,c.data,today),t.data,c.data,today);
+        if(next===current.data){await mark(current.sha,t,c);return;}
+        try {const data={...next,revision:current.data.revision+1,updatedAt:now()};const sha=await this.cloud.write(path,data,current.sha);loaded.set(file.name,{data,sha});await mark(sha,t,c);return;}
+        catch(error){if(!(error instanceof ApiError)||![409,422].includes(error.status)||attempt===2)throw error;}
       }
-    }
+    });
+    return loaded;
   }
   private async reconcile(onlyMail?: string) {
     // The catalog is the authority for assignments/deletions; incomplete multi-file writes
@@ -451,7 +428,7 @@ export class AppApi {
       return respond({ status: "COMPETITION_OPERATION_CONFIRMED" });
     }
     const match = url.pathname.match(
-      /^\/api\/app\/users\/([^/]+)\/(snapshot|profile|techniques|comments|plan)$/,
+      /^\/api\/app\/users\/([^/]+)\/(snapshot|view|profile|techniques|comments|plan)$/,
     );
     if (!match) return reject(404, "ENDPOINT_NOT_FOUND");
     const actor = await this.session(request);
@@ -460,6 +437,51 @@ export class AppApi {
     if (!own && actor.profile.data.perfil !== "entrenador")
       return reject(403, "OTHER_USER_FORBIDDEN");
     const kind = match[2];
+    if(request.method==="GET"&&kind==="view") {
+      if(actor.profile.data.perfil!=="entrenador")return reject(403,"TRAINER_REQUIRED");
+      const section=url.searchParams.get("section");
+      if(!["techniques","plans","administration"].includes(section||""))return reject(400,"VIEW_INVALID");
+      const q=url.searchParams.get("known")||"{}";
+      let known:Record<string,string>;
+      try{known=JSON.parse(q);if(q.length>16000||!known||Array.isArray(known)||typeof known!=="object"||Object.values(known).some(v=>typeof v!=="string"||!/^([0-9a-f]{40})$/.test(v)))throw Error();}catch{return reject(400,"SYNC_VERSIONS_INVALID");}
+      const record=(key:string,r:CloudRecord<unknown>)=>known[key]===r.sha?{unchanged:true,sha:r.sha,planId:key.startsWith("plan:")?key.slice(5):undefined}:r;
+      // Authorize every request against the current actor profile; caches never authorize access.
+      const profile=own?actor.profile:await this.profile(mail);
+      const result:Record<string,unknown>={profile:record("profile",{data:clean(profile.data),sha:profile.sha})};
+      if(section==="administration")return respond(result);
+      if(section==="techniques"){
+        const metadata=await this.cloud.list?.(root(mail));
+        const get=async(key:string,file:string)=>{
+          const info=metadata?.find(f=>f.name===file&&f.type==="file");
+          if(info?.sha&&known[key]===info.sha)return {unchanged:true,sha:info.sha};
+          const value=await this.cloud.read(`${root(mail)}/${file}`);if(!value)return reject(409,"REGISTRATION_INCOMPLETE");return record(key,value);
+        };
+        const [techniques,comments]=await Promise.all([get("techniques","tecnics.json"),get("comments","trainer_comments.json")]);
+        return respond({...result,techniques,comments});
+      }
+      const planId=url.searchParams.get("planId");
+      if(planId&&!/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(planId))return reject(400,"PLAN_ID_INVALID");
+      const [catalog,listed]=await Promise.all([this.cloud.read<Catalog>("PGT/master_data/plans.json"),this.cloud.list?.(`${root(mail)}/training_plans`)]);
+      const deleted=new Set(catalog?.data.deletedPlanIds||[]);
+      const files=(listed||[]).filter(f=>f.type==="file"&&/^plan_[0-9a-f-]{36}\.json$/.test(f.name)&&!deleted.has(f.name.slice(5,-5)));
+      result.planSummaries=files.map(file=>{const id=file.name.slice(5,-5);return {planId:id,fecha_torneo:catalog?.data.plans.find(p=>p.planId===id)?.fecha_torneo};});
+      result.plans=[];
+      if(!planId)return respond(result);
+      if(!files.some(f=>f.name===`plan_${planId}.json`))return reject(404,"PLAN_NOT_FOUND");
+      const loaded=await this.updatePlanTexts(mail,planId);
+      const refreshed=(await this.cloud.list?.(`${root(mail)}/training_plans`))||[];
+      const file=refreshed.find(f=>f.name===`plan_${planId}.json`);
+      if(!file)return reject(404,"PLAN_NOT_FOUND");
+      const key="plan:"+planId;
+      if(file.sha&&known[key]===file.sha)result.plans=[{unchanged:true,sha:file.sha,planId}];
+      else {
+        const reused=loaded.get(file.name);
+        const p=reused&&(!file.sha||reused.sha===file.sha)?reused:await this.cloud.read<TrainingPlan>(`${root(mail)}/training_plans/${file.name}`);
+        if(!p||p.data.mail!==mail)return reject(409,"PLAN_IDENTITY_INVALID");
+        result.plans=[record(key,p)];
+      }
+      return respond(result);
+    }
     if (request.method === "GET" && kind === "snapshot") {
       let known: Record<string, string> = {};
       const q = url.searchParams.get("known");

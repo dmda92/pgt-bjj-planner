@@ -58,3 +58,7 @@ Los diálogos de eliminación explican que se recalculan sesiones futuras y se c
 ### Secciones de la ficha del alumno
 
 Panel derecho con botones Técnicas, Planes y Administración. La ficha de identidad permanece; el contenido se muestra por sección. Técnicas es la vista inicial de cada selección. El selector conserva el resaltado durante carga; spinner y texto accesible sustituyen temporalmente el mensaje inicial, con movimiento reducido respetado. Error de carga conserva selección y ofrece reintento.
+
+### Fichas locales y detalle de planes
+
+La ficha guardada se muestra inmediatamente, con indicador discreto «Actualizando en segundo plano» durante la comprobación remota. La falta de copia usa el spinner del panel y no deshabilita toda la interfaz. Planes muestra primero un selector con fechas de competición y carga solo el plan elegido. Métricas del repertorio memoizadas. Mantener selección, secciones, permisos y textos completos.

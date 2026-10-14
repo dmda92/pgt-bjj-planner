@@ -559,3 +559,7 @@ La revisión de eventos de eliminación (`deletionRevision`, calculada por servi
 ## 18. Panel del alumno en Entrenador (14/10/2026)
 
 Mantener selector izquierdo y mensaje inicial sin selección. Seleccionar un alumno lo resalta inmediatamente y sustituye el mensaje inicial por un spinner accesible durante la carga. El panel derecho muestra tres botones: Técnicas (por defecto cada selección), Planes y Administración (rol y contraseña), mostrando únicamente el contenido elegido. Cambiar alumno no permite que una respuesta tardía sobrescriba la selección actual. Los fallos mantienen la selección y permiten reintentar.
+
+## 19. Apertura eficiente de alumnos desde Entrenador (14/10/2026)
+
+Consultar una copia local autorizada por entrenador/alumno/sección y mostrarla inmediatamente; actualizar en segundo plano sin bloquear toda la UI. Técnicas, Planes y Administración solicitan únicamente su contenido. Planes carga un manifiesto y el detalle elegido, no todos los JSON. Usar SHA para omitir archivos idénticos, paralelismo seguro y limitado, deduplicación de consultas y marcadores para no recalcular sin cambios. Mantener offline, validación, permisos actuales, aislamiento entre sesiones, protección absoluta del histórico y algoritmo. No escribir ni perder el working set dirty mediante la caché de fichas. Invalidar caché al salir o ante revocación observada y descartar respuestas de sesiones/selecciones anteriores. Diagnóstico, medidas y límites en RENDIMIENTO_ENTRENADOR.md.

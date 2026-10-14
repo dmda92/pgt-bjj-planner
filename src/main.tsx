@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
+import type {TrainerView,TrainerSection} from "./application/trainer-cache.ts";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { client, type Snapshot } from "./application/client.ts";
 import { db, type LocalEntry } from "./infrastructure/local.ts";
@@ -58,7 +59,10 @@ function App() {
     [trainerSection, setTrainerSection] = useState("team"),
     [studentSearch, setStudentSearch] = useState(""),
     [students, setStudents] = useState<any[]>([]),
-    [student, setStudent] = useState<Snapshot | null>(null),
+    [student, setStudent] = useState<TrainerView | null>(null),
+    [studentSection, setStudentSection] = useState<TrainerSection>("techniques"),
+    [studentPlanId,setStudentPlanId]=useState(""),
+    [studentRefreshing, setStudentRefreshing] = useState(false),
     [selectedStudent, setSelectedStudent] = useState(""),
     [studentLoading, setStudentLoading] = useState(false),
     [studentLoadFailed, setStudentLoadFailed] = useState(false),
@@ -166,24 +170,23 @@ function App() {
   const plans = entries
     .filter((e) => e.key.startsWith("plan:"))
     .map((e) => e.data as TrainingPlan);
-  function selectStudent(mail: string) {
-    const sequence = ++studentSequence.current;
-    const owner = client.identity?.mail;
-    setSelectedStudent(mail);
-    setStudent(null);
-    setStudentLoading(true);
-    setStudentLoadFailed(false);
-    void run(async () => {
+  function selectStudent(mail:string,section:TrainerSection="techniques",force=false,planId="") {
+    const sequence=++studentSequence.current,owner=client.identity?.mail;
+    setSelectedStudent(mail);setStudentSection(section);setStudentPlanId(planId);
+    setStudent(null);setStudentLoading(true);setStudentLoadFailed(false);
+    void (async()=>{
+      const current=()=>sequence===studentSequence.current&&client.identity?.mail===owner&&!client.locked;
+      let cached:TrainerView|undefined;
       try {
-        const data = await client.request<Snapshot>(`/api/app/users/${encodeURIComponent(mail)}/snapshot`);
-        if (sequence === studentSequence.current && client.identity?.mail === owner && !client.locked)
-          setStudent(data);
-      } catch (error) {
-        if (sequence === studentSequence.current) { setStudentLoadFailed(true); throw error; }
-      } finally {
-        if (sequence === studentSequence.current) setStudentLoading(false);
-      }
-    });
+        cached=await client.cachedTrainer(mail,section,planId);
+        if(!current())return;
+        if(cached){setStudent(cached);setStudentLoading(false);}
+        setStudentRefreshing(Boolean(cached)&&navigator.onLine);
+        const data=await client.trainerView(mail,section,force,planId);
+        if(current())setStudent(data);
+      }catch(error){if(current()){if(error instanceof Error && "status" in error && error.status===403){setStudent(null);cached=undefined;}setStudentLoadFailed(!cached);setError(error instanceof Error?error.message:"No se pudo actualizar la ficha");}}
+      finally{if(current()){setStudentLoading(false);setStudentRefreshing(false);}}
+    })();
   }
   async function trainers() {
     const data = await client.request("/api/app/students");
@@ -857,11 +860,16 @@ function App() {
                           <TrainerStudent
                             key={student.profile.data.mail}
                             snapshot={student}
+                            section={studentSection}
+                            refreshing={studentRefreshing}
+                            planId={studentPlanId}
+                            choosePlan={(id)=>selectStudent(selectedStudent,"plans",false,id)}
+                            changeSection={(section) => selectStudent(selectedStudent,section)}
                             run={run}
                             reload={async () => {
-                              const sequence = studentSequence.current;
-                              const data = await client.request<Snapshot>(`/api/app/users/${encodeURIComponent(student.profile.data.mail)}/snapshot`);
-                              if (sequence === studentSequence.current && client.identity && !client.locked) setStudent(data);
+                              const sequence=studentSequence.current;
+                              const data=await client.trainerView(selectedStudent,studentSection,true,studentPlanId);
+                              if(sequence===studentSequence.current&&!client.locked)setStudent(data);
                             }}
                           />
                         )}
@@ -1346,22 +1354,32 @@ function PlanView({
 }
 function TrainerStudent({
   snapshot,
+  section,
+  refreshing,
+  planId,
+  choosePlan,
+  changeSection,
   run,
   reload,
 }: {
-  snapshot: Snapshot;
+  snapshot: TrainerView;
+  section:TrainerSection;
+  refreshing:boolean;
+  planId:string;
+  choosePlan:(id:string)=>void;
+  changeSection:(section:TrainerSection)=>void;
   run: (a: () => Promise<unknown>) => Promise<void>;
   reload: () => Promise<void>;
 }) {
   const p = snapshot.profile.data,
-    t = snapshot.techniques.data as Techniques,
-    [search, setSearch] = useState(""),
-    [section, setSection] = useState("techniques");
-  const notes = snapshot.comments.data as Comments;
-  const total = t.positions.reduce((n, p) => n + p.tecnicas.length, 0);
-  const described = t.positions
-    .flatMap((p) => p.tecnicas)
-    .filter((t) => t.descripcion_del_alumno.trim()).length;
+    t = snapshot.techniques?.data as Techniques | undefined,
+    [search, setSearch] = useState("");
+  const notes = snapshot.comments?.data as Comments | undefined;
+  const {total,described}=useMemo(()=>{
+    let total=0,described=0;
+    for(const p of t?.positions||[])for(const technique of p.tecnicas){total++;if(technique.descripcion_del_alumno.trim())described++;}
+    return {total,described};
+  },[t]);
   const percent = Math.round((described / Math.max(1, total)) * 100);
   return (
     <section className="card student-detail">
@@ -1375,10 +1393,11 @@ function TrainerStudent({
       </div>
       <div className="student-sections" role="group" aria-label="Información del alumno">
         {[["techniques", "Técnicas"], ["plans", "Planes"], ["administration", "Administración"]].map(([key,label]) => (
-          <button key={key} className={section === key ? "selected" : "secondary"} aria-pressed={section === key} onClick={() => setSection(key)}>{label}</button>
+          <button key={key} className={section === key ? "selected" : "secondary"} aria-pressed={section === key} onClick={() => changeSection(key as TrainerSection)}>{label}</button>
         ))}
       </div>
-      {section === "techniques" && <>
+      {refreshing && <p className="muted" role="status" aria-label="Actualizando ficha">Actualizando en segundo plano…</p>}
+      {section === "techniques" && t && notes && <>
       <div className="repertoire-progress">
         <div>
           <span>
@@ -1428,7 +1447,7 @@ function TrainerStudent({
                         "PUT",
                         {
                           data: { ...notes, comments },
-                          sha: snapshot.comments.sha,
+                          sha: snapshot.comments!.sha,
                         },
                       );
                       await reload();
@@ -1476,9 +1495,11 @@ function TrainerStudent({
         <PasswordForm mail={p.mail} sha={snapshot.profile.sha} run={run} />
       </>}
       {section === "plans" && <>
-        {snapshot.plans.length ? snapshot.plans.map((r) => (
+        {Boolean(snapshot.planSummaries?.length) && <label>Plan del alumno<select aria-label="Plan del alumno" value={planId} onChange={e=>choosePlan(e.target.value)}><option value="">Selecciona un plan</option>{snapshot.planSummaries?.map(p=><option key={p.planId} value={p.planId}>{p.fecha_torneo?`Torneo · ${p.fecha_torneo}`:`Plan · ${p.planId}`}</option>)}</select></label>}
+
+        {snapshot.plans?.length ? snapshot.plans.map((r) => (
           <PlanView key={r.data.planId} plan={r.data} run={run} />
-        )) : <p className="muted">Este alumno todavía no tiene planes asignados.</p>}
+        )) : <p className="muted">{snapshot.planSummaries?.length ? "Selecciona un plan para consultar sus sesiones." : "Este alumno todavía no tiene planes asignados."}</p>}
       </>}
     </section>
   );
