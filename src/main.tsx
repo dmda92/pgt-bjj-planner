@@ -907,66 +907,7 @@ function App() {
                           </p>
                         )}
                         {catalog.data.plans.map((c) => (
-                          <article
-                            key={c.planId}
-                            className="card competition-card"
-                          >
-                            <h3>Torneo · {c.fecha_torneo}</h3>
-                            <p>
-                              Inicio {c.fecha_comienzo} ·{" "}
-                              {c.ejercicios_por_sesion} ejercicios · días{" "}
-                              {c.dias_de_entrenamiento.join(", ")}
-                            </p>
-                            <p>Configuración fijada al crear la competición.</p>
-                            {students.map((s) => (
-                              <label className="check" key={s.profile.mail}>
-                                <input
-                                  type="checkbox"
-                                  checked={c.alumnos.includes(s.profile.mail)}
-                                  onChange={(e) => {
-                                    const checked = e.currentTarget.checked;
-                                    void run(async () => {
-                                      await client.request(
-                                        "/api/app/assignment",
-                                        "POST",
-                                        {
-                                          planId: c.planId,
-                                          alumnos: checked
-                                            ? [...c.alumnos, s.profile.mail]
-                                            : c.alumnos.filter(
-                                                (m) => m !== s.profile.mail,
-                                              ),
-                                          sha: catalog.sha,
-                                        },
-                                      );
-                                      await trainers();
-                                    });
-                                  }}
-                                />
-                                {s.profile.nombre || s.profile.mail}
-                              </label>
-                            ))}
-                            <button
-                              className="danger"
-                              onClick={() => {
-                                if (
-                                  confirm(
-                                    "¿Borrar esta competición y todos sus planes individuales? Desasignar solo un alumno se hace con su casilla.",
-                                  )
-                                )
-                                  void run(async () => {
-                                    await client.request(
-                                      "/api/app/delete-competition",
-                                      "POST",
-                                      { planId: c.planId, sha: catalog.sha },
-                                    );
-                                    await trainers();
-                                  });
-                              }}
-                            >
-                              Borrar competición completa
-                            </button>
-                          </article>
+                          <CompetitionCard key={c.planId} competition={c} students={students} sha={catalog.sha} run={run} reload={trainers} />
                         ))}
                       </section>
                     </div>
@@ -1747,6 +1688,57 @@ function TrainerCoverage({
     </section>
   );
 }
+function CompetitionCard({competition:c, students, sha, run, reload}: {
+  competition: Competition; students: any[]; sha: string | null;
+  run: (action: () => Promise<unknown>) => Promise<void>; reload: () => Promise<void>;
+}) {
+  const [draft, setDraft] = useState<{alumnos:string[];base:string[];sha:string|null} | null>(null);
+  const [saving,setSaving] = useState(false);
+  const selected = draft?.alumnos ?? c.alumnos;
+  const changed = selected.length !== c.alumnos.length || selected.some(mail => !c.alumnos.includes(mail));
+  return <article className="card competition-card">
+    <h3>Torneo · {c.fecha_torneo}</h3>
+    <p>Inicio {c.fecha_comienzo} · {c.ejercicios_por_sesion} ejercicios · días {c.dias_de_entrenamiento.join(', ')}</p>
+    <p>Configuración fijada al crear la competición.</p>
+    {students.map(s => <label className="check" key={s.profile.mail}>
+      <input type="checkbox" checked={selected.includes(s.profile.mail)} disabled={saving}
+        onChange={e => {
+          const checked=e.currentTarget.checked;
+          setDraft(previous => {
+            const current=previous?.alumnos ?? c.alumnos;
+            const alumnos=checked ? [...current,s.profile.mail] : current.filter(mail=>mail!==s.profile.mail);
+            const unchanged=alumnos.length===c.alumnos.length && alumnos.every(mail=>c.alumnos.includes(mail));
+            return unchanged ? null : {alumnos,base:previous?.base ?? [...c.alumnos],sha:previous?.sha ?? sha};
+          });
+        }} />{s.profile.nombre || s.profile.mail}
+    </label>)}
+    <div className="competition-submit">
+      <button disabled={!changed || saving} onClick={() => {
+        if(!draft || saving)return;
+        const baseUnchanged=draft.base.length===c.alumnos.length && draft.base.every(mail=>c.alumnos.includes(mail));
+        const payload={planId:c.planId,alumnos:[...draft.alumnos],sha:baseUnchanged ? sha : draft.sha};
+        setSaving(true);
+        void run(async()=>{
+          try {
+            await client.request('/api/app/assignment','POST',payload);
+            await reload();
+            setDraft(null);
+          } finally {setSaving(false);}
+        });
+      }}>Guardar datos</button>
+      {saving && <span role="status" className="competition-loading"><span className="loading-spinner" aria-hidden="true" />Guardando participantes…</span>}
+      {changed && !saving && <span className="competition-loading">Cambios sin guardar</span>}
+      <button className="danger" disabled={saving} onClick={()=>{
+        if(confirm('¿Borrar esta competición y todos sus planes individuales? Para desasignar un alumno, desmarca su casilla y pulsa Guardar datos.'))
+          void run(async()=>{
+            await client.request('/api/app/delete-competition','POST',{planId:c.planId,sha});
+            await reload();
+          });
+      }}>Borrar competición completa</button>
+    </div>
+  </article>;
+}
+
 function CompetitionForm({
   students,
   sha,

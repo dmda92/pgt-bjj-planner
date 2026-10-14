@@ -45,3 +45,8 @@ Optimización de fichas (apartado 19): endpoint entrenador /view por sección; l
 Selectores controlados: capturar el valor del evento antes de llamar a run u otra función que espere operaciones asíncronas. El rol debe mostrarse pendiente mientras se guarda, confirmar desde perfil remoto o revertir ante fallo; mantener permisos y CAS.
 
 Feedback UI, apartado 20: verde discreto solo para sincronización realmente completada, derivado de dirty/proyecciones/planes bloqueados y borradores de perfil; no mostrar éxito con pendientes. «Crear competición» con spinner inmediato y botón temporalmente deshabilitado. Descripciones del alumno en Entrenador: textarea readOnly, no disabled, conservando contenido completo.
+
+
+### Guardado explícito de participantes (14/10/2026)
+
+Participantes: cambios locales inmediatos en CompetitionCard; persistir solo mediante Guardar datos, deshabilitado sin diferencias. Conservar borrador y SHA base ante fallo/conflicto.

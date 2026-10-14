@@ -519,14 +519,30 @@ try {
   await page.getByRole('status',{name:'Creando competición'}).waitFor({state:'hidden'});
   await page.unroute(competitionRoute,delayedCompetition);
 
-  // Controlled checkbox must capture the click before run awaits local saves.
-  const participant = page.locator('.competition-card').getByRole('checkbox').first();
+  // Draft selections are immediate; remote changes occur only on explicit save.
+  const card=page.locator('.competition-card').first();
+  const participant=card.getByRole('checkbox').first();
+  const saveParticipants=card.getByRole('button',{name:'Guardar datos',exact:true});
+  let assignmentRequests=0;
+  await page.route('**/api/app/assignment',async route=>{assignmentRequests++;await route.continue();});
+  assert.equal(await saveParticipants.isDisabled(),true);
   await participant.click();
+  assert.equal(await participant.isChecked(),false);
+  assert.equal(await saveParticipants.isEnabled(),true);
+  assert.equal(assignmentRequests,0);
+  await participant.click();
+  assert.equal(await saveParticipants.isDisabled(),true);
+  await participant.click();
+  await saveParticipants.click();
   await page.waitForFunction(() => [...document.querySelectorAll('.dashboard-overview dd')].at(-1)?.textContent === '1');
-  assert.equal(await participant.isChecked(), false);
+  await saveParticipants.waitFor({state:'visible'});
+  assert.equal(await participant.isChecked(),false);
+  await page.waitForFunction(()=>document.querySelector('.competition-card button')?.disabled);
   await participant.click();
+  assert.equal(await participant.isChecked(),true);
+  await saveParticipants.click();
   await page.waitForFunction(() => [...document.querySelectorAll('.dashboard-overview dd')].at(-1)?.textContent === '2');
-  assert.equal(await participant.isChecked(), true);
+  assert.equal(assignmentRequests,2);
 
   assert.deepEqual(
     await page.locator(".dashboard-overview dd").allTextContents(),

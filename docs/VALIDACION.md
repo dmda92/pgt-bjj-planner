@@ -150,3 +150,8 @@ Causa: onChange leía e.target.value dentro de run después de esperar a los gua
 ## Corrección de asignación de participantes (14/10/2026)
 
 La casilla captura checked antes de esperar la cola de guardado local. Regresión Chromium: retirar y volver a añadir un participante, verificando casilla y recuento confirmado por API. Se conservan permisos, SHA y generación de planes existentes.
+
+
+### Guardado explícito de participantes (14/10/2026)
+
+Selección de participantes en borrador: Chromium verifica respuesta inmediata, ninguna petición al marcar/desmarcar, deshabilitado al revertir, y dos guardados explícitos con recuento remoto confirmado.

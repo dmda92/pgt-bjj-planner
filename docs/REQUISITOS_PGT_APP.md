@@ -567,3 +567,8 @@ Consultar una copia local autorizada por entrenador/alumno/sección y mostrarla 
 ## 20. Feedback de sincronización, creación y descripciones del entrenador (14/10/2026)
 
 «Sincronizado» se presenta con verde discreto únicamente cuando no hay datos locales pendientes ni planes bloqueados. Tras editar/guardar localmente, indicar pendientes de sincronizar; los campos de perfil todavía sin guardar requieren su propio aviso. La creación usa el literal «Crear competición», spinner junto al botón y bloqueo de repetición durante la petición. Las descripciones del alumno en la ficha del entrenador se muestran completas en textarea de solo lectura, seleccionable y con estilo del repertorio. Comentarios del entrenador siguen siendo editables.
+
+
+### Guardado explícito de participantes (14/10/2026)
+
+Selección inmediata de participantes por competición, en borrador. Guardar datos habilitado solo con diferencias; guardar envía una única asignación con SHA, conserva borrador ante fallo y confirma desde servidor. Casillas bloqueadas solo durante guardado.
