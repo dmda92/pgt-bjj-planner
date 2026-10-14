@@ -94,3 +94,11 @@ El campo numérico usaba min=1, pero su onChange persistía directamente Number(
 Se sustituye por controles −/+ con mínimo 1, incrementos enteros, sin entrada numérica por teclado y límites de enteros seguros. Conserva UUID, orden y demás campos. El botón de reducir está desactivado en 1; los botones mantienen foco y targets de 44 px. Prioridad se valida antes de modificar el estado de UI y antes de guardar IndexedDB, con mensaje explícito; el servidor mantiene su validación. Un valor antiguo inválido puede corregirse a 1 con aumentar, sin borrar documentos pendientes.
 
 Validación: 69 tests, typecheck, build, check:worker y runtime correctos. Regresión de navegador: ausencia de campo editable, 1→2→1, reducción bloqueada en 1, sincronización y UUID conservado. Diseño escritorio/móvil revisado. No desplegado ni verificado en dispositivos físicos.
+
+## CI/CD autorizado — 14/10/2026
+
+Nuevo workflow .github/workflows/cloudflare.yml: push main, PR solo CI y ejecución manual; Node 24, npm ci, tests, typecheck, build PWA, compilación/runtime Worker y navegador offline. Credenciales solo en deploy, permisos GITHUB_TOKEN contents: read, acciones oficiales fijadas a SHA de sus tags v4 verificados. Wrangler local fijado por lockfile; una única orden deploy --keep-vars sin operaciones sobre secretos/datos. Conserva Worker con assets, namespace y migración.
+
+Producción serializada sin cancelar uploads. Guard HEAD probado con commit actual (permitido), antiguo (omitido) y error GitHub (bloqueado). Interruptor CLOUDFLARE_DEPLOY_ENABLED=true tras configuración manual: sin activar, CI se ejecuta pero producción se omite. No pages deploy duplicado; guía de Pages Git si ya existe y desactivación de Workers Builds para el mismo Worker.
+
+Verificación: YAML parseado, orden secuencial/condiciones/secretos y ausencia de bypass validados; script guard parseado y probado en entorno sintético. 69 tests locales, typecheck, build, check:worker, runtime y navegador correctos. npm ci se ejecutará en runner limpio; no se ha ejecutado deploy ni autenticado Cloudflare, inspeccionado conexiones del panel o configurado secretos. Primera ejecución GitHub Actions y aceptación remota pendientes de activación. La guía CI_CD.md sustituye el despliegue manual por versión según autorización actual.

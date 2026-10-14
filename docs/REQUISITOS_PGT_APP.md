@@ -533,3 +533,7 @@ Pruebas: denegación de escritura directa para alumno y entrenador participante,
 ## 13. Corrección del propietario: acceso y alta manual de entrenador (14/10/2026)
 
 Sustituye toda exigencia anterior de bootstrap o clave especial. Alta pública siempre como alumno; primer entrenador mediante edición manual de perfil en GitHub privado por el propietario. Retirar UI, estados y endpoint de bootstrap; los roles siguen validados en servidor y gestionados por entrenadores autorizados. No borrar datos pendientes al cerrar sesión o cambiar de usuario. Peso vacío es null; peso informado debe ser finito, mayor que cero y menor que 500 kg. Rechazarlo antes de persistir localmente y en API. Autorizar exclusivamente orígenes legítimos enumerados explícitamente, sin wildcard ni confianza derivada de Host.
+
+## 14. CI/CD automático autorizado (14/10/2026)
+
+Cada push a main debe validar instalación, tests, typecheck y build antes de publicar el Worker y PWA. GitHub Actions utiliza únicamente secretos Cloudflare de despliegue y se habilita una vez configurados manualmente. Fallos bloquean publicación. No alterar datos, secretos existentes ni identidad de recursos. Evitar despliegues concurrentes y SHA obsoletos. Reusar Pages Git si existe sin añadir pages deploy duplicado; Worker con assets es la publicación conjunta por defecto. Guía CI_CD.md. Sustituye el despliegue manual obligatorio por versión; Work sigue sin configurar Cloudflare directamente.

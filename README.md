@@ -56,3 +56,8 @@ Los backups contienen datos de negocio, nunca sesión ni hash. La UI no borra pe
 Work no configura la cuenta Cloudflare ni publica allí. Se conserva el Worker **pgt-github-probe** y su binding **SECURITY / ProbeSecurity**; no renombrar namespaces ni migraciones existentes. Mantener los secretos actuales `GITHUB_DATA_TOKEN` y `PROBE_ADMIN_KEY`. El propietario publica Worker y configura Pages (`main`, `npm run build`, `dist`) por separado. Instrucciones exactas de PowerShell y primer entrenador en [DESPLIEGUE_APP.md](docs/DESPLIEGUE_APP.md).
 
 Esta versión está verificada localmente. Safari/iOS real, instalación desde dispositivos y aceptación de la nueva UI tras despliegue corresponden a las comprobaciones indicadas en VALIDACION.md; la viabilidad del prototipo anterior no sustituye esas comprobaciones. No activar planes Paid cuando aparezca una cuota: detener operación y revisar límites.
+
+
+## CI/CD automático
+
+Workflow [.github/workflows/cloudflare.yml](.github/workflows/cloudflare.yml) valida y despliega Worker + PWA en main una vez configurados los secretos y la variable de activación. Guía inicial, Pages y prevención de duplicados en [CI_CD.md](docs/CI_CD.md). Ya no hace falta desplegar desde el ordenador en cada cambio.

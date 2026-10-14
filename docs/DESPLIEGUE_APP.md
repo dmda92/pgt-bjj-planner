@@ -1,4 +1,6 @@
-# PGT — despliegue manual de la aplicación
+# PGT — despliegue de la aplicación
+
+**CI/CD vigente:** configurar una vez [CI_CD.md](CI_CD.md). Después cada push a main publica automáticamente. Los comandos manuales siguientes quedan como referencia y contingencia; no ejecutarlos en paralelo con Actions.
 
 Estas acciones las ejecuta exclusivamente el propietario. Work no accede a Cloudflare ni despliega. El nombre, Durable Object SQLite y secretos de la prueba se mantienen. La interfaz estática del Worker pasa a ser la aplicación; los endpoints `/api/admin/*`, `/api/auth/*` y `/api/probe/*` siguen disponibles, aunque no se muestran en la nueva UI.
 
