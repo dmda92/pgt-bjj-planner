@@ -137,6 +137,15 @@ async function login(mail) {
   await page
     .getByLabel("Contraseña", { exact: true })
     .fill("synthetic-browser-password");
+  const passwordInput=page.getByLabel('Contraseña',{exact:true});
+  const originalValue=await passwordInput.inputValue();
+  assert.equal(await passwordInput.getAttribute('type'),'password');
+  await page.getByRole('button',{name:'Mostrar contraseña',exact:true}).click();
+  assert.equal(await passwordInput.getAttribute('type'),'text');
+  assert.equal(await passwordInput.inputValue(),originalValue);
+  await page.getByRole('button',{name:'Ocultar contraseña',exact:true}).click();
+  assert.equal(await passwordInput.getAttribute('type'),'password');
+  assert.equal(await passwordInput.inputValue(),originalValue);
   await page.getByRole("button", { name: "Entrar", exact: true }).click();
 }
 async function register(mail, name) {

@@ -1413,3 +1413,9 @@ footer {
 
 input[aria-invalid="true"] { border-color:#a43e3e; }
 .field-error { color:#a43e3e; font-size:14px; line-height:1.4; }
+
+.password-input { position:relative; display:block; }
+.password-input input { width:100%; padding-right:52px; }
+.password-toggle { position:absolute; right:3px; top:50%; transform:translateY(-50%); width:44px; height:40px; padding:10px; border:0; border-radius:5px; background:transparent; color:var(--muted); }
+.password-toggle:hover { background:#eaf0f4; color:var(--accent); }
+.password-toggle svg { display:block; width:22px; height:22px; }

@@ -1023,6 +1023,7 @@ function Auth({
   busy: boolean;
 }) {
   const [register, setRegister] = useState(false);
+  const [showPassword,setShowPassword]=useState(false);
   return (
     <section className="auth" id="main-content">
       <p className="auth-team">Portugal Gold Team</p>
@@ -1065,14 +1066,20 @@ function Auth({
         )}
         <label>
           Contraseña
+          <span className="password-input">
           <input
+            aria-label="Contraseña"
             required
             minLength={12}
             maxLength={128}
             name="password"
-            type="password"
+            type={!register && showPassword ? "text" : "password"}
             autoComplete={register ? "new-password" : "current-password"}
           />
+          {!register && <button type="button" className="password-toggle" aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} aria-pressed={showPassword} onClick={()=>setShowPassword(value=>!value)}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>{showPassword && <path d="m3 3 18 18"/>}</svg>
+          </button>}
+          </span>
         </label>
         {register && (
           <label>
@@ -1088,7 +1095,7 @@ function Auth({
               : "Entrar"}
         </button>
       </form>
-      <button className="subtle" onClick={() => setRegister(!register)}>
+      <button className="subtle" onClick={() => {setShowPassword(false);setRegister(!register);}}>
         {register ? "Ya tengo cuenta" : "Registrarme"}
       </button>
       <button

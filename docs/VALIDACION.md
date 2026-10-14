@@ -175,3 +175,8 @@ Corrección del propietario: Cambio de roles y Entre técnicas requieren enteros
 ### Feedback de borrado y espera del entrenador (15/10/2026)
 
 Borrado de competición con estado inmediato y spinner accesible en su tarjeta; impedir doble envío y ediciones durante borrado, retirar estado ante fallo. Placeholder de alumno más compacto, título 21 px, texto 15 px; carga horizontal con spinner 28 px y título 18 px. Mantener diseño pizarra/azul y movimiento reducido. Prueba Chromium con petición de borrado retenida y confirmación de retirada de tarjeta.
+
+
+### Visibilidad de contraseña en login (15/10/2026)
+
+Botón de ojo integrado en el campo, accesible Mostrar/Ocultar contraseña, type=button; contraseña oculta inicialmente y al cambiar a registro. Cambia solo type del input, sin modificar valor ni enviar formulario. Chromium verifica mostrar/ocultar y conservación del texto antes de login.
