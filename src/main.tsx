@@ -1839,7 +1839,7 @@ function CompetitionForm({
               name="change"
               max="3600"
               type="number"
-              min="0"
+              min="1"
               defaultValue={10}
               required
             />
@@ -1850,7 +1850,7 @@ function CompetitionForm({
               name="rest"
               max="3600"
               type="number"
-              min="0"
+              min="1"
               defaultValue={20}
               required
             />

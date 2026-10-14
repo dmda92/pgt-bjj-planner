@@ -165,3 +165,8 @@ Sustituye todas las reglas anteriores que conservaban visible el plan desasignad
 ### Validación de fechas de competición (15/10/2026)
 
 El formulario señala el campo de fecha incorrecto, con mensaje asociado y validación nativa accesible. Torneo estrictamente posterior al inicio y máximo 730 días, conforme al dominio. Corregir el campo retira el error; no enviar solicitudes inválidas. Mantener validación backend. Pruebas de fechas imposibles/bisiestas, igualdad, anterioridad, rango y corrección/reintento.
+
+
+### Mínimo de descansos en nuevas competiciones (15/10/2026)
+
+Corrección del propietario: Cambio de roles y Entre técnicas requieren enteros entre 1 y 3600 segundos al crear competición. Formulario señala el campo mediante min=1 y validación nativa; Worker rechaza cero antes de escribir. Sustituye admisión de descansos cero para nuevas altas. Leer/exportar/recalcular planes históricos con cero sigue permitido sin modificar sus parámetros. Regresión: cero rechazado sin petición/escritura y uno aceptado.

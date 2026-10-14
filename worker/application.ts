@@ -391,7 +391,8 @@ export class AppApi {
       if (route === "POST /api/app/competition") {
         onlyFields(b, ["competition", "sha"]);
         const input = b.competition as Competition;
-        validate(() => validateCompetition(input));
+        const invalidCompetition = validate(() => validateCompetition(input, 1));
+        if (invalidCompetition) return invalidCompetition;
         if (!Array.isArray(input.alumnos) || input.alumnos.length > 100)
           return reject(400, "STUDENTS_INVALID");
         const p: Competition = {

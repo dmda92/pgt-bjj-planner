@@ -509,6 +509,17 @@ try {
   await page.getByLabel("Fecha del torneo", { exact: true }).fill("2026-10-23");
   assert.equal(await endDate.evaluate(el=>el.validity.valid),true);
   assert.equal(await page.locator('#competition-end-error').count(),0);
+  for(const label of ['Cambio de roles (s)','Entre técnicas (s)']) {
+    const input=page.getByLabel(label,{exact:true});
+    await input.fill('0');
+    await page.locator('.competition-create').getByRole('button',{name:'Crear competición',exact:true}).click();
+    assert.equal(await input.evaluate(el=>el.validity.rangeUnderflow),true);
+    assert.equal(createRequests,0);
+    await input.fill('1');
+    assert.equal(await input.evaluate(el=>el.validity.valid),true);
+  }
+  await page.getByLabel('Cambio de roles (s)',{exact:true}).fill('10');
+  await page.getByLabel('Entre técnicas (s)',{exact:true}).fill('20');
   assert.equal(await page.locator("input[name=student]").count(), 2);
   await page
     .locator('input[name=student][value="browser-student@example.com"]')

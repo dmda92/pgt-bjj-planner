@@ -255,10 +255,15 @@ test("Competición: asignación, snapshot histórico protegido, comentarios, blo
     dias_de_entrenamiento: [2, 4],
     ejercicios_por_sesion: 3,
     tiempo_por_tecnica_segundos: 60,
-    descanso_entre_ciclos_segundos: 0,
-    descanso_entre_tecnicas_segundos: 0,
+    descanso_entre_ciclos_segundos: 1,
+    descanso_entre_tecnicas_segundos: 1,
     alumnos: ["student@example.com"],
   };
+  for(const field of ['descanso_entre_ciclos_segundos','descanso_entre_tecnicas_segundos']) {
+    const before=JSON.stringify([...f.files]);
+    assert.equal((await f.call('/api/app/competition','POST',{competition:{...competition,[field]:0},sha:null},trainer)).status,400);
+    assert.equal(JSON.stringify([...f.files]),before);
+  }
   assert.equal(
     (
       await f.call(
