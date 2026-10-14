@@ -406,6 +406,13 @@ try {
   await visible(studentPanel.getByLabel('Rol',{exact:true}));
   await visible(studentPanel.getByRole('heading',{name:'Restablecer contraseña del alumno',exact:true}));
   assert.equal(await studentPanel.locator('.plan-card').count(),0);
+  await studentPanel.getByLabel('Rol',{exact:true}).selectOption('entrenador');
+  await page.waitForFunction(()=>document.querySelector('select[aria-label="Rol"]')?.value==='entrenador'&&!document.querySelector('select[aria-label="Rol"]')?.disabled);
+  assert.equal(files.get('PGT/users_data/browser-student@example.com/user_data.json').data.perfil,'entrenador');
+  await studentPanel.getByLabel('Rol',{exact:true}).selectOption('alumno');
+  await page.waitForFunction(()=>document.querySelector('select[aria-label="Rol"]')?.value==='alumno'&&!document.querySelector('select[aria-label="Rol"]')?.disabled);
+  assert.equal(files.get('PGT/users_data/browser-student@example.com/user_data.json').data.perfil,'alumno');
+
   await page.getByRole('button',{name:/Student Fixture/}).click();
   await visible(studentPanel.getByLabel('Buscar posición del alumno'));
   assert.equal(await studentPanel.getByRole('button',{name:'Técnicas',exact:true}).getAttribute('aria-pressed'),'true');

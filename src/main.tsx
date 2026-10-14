@@ -1373,7 +1373,10 @@ function TrainerStudent({
 }) {
   const p = snapshot.profile.data,
     t = snapshot.techniques?.data as Techniques | undefined,
-    [search, setSearch] = useState("");
+    [search, setSearch] = useState(""),
+    [roleDraft,setRoleDraft]=useState(p.perfil),
+    [roleSaving,setRoleSaving]=useState(false);
+  useEffect(()=>setRoleDraft(p.perfil),[p.mail,p.perfil]);
   const notes = snapshot.comments?.data as Comments | undefined;
   const {total,described}=useMemo(()=>{
     let total=0,described=0;
@@ -1476,22 +1479,26 @@ function TrainerStudent({
         Rol
         <select
           aria-label="Rol"
-          value={p.perfil}
-          onChange={(e) =>
+          value={roleDraft}
+          disabled={roleSaving}
+          onChange={(e) => {
+            // Capture before run awaits local saves: React restores a controlled select meanwhile.
+            const perfil=e.currentTarget.value as Profile["perfil"];
+            setRoleDraft(perfil);setRoleSaving(true);
             void run(async () => {
-              await client.request("/api/app/role", "POST", {
-                mail: p.mail,
-                perfil: e.target.value,
-                sha: snapshot.profile.sha,
-              });
-              await reload();
-            })
-          }
+              try {
+                await client.request("/api/app/role", "POST", {mail:p.mail,perfil,sha:snapshot.profile.sha});
+                await reload();
+              } catch(error) {setRoleDraft(p.perfil);throw error;}
+              finally {setRoleSaving(false);}
+            });
+          }}
         >
           <option value="alumno">Alumno</option>
           <option value="entrenador">Entrenador</option>
         </select>
       </label>
+      {roleSaving && <p role="status" aria-label="Guardando rol">Guardando rol…</p>}
         <PasswordForm mail={p.mail} sha={snapshot.profile.sha} run={run} />
       </>}
       {section === "plans" && <>
