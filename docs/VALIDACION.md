@@ -86,3 +86,11 @@ Se mide cada sesión antes de dibujar: traslado entero, ancho completo para text
 Validación: 69/69 tests; tres regresiones nuevas de no mutación/orden/páginas sin solapamiento, sesión densa de ancho completo/error por exceso y tiempos variables/descansos cero/nombres largos/plan vacío. Typecheck, build, check:worker, runtime y navegador local correctos, incluida descarga PDF offline sin exportación previa. Ejemplo de 19 sesiones y 95 ejercicios con descripciones/comentarios ilustrativos: 11 páginas renderizadas y revisadas; márgenes de todo el texto y logo de cada página verificados. No usa datos reales ni cambia técnicas, algoritmo, sincronización, permisos o planes guardados. Pendiente publicar y revisar en dispositivos físicos/Safari.
 
 Ejemplo reproducible local: node scripts/preview-plan-pdf.mjs. Usa plantilla oficial y descripciones ilustrativas; no constituye un plan real de alumno.
+
+## TEC 04 — prioridad válida antes de guardar (14/10/2026)
+
+El campo numérico usaba min=1, pero su onChange persistía directamente Number(value); min solo afecta a la validez HTML y no impide escribir cero. Por ello el servidor rechazaba posteriormente la sincronización con PAYLOAD_INVALID.
+
+Se sustituye por controles −/+ con mínimo 1, incrementos enteros, sin entrada numérica por teclado y límites de enteros seguros. Conserva UUID, orden y demás campos. El botón de reducir está desactivado en 1; los botones mantienen foco y targets de 44 px. Prioridad se valida antes de modificar el estado de UI y antes de guardar IndexedDB, con mensaje explícito; el servidor mantiene su validación. Un valor antiguo inválido puede corregirse a 1 con aumentar, sin borrar documentos pendientes.
+
+Validación: 69 tests, typecheck, build, check:worker y runtime correctos. Regresión de navegador: ausencia de campo editable, 1→2→1, reducción bloqueada en 1, sincronización y UUID conservado. Diseño escritorio/móvil revisado. No desplegado ni verificado en dispositivos físicos.

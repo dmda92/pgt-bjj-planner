@@ -166,6 +166,21 @@ try {
   await page.goto(origin);
   await register("browser-trainer@example.com", "Trainer");
   assert.equal(await page.locator(".position").count(), 17);
+  // TEC 04: no numeric text entry; minimum 1, integer steps, stable UUID.
+  const firstPosition = page.locator(".position").first();
+  assert.equal(await firstPosition.locator('.priority input').count(), 0);
+  assert.equal(await firstPosition.getByRole('button', {name:'Reducir prioridad'}).isDisabled(), true);
+  const positionsFile = files.get('PGT/users_data/browser-trainer@example.com/tecnics.json');
+  const originalId = positionsFile.data.positions[0].id;
+  await firstPosition.getByRole('button', {name:'Aumentar prioridad'}).click();
+  await firstPosition.locator('.priority output').filter({hasText:/^2$/}).waitFor();
+  await firstPosition.getByRole('button', {name:'Reducir prioridad'}).click();
+  await firstPosition.locator('.priority output').filter({hasText:/^1$/}).waitFor();
+  assert.equal(await firstPosition.getByRole('button', {name:'Reducir prioridad'}).isDisabled(), true);
+  await sync();
+  assert.equal(files.get('PGT/users_data/browser-trainer@example.com/tecnics.json').data.positions[0].id, originalId);
+  assert.equal(files.get('PGT/users_data/browser-trainer@example.com/tecnics.json').data.positions[0].prioridad, 1);
+
   await page.screenshot({
     path: ".browser-artifacts/desktop.png",
     fullPage: true,

@@ -7,6 +7,7 @@ import type {
 } from "../domain/models.ts";
 import {
   validateTechniques,
+  validatePriority,
   validateVersion,
   validateProfile,
   validatePlan,
@@ -264,6 +265,8 @@ export class Client implements AuthenticationProvider, SyncService {
     const identity = this.requireIdentity();
     if (key.startsWith("plan:")) throw Error("PLAN_READ_ONLY");
     if (key === "profile") validateProfile(data as Profile);
+    if (key === "techniques")
+      for (const position of (data as Techniques).positions) validatePriority(position.prioridad);
     const old = await db.entries.get(key);
     if (!old || old.mail !== identity.mail) throw Error("Datos de otra sesión");
     this.requireIdentity();

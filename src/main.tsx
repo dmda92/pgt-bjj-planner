@@ -4,6 +4,7 @@ import { client, type Snapshot } from "./application/client.ts";
 import { db, type LocalEntry } from "./infrastructure/local.ts";
 import {
   now,
+  validatePriority,
   initialVersion,
   type Profile,
   type Techniques,
@@ -125,6 +126,12 @@ function App() {
     }
   }
   async function saveTech(next: Techniques) {
+    try {
+      for (const position of next.positions) validatePriority(position.prioridad);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Prioridad no válida");
+      return;
+    }
     setEntries((e) =>
       e.map((v) =>
         v.key === "techniques" ? { ...v, data: next, dirty: true } : v,
@@ -345,27 +352,30 @@ function App() {
                                 }
                               />
                             </div>
-                            <label className="priority">
-                              Prioridad
-                              <input
-                                type="number"
-                                min="1"
-                                value={p.prioridad}
-                                onChange={(e) =>
-                                  void saveTech({
+                            <div className="priority" role="group" aria-label={`Prioridad de ${p.posicion}`}>
+                              <span>Prioridad</span>
+                              <div className="priority-stepper">
+                                <button
+                                  type="button"
+                                  aria-label="Reducir prioridad"
+                                  disabled={busy || p.prioridad <= 1}
+                                  onClick={() => void saveTech({
                                     ...techniques,
-                                    positions: techniques.positions.map((v) =>
-                                      v.id === p.id
-                                        ? {
-                                            ...v,
-                                            prioridad: Number(e.target.value),
-                                          }
-                                        : v,
-                                    ),
-                                  })
-                                }
-                              />
-                            </label>
+                                    positions: techniques.positions.map((v) => v.id === p.id ? {...v, prioridad: p.prioridad - 1} : v),
+                                  })}
+                                >−</button>
+                                <output aria-label="Prioridad">{p.prioridad}</output>
+                                <button
+                                  type="button"
+                                  aria-label="Aumentar prioridad"
+                                  disabled={busy || p.prioridad >= Number.MAX_SAFE_INTEGER}
+                                  onClick={() => void saveTech({
+                                    ...techniques,
+                                    positions: techniques.positions.map((v) => v.id === p.id ? {...v, prioridad: Number.isSafeInteger(p.prioridad) && p.prioridad >= 1 ? p.prioridad + 1 : 1} : v),
+                                  })}
+                                >+</button>
+                              </div>
+                            </div>
                           </div>
                           {p.tecnicas.map((t, i) => (
                             <div className="technique" key={t.id}>

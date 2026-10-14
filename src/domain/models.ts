@@ -130,6 +130,10 @@ export function validDate(date: unknown): date is string {
     parsed.toISOString().slice(0, 10) === date
   );
 }
+export function validatePriority(value: unknown): asserts value is number {
+  if (!Number.isSafeInteger(value) || (value as number) < 1)
+    throw Error("La prioridad debe ser un número entero mayor o igual que 1");
+}
 export function validateTechniques(
   value: unknown,
 ): asserts value is Techniques {
@@ -149,12 +153,11 @@ export function validateTechniques(
   };
   for (const p of v.positions) {
     id(p.id);
+    validatePriority(p.prioridad);
     if (
       typeof p.posicion !== "string" ||
       !p.posicion.trim() ||
       p.posicion.length > 500 ||
-      !Number.isSafeInteger(p.prioridad) ||
-      p.prioridad < 1 ||
       !Array.isArray(p.tecnicas) ||
       p.tecnicas.length > 100
     )

@@ -1381,3 +1381,9 @@ footer {
     color: var(--ink);
   }
 }
+
+/* Integer-only priority controls, with touch targets on desktop and mobile. */
+.positions-grid .priority { display: block; flex: 0 0 138px; width: 138px; font-size: 12px; }
+.priority-stepper { display: flex; align-items: center; gap: 4px; margin-top: 6px; }
+.priority-stepper button { width: 44px; min-width: 44px; min-height: 44px; padding: 0; font-size: 20px; }
+.priority-stepper output { min-width: 34px; text-align: center; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
