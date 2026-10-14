@@ -146,3 +146,7 @@ Causa: onChange leía e.target.value dentro de run después de esperar a los gua
 ### Estados de sincronización y feedback de competición — 14/10/2026
 
 95/95 tests correctos, typecheck/build/check:worker/runtime correctos. Regresión de presentación: Sincronizado verde solo sin dirty/proyecciones/planes bloqueados/borradores de perfil; errores, offline y cola no muestran éxito. Guardado local y resolución local avisan pendientes; importación conserva su aviso. Chromium correcto: verde tras sync, desaparece después de edición offline, campos de perfil sin guardar preservados durante sync, textarea del alumno readOnly y contenido idéntico, petición de competición retenida para comprobar spinner y submit deshabilitado, spinner retirado tras confirmación. Revisar capturas de creación y ficha de alumno; nueva etiqueta «Crear competición». Se mantienen los permisos, los cambios locales y los tests de caché/offline/regresión de roles. Publicación efectiva se verifica en Actions del commit correspondiente.
+
+## Corrección de asignación de participantes (14/10/2026)
+
+La casilla captura checked antes de esperar la cola de guardado local. Regresión Chromium: retirar y volver a añadir un participante, verificando casilla y recuento confirmado por API. Se conservan permisos, SHA y generación de planes existentes.

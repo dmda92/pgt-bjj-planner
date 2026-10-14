@@ -519,6 +519,15 @@ try {
   await page.getByRole('status',{name:'Creando competición'}).waitFor({state:'hidden'});
   await page.unroute(competitionRoute,delayedCompetition);
 
+  // Controlled checkbox must capture the click before run awaits local saves.
+  const participant = page.locator('.competition-card').getByRole('checkbox').first();
+  await participant.click();
+  await page.waitForFunction(() => [...document.querySelectorAll('.dashboard-overview dd')].at(-1)?.textContent === '1');
+  assert.equal(await participant.isChecked(), false);
+  await participant.click();
+  await page.waitForFunction(() => [...document.querySelectorAll('.dashboard-overview dd')].at(-1)?.textContent === '2');
+  assert.equal(await participant.isChecked(), true);
+
   assert.deepEqual(
     await page.locator(".dashboard-overview dd").allTextContents(),
     ["1", "1", "2"],

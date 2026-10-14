@@ -923,14 +923,15 @@ function App() {
                                 <input
                                   type="checkbox"
                                   checked={c.alumnos.includes(s.profile.mail)}
-                                  onChange={(e) =>
+                                  onChange={(e) => {
+                                    const checked = e.currentTarget.checked;
                                     void run(async () => {
                                       await client.request(
                                         "/api/app/assignment",
                                         "POST",
                                         {
                                           planId: c.planId,
-                                          alumnos: e.target.checked
+                                          alumnos: checked
                                             ? [...c.alumnos, s.profile.mail]
                                             : c.alumnos.filter(
                                                 (m) => m !== s.profile.mail,
@@ -939,8 +940,8 @@ function App() {
                                         },
                                       );
                                       await trainers();
-                                    })
-                                  }
+                                    });
+                                  }}
                                 />
                                 {s.profile.nombre || s.profile.mail}
                               </label>
