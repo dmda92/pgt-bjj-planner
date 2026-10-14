@@ -37,3 +37,5 @@ La sección 16 de docs/REQUISITOS_PGT_APP.md sustituye las reglas anteriores que
 ## Eliminaciones estructurales APROBADAS (14/10/2026)
 
 Sustituye la prohibición anterior de activar recálculo para este caso: eliminar técnicas/posiciones recalcula todas las sesiones > hoy de planes activos, con fecha Madrid; protege literalmente pasado, hoy y torneos <= hoy. Continuidad compartida en src/domain/plan-continuity.ts, sin reiniciar prioridades ni introducir repeticiones de relleno. Persistir tombstones server-owned, checkpoints y cursores verificables; conservar planes y mostrar bloqueo recuperable si catálogo vacío o legado ambiguo. Sync incompleta mientras haya planes bloqueados. No aprobar por extensión adiciones/reordenaciones/prioridades nuevas todavía pendientes. Consultar docs/ANALISIS_CAMBIOS_ESTRUCTURALES.md y apartado 17 de requisitos.
+
+Panel de entrenador, apartado 18: dividir ficha derecha en Técnicas/Planes/Administración; Técnicas por defecto en cada selección. Separar identidad seleccionada de snapshot cargado, mostrar spinner durante carga y descartar respuestas de selecciones anteriores. Conservar selector izquierdo y estado inicial.

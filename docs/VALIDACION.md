@@ -126,3 +126,9 @@ Chromium local: borrado por interfaz offline, catálogo inmediato, plan futuro p
 La ejecución del workflow y su paso efectivo de publicación en Cloudflare se comprueban después de subir este commit; los tests locales no equivalen a despliegue remoto.
 
 Regresión adicional: recuperar el catálogo tras un bloqueo y borrar nuevamente el mismo UUID dispara un nuevo evento de eliminación, sin confundirse con el checkpoint anterior.
+
+### Panel derecho del entrenador por secciones — 14/10/2026
+
+Ficha del alumno separada en Técnicas (por defecto en cada selección), Planes y Administración (rol y contraseña). Identidad seleccionada independiente del snapshot; resaltado inmediato durante fetch, spinner accesible y mensaje inicial reservado a ausencia de selección. Secuencia de peticiones descarta respuestas antiguas y se invalida al cerrar sesión; recarga tras guardar comentarios conserva la sección. Fallo de carga conserva selección y ofrece reintento.
+
+91/91 tests, typecheck, build, compilación Worker y runtime correctos. Regresión de navegador añadida: petición de snapshot retenida con una promesa, alumno resaltado durante carga, spinner visible y mensaje inicial ausente; Técnicas por defecto, contenido exclusivo por sección, Planes sin asignaciones con mensaje, Administración con rol/restablecimiento y vuelta a Técnicas al seleccionar de nuevo. Se mantienen pruebas de comentarios, responsive, PWA/offline, perfil, planes y recálculos. Sin datos reales ni cambios de permisos/API.

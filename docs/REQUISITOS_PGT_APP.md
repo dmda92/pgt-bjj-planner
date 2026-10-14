@@ -555,3 +555,7 @@ Recuperar y validar el cursor de la última sesión protegida, conservar pasadas
 Persistencia offline-first: misma proyección local y remota, tombstones calculados por servidor, cursores/checkpoints por plan, escrituras SHA y recuperación de fan-out interrumpido desde snapshot. Repetir sync no vuelve a cambiar los planes aplicados. Si no quedan técnicas entrenables o un legado carece de cursor reconstruible, conservar su distribución, mostrar un aviso recuperable y no declarar sync completada. No inventar ejercicios ni ocultar errores.
 
 La revisión de eventos de eliminación (`deletionRevision`, calculada por servidor; `appliedDeletionRevision` por plan) permite distinguir un nuevo borrado del mismo UUID tras recuperar el catálogo de un reintento idempotente. La fuente conserva los tombstones acumulados y cada evento real vuelve a evaluar los planes; repetir la sincronización sin evento nuevo no recalcula.
+
+## 18. Panel del alumno en Entrenador (14/10/2026)
+
+Mantener selector izquierdo y mensaje inicial sin selección. Seleccionar un alumno lo resalta inmediatamente y sustituye el mensaje inicial por un spinner accesible durante la carga. El panel derecho muestra tres botones: Técnicas (por defecto cada selección), Planes y Administración (rol y contraseña), mostrando únicamente el contenido elegido. Cambiar alumno no permite que una respuesta tardía sobrescriba la selección actual. Los fallos mantienen la selección y permiten reintentar.

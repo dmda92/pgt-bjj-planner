@@ -48,6 +48,7 @@ function App() {
   const techniqueSaves = useRef<Promise<void>>(Promise.resolve());
   const pendingTechniqueSaves = useRef(0);
   const loadSequence = useRef(0);
+  const studentSequence = useRef(0);
   const [entries, setEntries] = useState<LocalEntry[]>([]),
     [version, setVersion] = useState(0),
     [tab, setTab] = useState("techniques"),
@@ -58,6 +59,9 @@ function App() {
     [studentSearch, setStudentSearch] = useState(""),
     [students, setStudents] = useState<any[]>([]),
     [student, setStudent] = useState<Snapshot | null>(null),
+    [selectedStudent, setSelectedStudent] = useState(""),
+    [studentLoading, setStudentLoading] = useState(false),
+    [studentLoadFailed, setStudentLoadFailed] = useState(false),
     [catalog, setCatalog] = useState<{
       data: Catalog;
       sha: string | null;
@@ -93,7 +97,11 @@ function App() {
         .catch((e) => setError(e.message));
     } else {
       setEntries([]);
+      studentSequence.current++;
       setStudent(null);
+      setSelectedStudent("");
+      setStudentLoading(false);
+      setStudentLoadFailed(false);
       setStudents([]);
       setCatalog(null);
       setTab("techniques");
@@ -158,6 +166,25 @@ function App() {
   const plans = entries
     .filter((e) => e.key.startsWith("plan:"))
     .map((e) => e.data as TrainingPlan);
+  function selectStudent(mail: string) {
+    const sequence = ++studentSequence.current;
+    const owner = client.identity?.mail;
+    setSelectedStudent(mail);
+    setStudent(null);
+    setStudentLoading(true);
+    setStudentLoadFailed(false);
+    void run(async () => {
+      try {
+        const data = await client.request<Snapshot>(`/api/app/users/${encodeURIComponent(mail)}/snapshot`);
+        if (sequence === studentSequence.current && client.identity?.mail === owner && !client.locked)
+          setStudent(data);
+      } catch (error) {
+        if (sequence === studentSequence.current) { setStudentLoadFailed(true); throw error; }
+      } finally {
+        if (sequence === studentSequence.current) setStudentLoading(false);
+      }
+    });
+  }
   async function trainers() {
     const data = await client.request("/api/app/students");
     setStudents(data.users);
@@ -749,19 +776,11 @@ function App() {
                             .map((s) => (
                               <button
                                 key={s.profile.mail}
-                                className={`student-card ${student?.profile.data.mail === s.profile.mail ? "student-selected" : ""}`}
+                                className={`student-card ${selectedStudent === s.profile.mail ? "student-selected" : ""}`}
                                 aria-pressed={
-                                  student?.profile.data.mail === s.profile.mail
+                                  selectedStudent === s.profile.mail
                                 }
-                                onClick={() =>
-                                  void run(async () =>
-                                    setStudent(
-                                      await client.request(
-                                        `/api/app/users/${encodeURIComponent(s.profile.mail)}/snapshot`,
-                                      ),
-                                    ),
-                                  )
-                                }
+                                onClick={() => selectStudent(s.profile.mail)}
                               >
                                 <span
                                   className="student-avatar"
@@ -807,7 +826,19 @@ function App() {
                         )}
                       </section>
                       <div className="student-workspace">
-                        {!student && (
+                        {studentLoading && (
+                          <section className="student-placeholder student-loading" role="status" aria-live="polite" aria-label="Cargando alumno">
+                            <span className="loading-spinner" aria-hidden="true" />
+                            <h3>Cargando información del alumno…</h3>
+                          </section>
+                        )}
+                        {studentLoadFailed && !studentLoading && (
+                          <section className="student-placeholder">
+                            <h3>No se pudo cargar la información del alumno.</h3>
+                            <button onClick={() => selectStudent(selectedStudent)}>Reintentar carga</button>
+                          </section>
+                        )}
+                        {!selectedStudent && (
                           <section className="student-placeholder">
                             <SectionIcon name="techniques" />
                             <h3>Trabaja el juego de cada alumno.</h3>
@@ -824,15 +855,14 @@ function App() {
                         )}
                         {student && (
                           <TrainerStudent
+                            key={student.profile.data.mail}
                             snapshot={student}
                             run={run}
-                            reload={async () =>
-                              setStudent(
-                                await client.request(
-                                  `/api/app/users/${encodeURIComponent(student.profile.data.mail)}/snapshot`,
-                                ),
-                              )
-                            }
+                            reload={async () => {
+                              const sequence = studentSequence.current;
+                              const data = await client.request<Snapshot>(`/api/app/users/${encodeURIComponent(student.profile.data.mail)}/snapshot`);
+                              if (sequence === studentSequence.current && client.identity && !client.locked) setStudent(data);
+                            }}
                           />
                         )}
                       </div>
@@ -1325,7 +1355,8 @@ function TrainerStudent({
 }) {
   const p = snapshot.profile.data,
     t = snapshot.techniques.data as Techniques,
-    [search, setSearch] = useState("");
+    [search, setSearch] = useState(""),
+    [section, setSection] = useState("techniques");
   const notes = snapshot.comments.data as Comments;
   const total = t.positions.reduce((n, p) => n + p.tecnicas.length, 0);
   const described = t.positions
@@ -1342,6 +1373,12 @@ function TrainerStudent({
         </div>
         <span className="pill">{p.cinturon || "Sin cinturón indicado"}</span>
       </div>
+      <div className="student-sections" role="group" aria-label="Información del alumno">
+        {[["techniques", "Técnicas"], ["plans", "Planes"], ["administration", "Administración"]].map(([key,label]) => (
+          <button key={key} className={section === key ? "selected" : "secondary"} aria-pressed={section === key} onClick={() => setSection(key)}>{label}</button>
+        ))}
+      </div>
+      {section === "techniques" && <>
       <div className="repertoire-progress">
         <div>
           <span>
@@ -1355,25 +1392,6 @@ function TrainerStudent({
           aria-label="Técnicas con descripción"
         />
       </div>
-      <label>
-        Rol
-        <select
-          value={p.perfil}
-          onChange={(e) =>
-            void run(async () => {
-              await client.request("/api/app/role", "POST", {
-                mail: p.mail,
-                perfil: e.target.value,
-                sha: snapshot.profile.sha,
-              });
-              await reload();
-            })
-          }
-        >
-          <option value="alumno">Alumno</option>
-          <option value="entrenador">Entrenador</option>
-        </select>
-      </label>
       <input
         placeholder="Buscar posición del alumno"
         value={search}
@@ -1433,10 +1451,35 @@ function TrainerStudent({
             ))}
           </details>
         ))}
-      <PasswordForm mail={p.mail} sha={snapshot.profile.sha} run={run} />
-      {snapshot.plans.map((r) => (
-        <PlanView key={r.data.planId} plan={r.data} run={run} />
-      ))}
+      </>}
+      {section === "administration" && <>
+      <label>
+        Rol
+        <select
+          aria-label="Rol"
+          value={p.perfil}
+          onChange={(e) =>
+            void run(async () => {
+              await client.request("/api/app/role", "POST", {
+                mail: p.mail,
+                perfil: e.target.value,
+                sha: snapshot.profile.sha,
+              });
+              await reload();
+            })
+          }
+        >
+          <option value="alumno">Alumno</option>
+          <option value="entrenador">Entrenador</option>
+        </select>
+      </label>
+        <PasswordForm mail={p.mail} sha={snapshot.profile.sha} run={run} />
+      </>}
+      {section === "plans" && <>
+        {snapshot.plans.length ? snapshot.plans.map((r) => (
+          <PlanView key={r.data.planId} plan={r.data} run={run} />
+        )) : <p className="muted">Este alumno todavía no tiene planes asignados.</p>}
+      </>}
     </section>
   );
 }

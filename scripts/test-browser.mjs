@@ -365,11 +365,37 @@ try {
   );
   assert.equal(await page.locator(".student-card").count(), 0);
   await page.getByLabel("Buscar alumnos", { exact: true }).fill("student");
+  let releaseStudent;
+  const studentGate = new Promise(resolve => { releaseStudent=resolve; });
+  const studentRoute='**/api/app/users/browser-student%40example.com/snapshot';
+  const delayedStudent=async route=>{await studentGate;await route.continue();};
+  await page.route(studentRoute,delayedStudent);
   await page.getByRole("button", { name: /Student Fixture/ }).click();
+  await visible(page.getByRole('status',{name:'Cargando alumno'}));
+  assert.equal(await page.locator('.student-selected').count(),1);
+  assert.equal(await page.getByText('Trabaja el juego de cada alumno.',{exact:true}).count(),0);
+  await page.screenshot({path:'.browser-artifacts/student-loading.png'});
+  releaseStudent();
+
   await visible(
     page.getByRole("heading", { name: "Student Fixture", exact: true }),
   );
   assert.equal(await page.locator(".student-selected").count(), 1);
+  await page.unroute(studentRoute,delayedStudent);
+  const studentPanel=page.locator('.student-detail');
+  assert.equal(await studentPanel.getByRole('button',{name:'Técnicas',exact:true}).getAttribute('aria-pressed'),'true');
+  assert.equal(await studentPanel.getByLabel('Rol',{exact:true}).count(),0);
+  await studentPanel.getByRole('button',{name:'Planes',exact:true}).click();
+  await visible(studentPanel.getByText('Este alumno todavía no tiene planes asignados.',{exact:true}));
+  assert.equal(await studentPanel.getByLabel('Buscar posición del alumno').count(),0);
+  await studentPanel.getByRole('button',{name:'Administración',exact:true}).click();
+  await visible(studentPanel.getByLabel('Rol',{exact:true}));
+  await visible(studentPanel.getByRole('heading',{name:'Restablecer contraseña del alumno',exact:true}));
+  assert.equal(await studentPanel.locator('.plan-card').count(),0);
+  await page.getByRole('button',{name:/Student Fixture/}).click();
+  await visible(studentPanel.getByLabel('Buscar posición del alumno'));
+  assert.equal(await studentPanel.getByRole('button',{name:'Técnicas',exact:true}).getAttribute('aria-pressed'),'true');
+
   assert.equal(
     await page
       .getByRole("progressbar", { name: "Técnicas con descripción" })

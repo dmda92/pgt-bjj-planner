@@ -1387,3 +1387,12 @@ footer {
 .priority-stepper { display: flex; align-items: center; gap: 4px; margin-top: 6px; }
 .priority-stepper button { width: 44px; min-width: 44px; min-height: 44px; padding: 0; font-size: 20px; }
 .priority-stepper output { min-width: 34px; text-align: center; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+
+/* Student workspace navigation and loading state. */
+.student-sections { display: flex; gap: 8px; flex-wrap: wrap; margin: 20px 0; }
+.student-sections button { flex: 1; min-height: 44px; }
+.student-sections button.selected { background: var(--accent, #365f7c); color: white; }
+.student-loading { min-height: 260px; }
+.loading-spinner { display: inline-block; width: 36px; height: 36px; border: 3px solid #dce5ec; border-top-color: #365f7c; border-radius: 50%; animation: student-spin .8s linear infinite; }
+@keyframes student-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .loading-spinner { animation: none; } }

@@ -54,3 +54,7 @@ Las sesiones que exceden una página usan ancho completo y continúan en página
 ### Eliminaciones de catálogo y planes bloqueados
 
 Los diálogos de eliminación explican que se recalculan sesiones futuras y se conserva el histórico. PlanView muestra un aviso accesible con role=alert cuando la actualización está bloqueada; el estado de sincronización indica que queda incompleta. Conservar la presentación de solo lectura y el diseño actual.
+
+### Secciones de la ficha del alumno
+
+Panel derecho con botones Técnicas, Planes y Administración. La ficha de identidad permanece; el contenido se muestra por sección. Técnicas es la vista inicial de cada selección. El selector conserva el resaltado durante carga; spinner y texto accesible sustituyen temporalmente el mensaje inicial, con movimiento reducido respetado. Error de carga conserva selección y ofrece reintento.
