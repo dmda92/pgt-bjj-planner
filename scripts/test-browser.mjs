@@ -432,19 +432,30 @@ try {
   await visible(page.getByRole("heading", { name: "Crear competición" }));
   await page.getByLabel("Fecha inicial", { exact: true }).fill("2026-10-13");
   await page.getByLabel("Fecha del torneo", { exact: true }).fill("2026-10-23");
-  await page.locator("input[name=student]").check();
+  assert.equal(await page.locator("input[name=student]").count(), 2);
+  await page
+    .locator('input[name=student][value="browser-student@example.com"]')
+    .check();
+  await page
+    .locator('input[name=student][value="browser-trainer@example.com"]')
+    .check();
   await page
     .getByRole("button", { name: "Crear competición con configuración fija" })
     .click();
   await visible(page.getByRole("heading", { name: "Torneo · 2026-10-23" }));
   assert.deepEqual(
     await page.locator(".dashboard-overview dd").allTextContents(),
-    ["1", "1", "1"],
+    ["1", "1", "2"],
   );
   await page.screenshot({
     path: ".browser-artifacts/trainer-competition.png",
     fullPage: true,
   });
+  await sync(); // trainer receives their own snapshot just like any competitor.
+  await page.getByRole("button", { name: /Mis planes/ }).click();
+  await visible(page.getByRole("heading", { name: "Torneo · 2026-10-23" }));
+  assert.match(await page.locator(".timer").innerText(), /32:10/);
+  await page.getByRole("button", { name: "Entrenador", exact: true }).click();
   await page
     .getByRole("button", { name: "Cobertura por fecha", exact: true })
     .click();
@@ -531,6 +542,92 @@ try {
     planFile[1].data.sessions[0].exercises[0].descripcion_del_alumno,
     "Plan manual offline",
   );
+  // PRO 01: profile stays mounted on two independent devices during synchronization.
+  const profileDevice = await browser.newContext();
+  const mirror = await profileDevice.newPage();
+  await mirror.goto(origin);
+  await mirror
+    .getByLabel("Correo", { exact: true })
+    .fill("browser-student@example.com");
+  await mirror
+    .getByLabel("Contraseña", { exact: true })
+    .fill("synthetic-browser-password");
+  await mirror.getByRole("button", { name: "Entrar", exact: true }).click();
+  await visible(mirror.getByRole("heading", { name: "Tu repertorio" }));
+  await mirror.getByRole("button", { name: "Perfil", exact: true }).click();
+  await page.getByRole("button", { name: "Perfil", exact: true }).click();
+  const businessBeforeProfile = JSON.stringify(
+    [...files].filter(([k]) => !k.endsWith("user_data.json")),
+  );
+  const changedProfile = {
+    Nombre: "Nombre M1",
+    Apellidos: "Apellidos M1",
+    "Fecha de nacimiento": "1992-08-24",
+    "Peso (kg)": "74.5",
+    Cinturón: "Negro",
+  };
+  for (const [label, value] of Object.entries(changedProfile)) {
+    if (label === "Cinturón")
+      await page.getByLabel(label, { exact: true }).selectOption(value);
+    else await page.getByLabel(label, { exact: true }).fill(value);
+  }
+  await page
+    .getByRole("button", { name: "Guardar en este dispositivo" })
+    .click();
+  await sync();
+  await sync(mirror);
+  await mirror.waitForFunction(
+    () => document.querySelector("input[name=nombre]")?.value === "Nombre M1",
+  );
+  for (const [label, value] of Object.entries(changedProfile)) {
+    assert.equal(
+      await page.getByLabel(label, { exact: true }).inputValue(),
+      value,
+    );
+    assert.equal(
+      await mirror.getByLabel(label, { exact: true }).inputValue(),
+      value,
+    );
+  }
+  assert.equal(
+    await mirror.locator("input[name=mail], select[name=perfil]").count(),
+    0,
+  );
+  assert.equal(
+    files.get("PGT/users_data/browser-student@example.com/user_data.json").data
+      .perfil,
+    "alumno",
+  );
+  await mirror
+    .getByLabel("Nombre", { exact: true })
+    .fill("Borrador M2 sin guardar");
+  await page
+    .getByLabel("Apellidos", { exact: true })
+    .fill("Actualizados otra vez");
+  await page
+    .getByRole("button", { name: "Guardar en este dispositivo" })
+    .click();
+  await sync();
+  await sync(mirror);
+  await mirror.waitForFunction(
+    () =>
+      document.querySelector("input[name=apellidos]")?.value ===
+      "Actualizados otra vez",
+  );
+  assert.equal(
+    await mirror.getByLabel("Nombre", { exact: true }).inputValue(),
+    "Borrador M2 sin guardar",
+  );
+  assert.equal(
+    files.get("PGT/users_data/browser-student@example.com/user_data.json").data
+      .nombre,
+    "Nombre M1",
+  );
+  assert.equal(
+    JSON.stringify([...files].filter(([k]) => !k.endsWith("user_data.json"))),
+    businessBeforeProfile,
+  );
+  await profileDevice.close();
   const second = await context.newPage();
   await second.goto(origin);
   await visible(second.getByRole("heading", { name: "Tu repertorio" }));

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { client, type Snapshot } from "./application/client.ts";
 import { db, type LocalEntry } from "./infrastructure/local.ts";
@@ -15,6 +15,10 @@ import {
 import { tabata } from "./domain/planner.ts";
 import { planCoverage } from "./domain/coverage.ts";
 import { exportPlan } from "./infrastructure/pdf.ts";
+import {
+  profileDraft,
+  refreshProfileDraft,
+} from "./application/profile-draft.ts";
 import "./app.css";
 const format = (seconds: number) =>
   `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
@@ -1132,6 +1136,20 @@ function ProfileView({
   trainer: boolean;
   run: (a: () => Promise<unknown>) => Promise<void>;
 }) {
+  const [draft, setDraft] = useState(() => profileDraft(profile));
+  const previous = useRef(profileDraft(profile));
+  useEffect(() => {
+    const incoming = profileDraft(profile);
+    const baseline = previous.current;
+    setDraft((current) => refreshProfileDraft(current, baseline, incoming));
+    previous.current = incoming;
+  }, [profile]);
+  const field = (name: keyof typeof draft) => ({
+    value: draft[name],
+    onChange: (
+      event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
+    ) => setDraft((current) => ({ ...current, [name]: event.target.value })),
+  });
   return (
     <section className="card">
       <h2>Mi perfil</h2>
@@ -1157,32 +1175,27 @@ function ProfileView({
         <div className="fields">
           <label>
             Nombre
-            <input name="nombre" defaultValue={profile.nombre} />
+            <input name="nombre" {...field("nombre")} />
           </label>
           <label>
             Apellidos
-            <input name="apellidos" defaultValue={profile.apellidos} />
+            <input name="apellidos" {...field("apellidos")} />
           </label>
           <label>
             Fecha de nacimiento
-            <input
-              name="fecha"
-              type="date"
-              defaultValue={profile.fecha_nacimiento || ""}
-            />
+            <input name="fecha" type="date" {...field("fecha")} />
           </label>
           <label>
             Peso (kg)
-            <input
-              name="peso"
-              type="number"
-              step="0.1"
-              defaultValue={profile.peso ?? ""}
-            />
+            <input name="peso" type="number" step="0.1" {...field("peso")} />
           </label>
           <label>
             Cinturón
-            <select name="cinturon" defaultValue={profile.cinturon}>
+            <select
+              name="cinturon"
+              aria-label="Cinturón"
+              {...field("cinturon")}
+            >
               {["Blanco", "Azul", "Morado", "Marrón", "Negro"].map((b) => (
                 <option key={b}>{b}</option>
               ))}
@@ -1797,15 +1810,13 @@ function CompetitionForm({
           ))}
         </fieldset>
         <fieldset>
-          <legend>Asignar alumnos</legend>
-          {students
-            .filter((s) => s.profile.perfil === "alumno")
-            .map((s) => (
-              <label className="check" key={s.profile.mail}>
-                <input name="student" type="checkbox" value={s.profile.mail} />
-                {s.profile.nombre || s.profile.mail}
-              </label>
-            ))}
+          <legend>Participantes (alumnos y entrenadores)</legend>
+          {students.map((s) => (
+            <label className="check" key={s.profile.mail}>
+              <input name="student" type="checkbox" value={s.profile.mail} />
+              {s.profile.nombre || s.profile.mail} · {s.profile.perfil}
+            </label>
+          ))}
         </fieldset>
         <button>Crear competición con configuración fija</button>
       </form>

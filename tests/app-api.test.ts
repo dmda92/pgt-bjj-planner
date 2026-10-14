@@ -582,3 +582,27 @@ test("Guardado sin cambios confirma SHA sin crear otro commit", async () => {
   }
   f.reads.clear();const known={profile:snap.profile.sha,techniques:snap.techniques.sha,comments:snap.comments.sha,index:snap.index.sha};const incremental=await (await f.call(path+'snapshot?known='+encodeURIComponent(JSON.stringify(known)),'GET',undefined,auth.token)).json() as any;assert.equal(incremental.techniques.unchanged,true);assert.equal(f.reads.get('PGT/users_data/same@example.com/tecnics.json')||0,0);assert.equal(f.reads.get('PGT/users_data/same@example.com/trainer_comments.json')||0,0);
 });
+
+test("Entrenador puede participar, recibir su propio plan y ser desasignado sin perderlo", async () => {
+  const f = fixture();
+  const mail = "competing-trainer@example.com";
+  await f.call("/api/app/register", "POST", { mail, password: "synthetic-test-password", confirm: "synthetic-test-password", nombre: "Coach", apellidos: "" });
+  assert.equal((await f.call("/api/app/bootstrap", "POST", { mail }, "admin-key")).status, 200);
+  const { token } = await (await f.call("/api/app/login", "POST", { mail, password: "synthetic-test-password" })).json() as any;
+  const competition = { fecha_comienzo: "2026-10-13", fecha_torneo: "2026-10-23", dias_de_entrenamiento: [2,4], ejercicios_por_sesion: 5, tiempo_por_tecnica_segundos: 180, descanso_entre_ciclos_segundos: 10, descanso_entre_tecnicas_segundos: 20, alumnos: [mail] };
+  assert.equal((await f.call("/api/app/competition", "POST", { competition, sha: null }, token)).status, 200);
+  const path = `/api/app/users/${encodeURIComponent(mail)}/snapshot`;
+  const snapshot = await (await f.call(path, "GET", undefined, token)).json() as any;
+  assert.equal(snapshot.profile.data.perfil, "entrenador");
+  assert.equal(snapshot.plans.length, 1);
+  assert.equal(snapshot.plans[0].data.mail, mail);
+  assert.ok(snapshot.plans[0].data.sessions.every((s: any) => s.exercises.length === 5));
+  const catalog = await (await f.call("/api/app/catalog", "GET", undefined, token)).json() as any;
+  assert.equal((await f.call("/api/app/assignment", "POST", { planId: catalog.data.plans[0].planId, alumnos: [], sha: catalog.sha }, token)).status, 200);
+  const detached = await (await f.call(path, "GET", undefined, token)).json() as any;
+  assert.deepEqual(detached.index.data.planIds, []);
+  assert.deepEqual(detached.plans[0].data, snapshot.plans[0].data);
+  const latest = await (await f.call("/api/app/catalog", "GET", undefined, token)).json() as any;
+  assert.equal((await f.call("/api/app/assignment", "POST", { planId: latest.data.plans[0].planId, alumnos: [mail], sha: latest.sha }, token)).status, 200);
+  assert.equal((await (await f.call(path, "GET", undefined, token)).json() as any).index.data.planIds.length, 1);
+});
