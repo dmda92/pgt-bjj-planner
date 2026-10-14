@@ -159,7 +159,7 @@ async function sync(p = page) {
   await p.getByRole("button", { name: "Sincronizar", exact: true }).click();
   await p
     .getByRole("status")
-    .filter({ hasText: /^Sincronizado$/ })
+    .filter({ hasText: /^(Sincronizado|Cambios en el perfil sin guardar)$/ })
     .waitFor({ timeout: 15000 });
 }
 try {
@@ -214,6 +214,7 @@ try {
     .fill("synthetic-browser-password");
   await other.getByRole("button", { name: "Entrar", exact: true }).click();
   await visible(other.getByRole("heading", { name: "Tu repertorio" }));
+  assert.equal(await page.locator('.sync-success').count(),1);
   await context.setOffline(true);
   await page
     .getByLabel("Descripción de técnica o enlace de vídeo")
@@ -290,6 +291,8 @@ try {
         };
       }),
   );
+  assert.equal(await page.locator('.sync-success').count(),0);
+  assert.match(await page.locator('.sync [role="status"]').innerText(),/pendientes|Sin conexión/);
   await page.reload();
   await visible(page.getByRole("heading", { name: "Tu repertorio" }));
   assert.equal(
@@ -430,6 +433,11 @@ try {
     "36",
   );
   await page.locator(".student-detail details summary").first().click();
+  const readonlyDescription=page.getByLabel('Descripción del alumno',{exact:true}).first();
+  assert.equal(await readonlyDescription.evaluate(el=>el.readOnly),true);
+  assert.equal(await readonlyDescription.inputValue(),'Edición offline');
+  await page.locator('.student-detail').screenshot({path:'.browser-artifacts/student-readonly-description.png'});
+
   await page
     .getByLabel("Comentario", { exact: true })
     .first()
@@ -495,10 +503,22 @@ try {
   await page
     .locator('input[name=student][value="browser-trainer@example.com"]')
     .check();
+  let releaseCompetition;const competitionGate=new Promise(resolve=>{releaseCompetition=resolve;});
+  const competitionRoute='**/api/app/competition';
+  const delayedCompetition=async route=>{await competitionGate;await route.continue();};
+  await page.route(competitionRoute,delayedCompetition);
   await page
-    .getByRole("button", { name: "Crear competición con configuración fija" })
+    .locator(".competition-create")
+    .getByRole("button", { name: "Crear competición", exact: true })
     .click();
+  await visible(page.getByRole('status',{name:'Creando competición'}));
+  await page.locator('.competition-create').screenshot({path:'.browser-artifacts/competition-loading.png'});
+  assert.equal(await page.locator('.competition-create').getByRole('button',{name:'Crear competición',exact:true}).isDisabled(),true);
+  releaseCompetition();
   await visible(page.getByRole("heading", { name: "Torneo · 2026-10-23" }));
+  await page.getByRole('status',{name:'Creando competición'}).waitFor({state:'hidden'});
+  await page.unroute(competitionRoute,delayedCompetition);
+
   assert.deepEqual(
     await page.locator(".dashboard-overview dd").allTextContents(),
     ["1", "1", "2"],

@@ -62,3 +62,7 @@ Panel derecho con botones Técnicas, Planes y Administración. La ficha de ident
 ### Fichas locales y detalle de planes
 
 La ficha guardada se muestra inmediatamente, con indicador discreto «Actualizando en segundo plano» durante la comprobación remota. La falta de copia usa el spinner del panel y no deshabilita toda la interfaz. Planes muestra primero un selector con fechas de competición y carga solo el plan elegido. Métricas del repertorio memoizadas. Mantener selección, secciones, permisos y textos completos.
+
+### Feedback de acciones y lectura del repertorio
+
+Verde de éxito #397354, solo en texto «Sincronizado» con peso 600: sin fondo llamativo. Pendientes, offline, errores, bloqueos y borradores sin guardar conservan estados distintos del éxito. Spinner de 20 px junto a «Crear competición», con texto accesible mientras se procesa; respetar movimiento reducido. Descripción del alumno en caja textarea readOnly con fondo canvas, tamaño táctil y texto seleccionable.

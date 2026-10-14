@@ -1,3 +1,4 @@
+import {syncPresentation} from "./application/sync-presentation.ts";
 import type {TrainerView,TrainerSection} from "./application/trainer-cache.ts";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -55,6 +56,7 @@ function App() {
     [tab, setTab] = useState("techniques"),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
+    [profileUnsaved,setProfileUnsaved]=useState(false),
     [search, setSearch] = useState(""),
     [trainerSection, setTrainerSection] = useState("team"),
     [studentSearch, setStudentSearch] = useState(""),
@@ -193,6 +195,7 @@ function App() {
     setStudents(data.users);
     setCatalog(await client.request("/api/app/catalog"));
   }
+  const syncState=syncPresentation(client.status,entries.some(e=>e.dirty)||pendingTechniqueSaves.current>0,entries.some(e=>e.key.startsWith("plan:")&&Boolean((e.data as TrainingPlan).structuralUpdateError)),profileUnsaved);
   return (
     <div className={`shell ${active ? "signed-in" : "signed-out"}`}>
       <a className="skip-link" href="#main-content">
@@ -302,7 +305,7 @@ function App() {
                   </p>
                 </div>
                 <div className="sync">
-                  <span role="status">{client.status}</span>
+                  <span role="status" className={syncState.success ? "sync-success" : undefined}>{syncState.text}</span>
                   <button
                     disabled={busy}
                     onClick={() => void run(() => client.sync())}
@@ -654,6 +657,7 @@ function App() {
                   profile={profile}
                   sha={entries.find((e) => e.key === "profile")?.sha || null}
                   trainer={Boolean(trainer)}
+                  onDirty={setProfileUnsaved}
                   run={run}
                 />
               )}
@@ -1158,10 +1162,12 @@ function ProfileView({
   sha,
   trainer,
   run,
+  onDirty,
 }: {
   profile: Profile;
   sha: string | null;
   trainer: boolean;
+  onDirty:(dirty:boolean)=>void;
   run: (a: () => Promise<unknown>) => Promise<void>;
 }) {
   const [draft, setDraft] = useState(() => profileDraft(profile));
@@ -1172,6 +1178,11 @@ function ProfileView({
     setDraft((current) => refreshProfileDraft(current, baseline, incoming));
     previous.current = incoming;
   }, [profile]);
+  useEffect(()=>{
+    const saved=profileDraft(profile);
+    onDirty((Object.keys(saved) as (keyof typeof draft)[]).some(key=>draft[key]!==saved[key]&&!(key==="peso"&&draft[key]!==""&&saved[key]!==""&&Number(draft[key])===Number(saved[key]))));
+  },[draft,profile,onDirty]);
+  useEffect(()=>()=>onDirty(false),[onDirty]);
   const field = (name: keyof typeof draft) => ({
     value: draft[name],
     onChange: (
@@ -1430,7 +1441,7 @@ function TrainerStudent({
             {p.tecnicas.map((tech) => (
               <div key={tech.id} className="exercise">
                 <strong>{tech.tipo}</strong>
-                <p>{tech.descripcion_del_alumno || "Sin descripción"}</p>
+                <textarea className="student-description" aria-label="Descripción del alumno" readOnly value={tech.descripcion_del_alumno} placeholder="Sin descripción" rows={3} />
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -1746,12 +1757,14 @@ function CompetitionForm({
   run: (a: () => Promise<unknown>) => Promise<void>;
   reload: () => Promise<void>;
 }) {
+  const [creating,setCreating]=useState(false);
   return (
     <section className="card competition-create" id="competition-create">
       <h3>Crear competición</h3>
       <form
         onSubmit={(e) => {
           e.preventDefault();
+          if(creating)return;
           const f = new FormData(e.currentTarget);
           const c: Competition = {
             planId: "",
@@ -1764,12 +1777,12 @@ function CompetitionForm({
             descanso_entre_ciclos_segundos: Number(f.get("change")),
             descanso_entre_tecnicas_segundos: Number(f.get("rest")),
           };
+          setCreating(true);
           void run(async () => {
-            await client.request("/api/app/competition", "POST", {
-              competition: c,
-              sha,
-            });
-            await reload();
+            try {
+              await client.request("/api/app/competition", "POST", {competition:c,sha});
+              await reload();
+            } finally {setCreating(false);}
           });
         }}
       >
@@ -1855,7 +1868,10 @@ function CompetitionForm({
             </label>
           ))}
         </fieldset>
-        <button>Crear competición con configuración fija</button>
+        <div className="competition-submit">
+          <button disabled={creating}>Crear competición</button>
+          {creating && <span role="status" aria-label="Creando competición" className="competition-loading"><span className="loading-spinner" aria-hidden="true" /><span>Creando competición…</span></span>}
+        </div>
       </form>
     </section>
   );

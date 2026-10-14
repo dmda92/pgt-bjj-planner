@@ -1396,3 +1396,10 @@ footer {
 .loading-spinner { display: inline-block; width: 36px; height: 36px; border: 3px solid #dce5ec; border-top-color: #365f7c; border-radius: 50%; animation: student-spin .8s linear infinite; }
 @keyframes student-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .loading-spinner { animation: none; } }
+
+.sync .sync-success { color: #397354; font-weight: 600; }
+.competition-submit { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.competition-loading { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }
+.competition-loading .loading-spinner { width: 20px; height: 20px; border-width: 2px; }
+.student-description { width: 100%; margin: 10px 0 16px; background: var(--canvas); color: var(--ink); resize: vertical; }
+.student-description[readonly] { cursor: text; }

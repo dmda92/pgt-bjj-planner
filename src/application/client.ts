@@ -363,7 +363,7 @@ export class Client implements AuthenticationProvider, SyncService {
         }
       }
     });
-    this.status = "Cambios guardados en este dispositivo";
+    this.status = "Cambios guardados en este dispositivo · pendientes de sincronizar";
     this.onChange();
   }
   async sync() {
@@ -593,18 +593,20 @@ export class Client implements AuthenticationProvider, SyncService {
       choice === "remote"
         ? resolveRemote(entry.data, r.data, entry.conflicts)
         : entry.data;
+    const dirty=JSON.stringify(data)!==JSON.stringify(r.data);
     await repository.save(
       {
         ...entry,
         data,
         base: r.data,
         sha: r.sha,
-        dirty: JSON.stringify(data) !== JSON.stringify(r.data),
+        dirty,
         conflicts: [],
         remote: undefined,
       },
       identity.mail,
     );
+    if(dirty)this.status = "Datos pendientes de sincronizar";
     this.onChange();
   }
   async logout(revoked = false) {
