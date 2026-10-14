@@ -326,7 +326,8 @@ try {
     "",
   );
   await page.getByRole("button", { name: "Entrenador", exact: true }).click();
-  await visible(page.getByRole("heading", { name: "Crear competición" }));
+  await visible(page.getByRole("heading", { name: "Tu equipo", exact: true }));
+  await visible(page.getByRole("button", { name: /Student Fixture/ }));
   await page.evaluate(() => document.fonts.ready);
   assert.equal(
     await page
@@ -407,9 +408,11 @@ try {
       false,
       `Dashboard overflows at ${width}px`,
     );
+    await page.evaluate(() => scrollTo(0, 0));
+    await page.waitForTimeout(180);
     await page.screenshot({
       path: `.browser-artifacts/trainer-${width}.png`,
-      fullPage: true,
+      fullPage: false,
     });
   }
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -423,6 +426,10 @@ try {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.getByLabel("Buscar alumnos", { exact: true }).fill("");
 
+  await page
+    .getByRole("button", { name: "Competiciones", exact: true })
+    .click();
+  await visible(page.getByRole("heading", { name: "Crear competición" }));
   await page.getByLabel("Fecha inicial", { exact: true }).fill("2026-10-13");
   await page.getByLabel("Fecha del torneo", { exact: true }).fill("2026-10-23");
   await page.locator("input[name=student]").check();
@@ -438,10 +445,69 @@ try {
     path: ".browser-artifacts/trainer-competition.png",
     fullPage: true,
   });
+  await page
+    .getByRole("button", { name: "Cobertura por fecha", exact: true })
+    .click();
+  await page
+    .getByLabel("Alumno para cobertura")
+    .selectOption("browser-student@example.com");
+  await visible(page.getByText(/Este alumno no tiene planes generados/));
+  // Individual snapshots are created by the pupil's first sync, not by a trainer read.
+  const pupilDevice = await browser.newContext();
+  const pupil = await pupilDevice.newPage();
+  await pupil.goto(origin);
+  await pupil
+    .getByLabel("Correo", { exact: true })
+    .fill("browser-student@example.com");
+  await pupil
+    .getByLabel("Contraseña", { exact: true })
+    .fill("synthetic-browser-password");
+  await pupil.getByRole("button", { name: "Entrar", exact: true }).click();
+  await visible(pupil.getByRole("heading", { name: "Tu repertorio" }));
+  await pupilDevice.close();
+  await page.getByLabel("Alumno para cobertura").selectOption("");
+  await page
+    .getByLabel("Alumno para cobertura")
+    .selectOption("browser-student@example.com");
+  await visible(page.locator(".coverage-overview"));
+  await page.getByLabel("Fecha de referencia").fill("2026-10-13");
+  assert.equal(
+    await page.locator(".coverage-overview dd").nth(1).innerText(),
+    "1",
+  );
+  await page.getByLabel("Incluir entrenamientos de ese día").uncheck();
+  assert.equal(
+    await page.locator(".coverage-overview dd").nth(1).innerText(),
+    "0",
+  );
+  await page.getByLabel("Incluir entrenamientos de ese día").check();
+  for (const width of [360, 390, 768, 1280, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    assert.equal(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth > innerWidth,
+      ),
+      false,
+      `Coverage overflows at ${width}px`,
+    );
+    await page.evaluate(() => scrollTo(0, 0));
+    await page.waitForTimeout(180);
+    await page.screenshot({
+      path: `.browser-artifacts/coverage-${width}.png`,
+      fullPage: false,
+    });
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.getByRole("button", { name: "Salir", exact: true }).click();
   await visible(page.getByRole("button", { name: "Entrar", exact: true }));
   await login("browser-student@example.com");
   await visible(page.getByRole("heading", { name: "Tu repertorio" }));
+  assert.equal(
+    await page
+      .getByRole("button", { name: "Cobertura por fecha", exact: true })
+      .count(),
+    0,
+  );
   await page.getByRole("button", { name: /Mis planes/ }).click();
   await visible(page.getByRole("heading", { name: "Torneo · 2026-10-23" }));
   assert.match(await page.locator(".timer").innerText(), /32:10/);

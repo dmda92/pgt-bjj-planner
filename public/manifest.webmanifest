@@ -3,8 +3,8 @@
   "short_name": "PGT",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f1f4f2",
-  "theme_color": "#123f30",
+  "background_color": "#f6f7f9",
+  "theme_color": "#202f3b",
   "icons": [
     {
       "src": "/icon-192.png",

@@ -12,7 +12,8 @@ import {
   type Competition,
   type Catalog,
 } from "./domain/models.ts";
-import { tabata, coverage } from "./domain/planner.ts";
+import { tabata } from "./domain/planner.ts";
+import { planCoverage } from "./domain/coverage.ts";
 import { exportPlan } from "./infrastructure/pdf.ts";
 import "./app.css";
 const format = (seconds: number) =>
@@ -45,6 +46,7 @@ function App() {
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [search, setSearch] = useState(""),
+    [trainerSection, setTrainerSection] = useState("team"),
     [studentSearch, setStudentSearch] = useState(""),
     [students, setStudents] = useState<any[]>([]),
     [student, setStudent] = useState<Snapshot | null>(null),
@@ -88,6 +90,7 @@ function App() {
       setTab("techniques");
       setSearch("");
       setStudentSearch("");
+      setTrainerSection("team");
     }
   }, [version, Boolean(active)]);
   useEffect(() => {
@@ -144,7 +147,11 @@ function App() {
       </a>
       <header>
         <a className="brand" href="/">
-          <img src="/logo-pgt.jpg" alt="" width="48" height="48" />
+          <span className="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32">
+              <path d="M3 13h26v7H3z M21 5l6 1-5 25-6-1z" fill="currentColor" />
+            </svg>
+          </span>
           <span className="brand-copy">
             PGT<strong>BJJ Planner</strong>
           </span>
@@ -217,7 +224,7 @@ function App() {
                 </button>
               )}
               <div className="nav-team">
-                <img src="/logo-pgt.jpg" alt="Portugal Gold Team" />
+                <strong>Preparación de competición</strong>
                 <p>Jiu-jitsu de competición</p>
               </div>
             </nav>
@@ -229,7 +236,11 @@ function App() {
                   <h1>
                     {tab === "trainer"
                       ? "Panel del entrenador"
-                      : "Construye tu juego."}
+                      : tab === "plans"
+                        ? "Tu preparación"
+                        : tab === "profile"
+                          ? "Tu perfil"
+                          : "Construye tu juego."}
                   </h1>
                   <p>
                     {tab === "trainer"
@@ -299,148 +310,61 @@ function App() {
                       onChange={(e) => setSearch(e.target.value)}
                     />
                   </section>
-                  {techniques.positions
-                    .filter((p) =>
-                      p.posicion.toLowerCase().includes(search.toLowerCase()),
-                    )
-                    .map((p) => (
-                      <article className="position" key={p.id}>
-                        <div className="position-title">
-                          <div>
-                            <span className="pill">P{p.prioridad}</span>
-                            <input
-                              aria-label="Nombre de posición"
-                              value={p.posicion}
-                              onChange={(e) =>
-                                void saveTech({
-                                  ...techniques,
-                                  positions: techniques.positions.map((v) =>
-                                    v.id === p.id
-                                      ? { ...v, posicion: e.target.value }
-                                      : v,
-                                  ),
-                                })
-                              }
-                            />
-                          </div>
-                          <label className="priority">
-                            Prioridad
-                            <input
-                              type="number"
-                              min="1"
-                              value={p.prioridad}
-                              onChange={(e) =>
-                                void saveTech({
-                                  ...techniques,
-                                  positions: techniques.positions.map((v) =>
-                                    v.id === p.id
-                                      ? {
-                                          ...v,
-                                          prioridad: Number(e.target.value),
-                                        }
-                                      : v,
-                                  ),
-                                })
-                              }
-                            />
-                          </label>
-                        </div>
-                        {p.tecnicas.map((t, i) => (
-                          <div className="technique" key={t.id}>
-                            <span className="number">{i + 1}</span>
+                  <div className="positions-grid">
+                    {techniques.positions
+                      .filter((p) =>
+                        p.posicion.toLowerCase().includes(search.toLowerCase()),
+                      )
+                      .map((p) => (
+                        <article className="position" key={p.id}>
+                          <div className="position-title">
                             <div>
+                              <span className="pill">P{p.prioridad}</span>
                               <input
-                                aria-label="Tipo de técnica"
-                                value={t.tipo}
+                                aria-label="Nombre de posición"
+                                value={p.posicion}
                                 onChange={(e) =>
                                   void saveTech({
                                     ...techniques,
                                     positions: techniques.positions.map((v) =>
                                       v.id === p.id
-                                        ? {
-                                            ...v,
-                                            tecnicas: v.tecnicas.map((x) =>
-                                              x.id === t.id
-                                                ? { ...x, tipo: e.target.value }
-                                                : x,
-                                            ),
-                                          }
+                                        ? { ...v, posicion: e.target.value }
                                         : v,
                                     ),
                                   })
                                 }
                               />
-                              <textarea
-                                aria-label="Descripción de técnica o enlace de vídeo"
-                                placeholder="La técnica que te funciona en combate, o su vídeo…"
-                                value={t.descripcion_del_alumno}
-                                onChange={(e) =>
-                                  void saveTech({
-                                    ...techniques,
-                                    positions: techniques.positions.map((v) =>
-                                      v.id === p.id
-                                        ? {
-                                            ...v,
-                                            tecnicas: v.tecnicas.map((x) =>
-                                              x.id === t.id
-                                                ? {
-                                                    ...x,
-                                                    descripcion_del_alumno:
-                                                      e.target.value,
-                                                  }
-                                                : x,
-                                            ),
-                                          }
-                                        : v,
-                                    ),
-                                  })
-                                }
-                              />
-                              {comments?.comments.find(
-                                (c) => c.techniqueId === t.id,
-                              )?.comment && (
-                                <p className="note">
-                                  Entrenador:{" "}
-                                  {
-                                    comments.comments.find(
-                                      (c) => c.techniqueId === t.id,
-                                    )?.comment
-                                  }
-                                </p>
-                              )}
                             </div>
-                            <div className="mini-actions">
-                              <button
-                                aria-label="Subir técnica"
-                                disabled={!i}
-                                onClick={() =>
+                            <label className="priority">
+                              Prioridad
+                              <input
+                                type="number"
+                                min="1"
+                                value={p.prioridad}
+                                onChange={(e) =>
                                   void saveTech({
                                     ...techniques,
                                     positions: techniques.positions.map((v) =>
                                       v.id === p.id
                                         ? {
                                             ...v,
-                                            tecnicas: move(
-                                              v.tecnicas,
-                                              i,
-                                              i - 1,
-                                            ),
+                                            prioridad: Number(e.target.value),
                                           }
                                         : v,
                                     ),
                                   })
                                 }
-                              >
-                                ↑
-                              </button>
-                              <button
-                                aria-label="Borrar técnica"
-                                onClick={() => {
-                                  if (
-                                    confirm(
-                                      "¿Eliminar esta técnica? Sus planes existentes se conservarán.",
-                                    )
-                                  )
+                              />
+                            </label>
+                          </div>
+                          {p.tecnicas.map((t, i) => (
+                            <div className="technique" key={t.id}>
+                              <span className="number">{i + 1}</span>
+                              <div>
+                                <input
+                                  aria-label="Tipo de técnica"
+                                  value={t.tipo}
+                                  onChange={(e) =>
                                     void saveTech({
                                       ...techniques,
                                       positions: techniques.positions.map(
@@ -448,81 +372,178 @@ function App() {
                                           v.id === p.id
                                             ? {
                                                 ...v,
-                                                tecnicas: v.tecnicas.filter(
-                                                  (x) => x.id !== t.id,
+                                                tecnicas: v.tecnicas.map((x) =>
+                                                  x.id === t.id
+                                                    ? {
+                                                        ...x,
+                                                        tipo: e.target.value,
+                                                      }
+                                                    : x,
                                                 ),
                                               }
                                             : v,
                                       ),
-                                    });
-                                }}
-                              >
-                                ×
-                              </button>
+                                    })
+                                  }
+                                />
+                                <textarea
+                                  aria-label="Descripción de técnica o enlace de vídeo"
+                                  placeholder="La técnica que te funciona en combate, o su vídeo…"
+                                  value={t.descripcion_del_alumno}
+                                  onChange={(e) =>
+                                    void saveTech({
+                                      ...techniques,
+                                      positions: techniques.positions.map(
+                                        (v) =>
+                                          v.id === p.id
+                                            ? {
+                                                ...v,
+                                                tecnicas: v.tecnicas.map((x) =>
+                                                  x.id === t.id
+                                                    ? {
+                                                        ...x,
+                                                        descripcion_del_alumno:
+                                                          e.target.value,
+                                                      }
+                                                    : x,
+                                                ),
+                                              }
+                                            : v,
+                                      ),
+                                    })
+                                  }
+                                />
+                                {comments?.comments.find(
+                                  (c) => c.techniqueId === t.id,
+                                )?.comment && (
+                                  <p className="note">
+                                    Entrenador:{" "}
+                                    {
+                                      comments.comments.find(
+                                        (c) => c.techniqueId === t.id,
+                                      )?.comment
+                                    }
+                                  </p>
+                                )}
+                              </div>
+                              <div className="mini-actions">
+                                <button
+                                  aria-label="Subir técnica"
+                                  disabled={!i}
+                                  onClick={() =>
+                                    void saveTech({
+                                      ...techniques,
+                                      positions: techniques.positions.map(
+                                        (v) =>
+                                          v.id === p.id
+                                            ? {
+                                                ...v,
+                                                tecnicas: move(
+                                                  v.tecnicas,
+                                                  i,
+                                                  i - 1,
+                                                ),
+                                              }
+                                            : v,
+                                      ),
+                                    })
+                                  }
+                                >
+                                  ↑
+                                </button>
+                                <button
+                                  aria-label="Borrar técnica"
+                                  onClick={() => {
+                                    if (
+                                      confirm(
+                                        "¿Eliminar esta técnica? Sus planes existentes se conservarán.",
+                                      )
+                                    )
+                                      void saveTech({
+                                        ...techniques,
+                                        positions: techniques.positions.map(
+                                          (v) =>
+                                            v.id === p.id
+                                              ? {
+                                                  ...v,
+                                                  tecnicas: v.tecnicas.filter(
+                                                    (x) => x.id !== t.id,
+                                                  ),
+                                                }
+                                              : v,
+                                        ),
+                                      });
+                                  }}
+                                >
+                                  ×
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        ))}
-                        <div className="position-footer">
-                          <button
-                            className="secondary"
-                            onClick={() =>
-                              void saveTech({
-                                ...techniques,
-                                positions: techniques.positions.map((v) =>
-                                  v.id === p.id
-                                    ? {
-                                        ...v,
-                                        tecnicas: [
-                                          ...v.tecnicas,
-                                          {
-                                            id: crypto.randomUUID(),
-                                            tipo: "Nueva técnica",
-                                            descripcion_del_alumno: "",
-                                          },
-                                        ],
-                                      }
-                                    : v,
-                                ),
-                              })
-                            }
-                          >
-                            Añadir técnica
-                          </button>
-                          <button
-                            className="subtle"
-                            disabled={techniques.positions.indexOf(p) === 0}
-                            onClick={() =>
-                              void saveTech({
-                                ...techniques,
-                                positions: move(
-                                  techniques.positions,
-                                  techniques.positions.indexOf(p),
-                                  techniques.positions.indexOf(p) - 1,
-                                ),
-                              })
-                            }
-                          >
-                            Subir posición
-                          </button>
-                          <button
-                            className="danger"
-                            onClick={() => {
-                              if (
-                                confirm("¿Eliminar la posición y sus técnicas?")
-                              )
+                          ))}
+                          <div className="position-footer">
+                            <button
+                              className="secondary"
+                              onClick={() =>
                                 void saveTech({
                                   ...techniques,
-                                  positions: techniques.positions.filter(
-                                    (v) => v.id !== p.id,
+                                  positions: techniques.positions.map((v) =>
+                                    v.id === p.id
+                                      ? {
+                                          ...v,
+                                          tecnicas: [
+                                            ...v.tecnicas,
+                                            {
+                                              id: crypto.randomUUID(),
+                                              tipo: "Nueva técnica",
+                                              descripcion_del_alumno: "",
+                                            },
+                                          ],
+                                        }
+                                      : v,
                                   ),
-                                });
-                            }}
-                          >
-                            Eliminar posición
-                          </button>
-                        </div>
-                      </article>
-                    ))}
+                                })
+                              }
+                            >
+                              Añadir técnica
+                            </button>
+                            <button
+                              className="subtle"
+                              disabled={techniques.positions.indexOf(p) === 0}
+                              onClick={() =>
+                                void saveTech({
+                                  ...techniques,
+                                  positions: move(
+                                    techniques.positions,
+                                    techniques.positions.indexOf(p),
+                                    techniques.positions.indexOf(p) - 1,
+                                  ),
+                                })
+                              }
+                            >
+                              Subir posición
+                            </button>
+                            <button
+                              className="danger"
+                              onClick={() => {
+                                if (
+                                  confirm(
+                                    "¿Eliminar la posición y sus técnicas?",
+                                  )
+                                )
+                                  void saveTech({
+                                    ...techniques,
+                                    positions: techniques.positions.filter(
+                                      (v) => v.id !== p.id,
+                                    ),
+                                  });
+                              }}
+                            >
+                              Eliminar posición
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                  </div>
                   <button
                     onClick={() =>
                       void saveTech({
@@ -585,171 +606,218 @@ function App() {
                 >
                   <div className="dashboard-heading">
                     <div>
-                      <h2>Alumnos y competiciones</h2>
+                      <h2>
+                        {trainerSection === "team"
+                          ? "Tu equipo"
+                          : trainerSection === "competitions"
+                            ? "Competiciones"
+                            : "Cobertura por fecha"}
+                      </h2>
                       <p>
                         Consulta el repertorio de cada alumno y organiza sus
                         próximos torneos.
                       </p>
                     </div>
-                    <a className="action-link" href="#competition-create">
+                    <a
+                      className="action-link"
+                      href="#competition-create"
+                      onClick={() => setTrainerSection("competitions")}
+                    >
                       Crear competición
                     </a>
                   </div>
-                  <dl
-                    className="dashboard-overview"
-                    aria-label="Resumen del equipo"
+                  <div
+                    className="trainer-sections"
+                    role="group"
+                    aria-label="Áreas del entrenador"
                   >
-                    <div>
-                      <dt>Alumnos registrados</dt>
-                      <dd>
-                        {catalog
-                          ? students.filter(
-                              (s) => s.profile.perfil === "alumno",
-                            ).length
-                          : "—"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Competiciones creadas</dt>
-                      <dd>{catalog ? catalog.data.plans.length : "—"}</dd>
-                    </div>
-                    <div>
-                      <dt>Asignaciones a competición</dt>
-                      <dd>
-                        {catalog
-                          ? catalog.data.plans.reduce(
-                              (n, c) => n + c.alumnos.length,
-                              0,
-                            )
-                          : "—"}
-                      </dd>
-                    </div>
-                  </dl>
-                  <div className="team-workspace">
-                    <section className="roster" aria-label="Listado de alumnos">
-                      <div className="roster-heading">
-                        <h3>Equipo</h3>
-                        <button
-                          className="subtle"
-                          disabled={busy}
-                          onClick={() => void run(trainers)}
-                        >
-                          Actualizar
-                        </button>
+                    {[
+                      ["team", "Equipo"],
+                      ["competitions", "Competiciones"],
+                      ["coverage", "Cobertura por fecha"],
+                    ].map(([key, title]) => (
+                      <button
+                        key={key}
+                        className={
+                          trainerSection === key ? "selected" : "secondary"
+                        }
+                        aria-pressed={trainerSection === key}
+                        onClick={() => setTrainerSection(key)}
+                      >
+                        {title}
+                      </button>
+                    ))}
+                  </div>
+                  {trainerSection !== "coverage" && (
+                    <dl
+                      className="dashboard-overview"
+                      aria-label="Resumen del equipo"
+                    >
+                      <div>
+                        <dt>Alumnos registrados</dt>
+                        <dd>
+                          {catalog
+                            ? students.filter(
+                                (s) => s.profile.perfil === "alumno",
+                              ).length
+                            : "—"}
+                        </dd>
                       </div>
-                      <label className="search-label">
-                        Buscar alumnos
-                        <input
-                          type="search"
-                          placeholder="Nombre o correo…"
-                          value={studentSearch}
-                          onChange={(e) => setStudentSearch(e.target.value)}
-                        />
-                      </label>
-                      <div className="student-grid">
-                        {students
-                          .filter((s) =>
-                            (
-                              s.profile.mail +
-                              " " +
-                              s.profile.nombre +
-                              " " +
-                              s.profile.apellidos
+                      <div>
+                        <dt>Competiciones creadas</dt>
+                        <dd>{catalog ? catalog.data.plans.length : "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>Asignaciones a competición</dt>
+                        <dd>
+                          {catalog
+                            ? catalog.data.plans.reduce(
+                                (n, c) => n + c.alumnos.length,
+                                0,
+                              )
+                            : "—"}
+                        </dd>
+                      </div>
+                    </dl>
+                  )}
+                  {trainerSection === "team" && (
+                    <div className="team-workspace">
+                      <section
+                        className="roster"
+                        aria-label="Listado de alumnos"
+                      >
+                        <div className="roster-heading">
+                          <h3>Equipo</h3>
+                          <button
+                            className="subtle"
+                            disabled={busy}
+                            onClick={() => void run(trainers)}
+                          >
+                            Actualizar
+                          </button>
+                        </div>
+                        <label className="search-label">
+                          Buscar alumnos
+                          <input
+                            type="search"
+                            placeholder="Nombre o correo…"
+                            value={studentSearch}
+                            onChange={(e) => setStudentSearch(e.target.value)}
+                          />
+                        </label>
+                        <div className="student-grid">
+                          {students
+                            .filter((s) =>
+                              (
+                                s.profile.mail +
+                                " " +
+                                s.profile.nombre +
+                                " " +
+                                s.profile.apellidos
+                              )
+                                .toLowerCase()
+                                .includes(studentSearch.toLowerCase()),
                             )
+                            .map((s) => (
+                              <button
+                                key={s.profile.mail}
+                                className={`student-card ${student?.profile.data.mail === s.profile.mail ? "student-selected" : ""}`}
+                                aria-pressed={
+                                  student?.profile.data.mail === s.profile.mail
+                                }
+                                onClick={() =>
+                                  void run(async () =>
+                                    setStudent(
+                                      await client.request(
+                                        `/api/app/users/${encodeURIComponent(s.profile.mail)}/snapshot`,
+                                      ),
+                                    ),
+                                  )
+                                }
+                              >
+                                <span
+                                  className="student-avatar"
+                                  aria-hidden="true"
+                                >
+                                  {(s.profile.nombre || s.profile.mail)
+                                    .slice(0, 1)
+                                    .toUpperCase()}
+                                </span>
+                                <span className="student-info">
+                                  <strong>
+                                    {s.profile.nombre
+                                      ? `${s.profile.nombre} ${s.profile.apellidos || ""}`
+                                      : s.profile.mail}
+                                  </strong>
+                                  <span>
+                                    {s.profile.cinturon ||
+                                      "Sin cinturón indicado"}{" "}
+                                    · {s.profile.perfil}
+                                  </span>
+                                </span>
+                              </button>
+                            ))}
+                        </div>
+                        {catalog &&
+                          !students.some((s) =>
+                            `${s.profile.mail} ${s.profile.nombre} ${s.profile.apellidos}`
                               .toLowerCase()
                               .includes(studentSearch.toLowerCase()),
-                          )
-                          .map((s) => (
-                            <button
-                              key={s.profile.mail}
-                              className={`student-card ${student?.profile.data.mail === s.profile.mail ? "student-selected" : ""}`}
-                              aria-pressed={
-                                student?.profile.data.mail === s.profile.mail
-                              }
-                              onClick={() =>
-                                void run(async () =>
-                                  setStudent(
-                                    await client.request(
-                                      `/api/app/users/${encodeURIComponent(s.profile.mail)}/snapshot`,
-                                    ),
-                                  ),
-                                )
-                              }
-                            >
-                              <span
-                                className="student-avatar"
-                                aria-hidden="true"
-                              >
-                                {(s.profile.nombre || s.profile.mail)
-                                  .slice(0, 1)
-                                  .toUpperCase()}
-                              </span>
-                              <span className="student-info">
-                                <strong>
-                                  {s.profile.nombre
-                                    ? `${s.profile.nombre} ${s.profile.apellidos || ""}`
-                                    : s.profile.mail}
-                                </strong>
-                                <span>
-                                  {s.profile.cinturon ||
-                                    "Sin cinturón indicado"}{" "}
-                                  · {s.profile.perfil}
-                                </span>
-                              </span>
-                            </button>
-                          ))}
-                      </div>
-                      {catalog &&
-                        !students.some((s) =>
-                          `${s.profile.mail} ${s.profile.nombre} ${s.profile.apellidos}`
-                            .toLowerCase()
-                            .includes(studentSearch.toLowerCase()),
-                        ) && (
+                          ) && (
+                            <p className="roster-empty">
+                              {studentSearch
+                                ? "No hay coincidencias. Prueba con otro nombre o correo."
+                                : "Todavía no hay usuarios registrados."}
+                            </p>
+                          )}
+                        {!catalog && (
                           <p className="roster-empty">
-                            {studentSearch
-                              ? "No hay coincidencias. Prueba con otro nombre o correo."
-                              : "Todavía no hay usuarios registrados."}
+                            {busy
+                              ? "Cargando equipo…"
+                              : "Pulsa Actualizar para cargar el equipo."}
                           </p>
                         )}
-                      {!catalog && (
-                        <p className="roster-empty">
-                          {busy
-                            ? "Cargando equipo…"
-                            : "Pulsa Actualizar para cargar el equipo."}
-                        </p>
-                      )}
-                    </section>
-                    <div className="student-workspace">
-                      {!student && (
-                        <section className="student-placeholder">
-                          <SectionIcon name="techniques" />
-                          <h3>Trabaja el juego de cada alumno.</h3>
-                          <p>
-                            Selecciona a alguien del equipo para consultar sus
-                            técnicas, escribir comentarios y revisar sus planes.
-                          </p>
-                          <p className="placeholder-detail">
-                            Las descripciones son del alumno. Tus comentarios se
-                            guardan por separado.
-                          </p>
-                        </section>
-                      )}
-                      {student && (
-                        <TrainerStudent
-                          snapshot={student}
-                          run={run}
-                          reload={async () =>
-                            setStudent(
-                              await client.request(
-                                `/api/app/users/${encodeURIComponent(student.profile.data.mail)}/snapshot`,
-                              ),
-                            )
-                          }
-                        />
-                      )}
+                      </section>
+                      <div className="student-workspace">
+                        {!student && (
+                          <section className="student-placeholder">
+                            <SectionIcon name="techniques" />
+                            <h3>Trabaja el juego de cada alumno.</h3>
+                            <p>
+                              Selecciona a alguien del equipo para consultar sus
+                              técnicas, escribir comentarios y revisar sus
+                              planes.
+                            </p>
+                            <p className="placeholder-detail">
+                              Las descripciones son del alumno. Tus comentarios
+                              se guardan por separado.
+                            </p>
+                          </section>
+                        )}
+                        {student && (
+                          <TrainerStudent
+                            snapshot={student}
+                            run={run}
+                            reload={async () =>
+                              setStudent(
+                                await client.request(
+                                  `/api/app/users/${encodeURIComponent(student.profile.data.mail)}/snapshot`,
+                                ),
+                              )
+                            }
+                          />
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  {catalog && (
+                  )}
+                  {trainerSection === "coverage" && (
+                    <TrainerCoverage
+                      students={students}
+                      run={run}
+                      busy={busy}
+                    />
+                  )}
+                  {catalog && trainerSection === "competitions" && (
                     <div className="competition-workspace">
                       <CompetitionForm
                         students={students}
@@ -1196,11 +1264,9 @@ function PlanView({
   run: (a: () => Promise<unknown>) => Promise<void>;
   edit?: (p: TrainingPlan) => Promise<void>;
 }) {
-  const [before, setBefore] = useState("");
-  const t = tabata(plan),
-    stats = coverage(plan, before);
+  const t = tabata(plan);
   return (
-    <article className="card">
+    <article className="card plan-card">
       <div className="section-head">
         <h3>Torneo · {plan.fecha_torneo}</h3>
         <button onClick={() => void run(() => exportPlan(plan))}>
@@ -1212,87 +1278,60 @@ function PlanView({
         {t.sets} sets · Entre técnicas {format(t.betweenSets)} · Total{" "}
         {format(t.duration)}
       </p>
-      <label>
-        Cobertura hasta una fecha
-        <input
-          type="date"
-          value={before}
-          onChange={(e) => setBefore(e.target.value)}
-        />
-      </label>
-      <p>
-        {stats.touched.size} posiciones practicadas ·{" "}
-        {Array.from(stats.completed.values()).reduce((a, b) => a + b, 0)}{" "}
-        pasadas completas
-      </p>
-      <details>
-        <summary>Cobertura por posición</summary>
-        {[
-          ...new Map(
-            plan.sessions
-              .flatMap((s) => s.exercises)
-              .map((e) => [e.positionId, e]),
-          ).values(),
-        ].map((e) => (
-          <p key={e.positionId}>
-            {e.posicion}: {stats.completed.get(e.positionId) || 0} pasadas
-            completas
-            {stats.touched.has(e.positionId) &&
-            !stats.completed.has(e.positionId)
-              ? " · pasada parcial"
-              : ""}
-          </p>
+      <div className="plan-sessions">
+        {plan.sessions.map((session, si) => (
+          <details className="session" key={session.date}>
+            <summary>
+              {new Date(session.date + "T12:00:00").toLocaleDateString(
+                "es-ES",
+                {
+                  weekday: "long",
+                  day: "2-digit",
+                  month: "long",
+                },
+              )}{" "}
+              · {session.exercises.length} ejercicios
+            </summary>
+            {session.exercises.map((ex, ei) => (
+              <div className="exercise" key={ei}>
+                <strong>
+                  {ei + 1}. P{ex.prioridad} · {ex.posicion}
+                </strong>
+                <p>{ex.tipo}</p>
+                {edit ? (
+                  <textarea
+                    aria-label="Editar descripción del plan"
+                    value={ex.descripcion_del_alumno}
+                    onChange={(e) =>
+                      void edit({
+                        ...plan,
+                        sessions: plan.sessions.map((s, i) =>
+                          i === si
+                            ? {
+                                ...s,
+                                exercises: s.exercises.map((x, j) =>
+                                  j === ei
+                                    ? {
+                                        ...x,
+                                        descripcion_del_alumno: e.target.value,
+                                      }
+                                    : x,
+                                ),
+                              }
+                            : s,
+                        ),
+                      })
+                    }
+                  />
+                ) : (
+                  <p>{ex.descripcion_del_alumno}</p>
+                )}
+                {ex.comment && <p className="note">Entrenador: {ex.comment}</p>}
+              </div>
+            ))}
+          </details>
         ))}
-      </details>
-      {plan.sessions.map((session, si) => (
-        <details className="session" key={session.date}>
-          <summary>
-            {new Date(session.date + "T12:00:00").toLocaleDateString("es-ES", {
-              weekday: "long",
-              day: "2-digit",
-              month: "long",
-            })}{" "}
-            · {session.exercises.length} ejercicios
-          </summary>
-          {session.exercises.map((ex, ei) => (
-            <div className="exercise" key={ei}>
-              <strong>
-                {ei + 1}. P{ex.prioridad} · {ex.posicion}
-              </strong>
-              <p>{ex.tipo}</p>
-              {edit ? (
-                <textarea
-                  aria-label="Editar descripción del plan"
-                  value={ex.descripcion_del_alumno}
-                  onChange={(e) =>
-                    void edit({
-                      ...plan,
-                      sessions: plan.sessions.map((s, i) =>
-                        i === si
-                          ? {
-                              ...s,
-                              exercises: s.exercises.map((x, j) =>
-                                j === ei
-                                  ? {
-                                      ...x,
-                                      descripcion_del_alumno: e.target.value,
-                                    }
-                                  : x,
-                              ),
-                            }
-                          : s,
-                      ),
-                    })
-                  }
-                />
-              ) : (
-                <p>{ex.descripcion_del_alumno}</p>
-              )}
-              {ex.comment && <p className="note">Entrenador: {ex.comment}</p>}
-            </div>
-          ))}
-        </details>
-      ))}
+      </div>
     </article>
   );
 }
@@ -1419,6 +1458,230 @@ function TrainerStudent({
       {snapshot.plans.map((r) => (
         <PlanView key={r.data.planId} plan={r.data} run={run} />
       ))}
+    </section>
+  );
+}
+function TrainerCoverage({
+  students,
+  run,
+  busy,
+}: {
+  students: any[];
+  run: (a: () => Promise<unknown>) => Promise<void>;
+  busy: boolean;
+}) {
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [mail, setMail] = useState("");
+  const [planId, setPlanId] = useState("");
+  const [date, setDate] = useState(
+    new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 10),
+  );
+  const [inclusive, setInclusive] = useState(true);
+  const [filter, setFilter] = useState("all");
+  const plan = snapshot?.plans.find((r) => r.data.planId === planId)?.data;
+  const report = plan ? planCoverage(plan, date, inclusive) : null;
+  return (
+    <section
+      className="coverage-area"
+      aria-label="Cobertura del plan por fecha"
+    >
+      <p>
+        Trabajo previsto en la instantánea del plan. No registra asistencia ni
+        cambia la planificación.
+      </p>
+      <div className="card coverage-controls">
+        <label>
+          Alumno para cobertura
+          <select
+            disabled={busy}
+            value={mail}
+            onChange={(e) => {
+              const selected = e.target.value;
+              setMail(selected);
+              setSnapshot(null);
+              setPlanId("");
+              if (selected)
+                void run(async () => {
+                  const data = (await client.request(
+                    `/api/app/users/${encodeURIComponent(selected)}/snapshot`,
+                  )) as Snapshot;
+                  setSnapshot(data);
+                  setPlanId(data.plans[0]?.data.planId || "");
+                });
+            }}
+          >
+            <option value="">Selecciona un alumno</option>
+            {students.map((s) => (
+              <option key={s.profile.mail} value={s.profile.mail}>
+                {s.profile.nombre || s.profile.mail}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Plan para cobertura
+          <select
+            value={planId}
+            disabled={!snapshot?.plans.length}
+            onChange={(e) => setPlanId(e.target.value)}
+          >
+            <option value="">Selecciona un plan</option>
+            {snapshot?.plans.map((r) => (
+              <option key={r.data.planId} value={r.data.planId}>
+                Torneo {r.data.fecha_torneo} · Desde {r.data.fecha_comienzo}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Fecha de referencia
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
+        </label>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={inclusive}
+            onChange={(e) => setInclusive(e.target.checked)}
+          />
+          Incluir entrenamientos de ese día
+        </label>
+      </div>
+      {snapshot && !snapshot.plans.length && (
+        <p className="empty">
+          Este alumno no tiene planes generados. Si ya tiene una competición
+          asignada, debe sincronizar su cuenta para recibir el plan.
+        </p>
+      )}
+      {!mail && (
+        <p className="empty">
+          Selecciona un alumno y su plan para revisar la preparación hasta una
+          fecha.
+        </p>
+      )}
+      {plan && report && (
+        <>
+          <dl className="coverage-overview">
+            <div>
+              <dt>Técnicas diferentes</dt>
+              <dd>
+                {report.unique} <small>/ {report.total}</small>
+              </dd>
+              <p>Del contenido programado en este plan</p>
+            </div>
+            <div>
+              <dt>Sesiones incluidas</dt>
+              <dd>{report.sessions}</dd>
+              <p>{report.exercises} ejercicios con repeticiones</p>
+            </div>
+            <div>
+              <dt>Posiciones completas</dt>
+              <dd>
+                {report.positions.filter((p) => p.complete > 0).length}{" "}
+                <small>/ {report.positions.length}</small>
+              </dd>
+              <p>Al menos una pasada completa</p>
+            </div>
+            <div>
+              <dt>Posiciones sin empezar</dt>
+              <dd>{report.positions.filter((p) => !p.touched).length}</dd>
+              <p>
+                {report.positions.filter((p) => p.partial).length} con alguna
+                pasada parcial
+              </p>
+            </div>
+          </dl>
+          <div className="section-head">
+            <h3>Detalle por posición y técnica</h3>
+            <label>
+              Filtrar cobertura
+              <select
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+              >
+                <option value="all">Todo el plan</option>
+                <option value="pending">Con técnicas pendientes</option>
+                <option value="partial">Con pasadas parciales</option>
+                <option value="untouched">Sin empezar</option>
+              </select>
+            </label>
+          </div>
+          <p className="coverage-scope">
+            La instantánea conserva las técnicas programadas, no el catálogo
+            completo de la fecha de creación. Las técnicas que nunca aparecen en
+            este plan no se incluyen en el denominador. Una pasada se cuenta
+            completa solo cuando todas sus técnicas programadas han aparecido y
+            el plan conserva su marca de finalización.
+          </p>
+          <div
+            className="coverage-table"
+            role="region"
+            aria-label="Detalle de cobertura"
+            tabIndex={0}
+          >
+            <table>
+              <thead>
+                <tr>
+                  <th>Posición</th>
+                  <th>Técnicas · primera fecha · apariciones</th>
+                  <th>Pasadas completas</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.positions
+                  .filter(
+                    (p) =>
+                      filter === "all" ||
+                      (filter === "pending" &&
+                        p.techniques.some((t) => !t.count)) ||
+                      (filter === "partial" && p.partial) ||
+                      (filter === "untouched" && !p.touched),
+                  )
+                  .map((p) => (
+                    <tr key={p.id}>
+                      <th scope="row">
+                        <span className="pill">P{p.priority}</span>
+                        <strong>{p.name}</strong>
+                        <small>
+                          {p.techniques.filter((t) => t.count).length} /{" "}
+                          {p.techniques.length} técnicas diferentes
+                        </small>
+                      </th>
+                      <td>
+                        {p.techniques.map((t) => (
+                          <div className="coverage-technique" key={t.id}>
+                            <span>{t.type}</span>
+                            <small>
+                              {t.first || "Pendiente"} · {t.count} veces
+                            </small>
+                          </div>
+                        ))}
+                      </td>
+                      <td>{p.complete}</td>
+                      <td>
+                        {!p.touched
+                          ? "Sin empezar"
+                          : p.techniques.some((t) => !t.count)
+                            ? "Técnicas pendientes"
+                            : "Todas alcanzadas"}
+                        {p.partial && <small>Pasada parcial</small>}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+          {!report.positions.length && (
+            <p className="empty">Este plan no contiene sesiones.</p>
+          )}
+        </>
+      )}
     </section>
   );
 }
