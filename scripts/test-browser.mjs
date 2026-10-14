@@ -519,6 +519,7 @@ try {
   await page.getByRole('status',{name:'Creando competición'}).waitFor({state:'hidden'});
   await page.unroute(competitionRoute,delayedCompetition);
 
+  await sync(); // Download the trainer participant plan before removing its assignment.
   // Draft selections are immediate; remote changes occur only on explicit save.
   const card=page.locator('.competition-card').first();
   const participant=card.getByRole('checkbox').first();
@@ -538,6 +539,16 @@ try {
   await saveParticipants.waitFor({state:'visible'});
   assert.equal(await participant.isChecked(),false);
   await page.waitForFunction(()=>document.querySelector('.competition-card button')?.disabled);
+  await sync();
+  const localPlanCount=await page.evaluate(async()=>{
+    const request=indexedDB.open('pgt-active-user-v1');
+    const database=await new Promise((resolve,reject)=>{request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});
+    const read=database.transaction('entries','readonly').objectStore('entries').getAll();
+    const entries=await new Promise((resolve,reject)=>{read.onsuccess=()=>resolve(read.result);read.onerror=()=>reject(read.error);});
+    database.close();return entries.filter(entry=>entry.key.startsWith('plan:')).length;
+  });
+  assert.equal(localPlanCount,0,'Desasignación elimina el plan previamente descargado tras sincronizar');
+
   await participant.click();
   assert.equal(await participant.isChecked(),true);
   await saveParticipants.click();

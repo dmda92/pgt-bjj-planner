@@ -572,3 +572,8 @@ Consultar una copia local autorizada por entrenador/alumno/sección y mostrarla 
 ### Guardado explícito de participantes (14/10/2026)
 
 Selección inmediata de participantes por competición, en borrador. Guardar datos habilitado solo con diferencias; guardar envía una única asignación con SHA, conserva borrador ante fallo y confirma desde servidor. Casillas bloqueadas solo durante guardado.
+
+
+## Desasignación con borrado individual — corrección del propietario (14/10/2026)
+
+Sustituye todas las reglas anteriores que conservaban visible el plan desasignado. Al guardar la desasignación, borrar el JSON individual remoto del participante, sin borrar la competición ni planes de otros alumnos. El índice mantiene tombstones por alumno; sincronizar elimina la copia local limpia incluso tras trabajar offline. Reasignar elimina el tombstone y genera un plan nuevo. El borrado explícito incluye sesiones históricas de ese plan; no altera las reglas de protección ante recálculos automáticos. Persistir tombstone antes del borrado para recuperar fallos parciales.

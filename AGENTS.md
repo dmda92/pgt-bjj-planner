@@ -50,3 +50,8 @@ Feedback UI, apartado 20: verde discreto solo para sincronización realmente com
 ### Guardado explícito de participantes (14/10/2026)
 
 Participantes: cambios locales inmediatos en CompetitionCard; persistir solo mediante Guardar datos, deshabilitado sin diferencias. Conservar borrador y SHA base ante fallo/conflicto.
+
+
+## Desasignación con borrado individual — corrección del propietario (14/10/2026)
+
+Sustituye todas las reglas anteriores que conservaban visible el plan desasignado. Al guardar la desasignación, borrar el JSON individual remoto del participante, sin borrar la competición ni planes de otros alumnos. El índice mantiene tombstones por alumno; sincronizar elimina la copia local limpia incluso tras trabajar offline. Reasignar elimina el tombstone y genera un plan nuevo. El borrado explícito incluye sesiones históricas de ese plan; no altera las reglas de protección ante recálculos automáticos. Persistir tombstone antes del borrado para recuperar fallos parciales.

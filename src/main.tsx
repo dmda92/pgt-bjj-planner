@@ -1700,6 +1700,7 @@ function CompetitionCard({competition:c, students, sha, run, reload}: {
     <h3>Torneo · {c.fecha_torneo}</h3>
     <p>Inicio {c.fecha_comienzo} · {c.ejercicios_por_sesion} ejercicios · días {c.dias_de_entrenamiento.join(', ')}</p>
     <p>Configuración fijada al crear la competición.</p>
+    <p>Al guardar, desasignar un participante elimina su plan individual.</p>
     {students.map(s => <label className="check" key={s.profile.mail}>
       <input type="checkbox" checked={selected.includes(s.profile.mail)} disabled={saving}
         onChange={e => {

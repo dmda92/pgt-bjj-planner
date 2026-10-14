@@ -46,6 +46,7 @@ export interface Comments extends Version {
 }
 export interface Index extends Version {
   planIds: string[];
+  deletedPlanIds?: string[];
 }
 export interface Competition {
   planId: string;

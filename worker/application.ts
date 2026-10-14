@@ -199,17 +199,23 @@ export class AppApi {
       const ids = catalog.data.plans
         .filter((p) => p.alumnos.includes(mail))
         .map((p) => p.planId);
-      if (JSON.stringify(current?.data.planIds || []) !== JSON.stringify(ids))
-        await this.cloud.write(
-          path,
-          {
-            ...initialVersion(),
-            revision: (current?.data.revision || 0) + 1,
-            planIds: ids,
-          },
-          current?.sha || null,
-        );
-      for (const id of catalog.data.deletedPlanIds) {
+      const storedPlans = (await this.cloud.list?.(`${root(mail)}/training_plans`)) || [];
+      const removed = [...new Set([
+        ...(current?.data.deletedPlanIds || []),
+        ...(current?.data.planIds || []).filter(id => !ids.includes(id)),
+        ...storedPlans.filter(file => file.type === 'file' && /^plan_[0-9a-f-]{36}\.json$/.test(file.name))
+          .map(file => file.name.slice(5,-5)).filter(id => !ids.includes(id)),
+        ...catalog.data.deletedPlanIds,
+      ])].filter(id => !ids.includes(id));
+      if (JSON.stringify(current?.data.planIds || []) !== JSON.stringify(ids) ||
+          JSON.stringify(current?.data.deletedPlanIds || []) !== JSON.stringify(removed))
+        await this.cloud.write(path, {
+          ...initialVersion(), revision: (current?.data.revision || 0) + 1,
+          planIds: ids, deletedPlanIds: removed,
+        }, current?.sha || null);
+      // Persist per-user tombstones before removing files: offline devices and retries
+      // must still learn about a deletion after the remote file has disappeared.
+      for (const id of removed) {
         const planPath = `${root(mail)}/training_plans/plan_${id}.json`;
         const old = await this.cloud.read(planPath);
         if (old) await this.cloud.remove(planPath, old.sha);
@@ -602,7 +608,7 @@ export class AppApi {
         comments,
         index,
         plans,
-        deletedPlanIds: catalog?.data.deletedPlanIds || [],
+        deletedPlanIds: [...new Set([...(catalog?.data.deletedPlanIds || []), ...((await this.cloud.read<Index>(`${root(mail)}/plans_index.json`))?.data.deletedPlanIds || [])])],
       });
     }
     if (request.method === "PUT" && kind === "profile") {
