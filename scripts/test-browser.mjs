@@ -98,6 +98,7 @@ const server = createServer(async (req, res) => {
         ".jpg": "image/jpeg",
         ".png": "image/png",
         ".svg": "image/svg+xml",
+        ".ttf": "font/ttf",
       }[extname(path)] || "text/html";
     res.writeHead(200, { "Content-Type": mime });
     res.end(body);
@@ -326,6 +327,102 @@ try {
   );
   await page.getByRole("button", { name: "Entrenador", exact: true }).click();
   await visible(page.getByRole("heading", { name: "Crear competición" }));
+  await page.evaluate(() => document.fonts.ready);
+  assert.equal(
+    await page
+      .getByRole("navigation", { name: "Secciones" })
+      .getByRole("button", { name: "Entrenador", exact: true })
+      .getAttribute("aria-current"),
+    "page",
+  );
+  assert.match(
+    await page.locator(".dashboard-overview").innerText(),
+    /Alumnos registrados/,
+  );
+  assert.deepEqual(
+    await page.locator(".dashboard-overview dd").allTextContents(),
+    ["1", "0", "0"],
+  );
+  await page.screenshot({
+    path: ".browser-artifacts/trainer-desktop-empty.png",
+    fullPage: true,
+  });
+  await page
+    .getByLabel("Buscar alumnos", { exact: true })
+    .fill("Sin coincidencia fixture");
+  await visible(
+    page.getByText("No hay coincidencias. Prueba con otro nombre o correo."),
+  );
+  assert.equal(await page.locator(".student-card").count(), 0);
+  await page.getByLabel("Buscar alumnos", { exact: true }).fill("student");
+  await page.getByRole("button", { name: /Student Fixture/ }).click();
+  await visible(
+    page.getByRole("heading", { name: "Student Fixture", exact: true }),
+  );
+  assert.equal(await page.locator(".student-selected").count(), 1);
+  assert.equal(
+    await page
+      .getByRole("progressbar", { name: "Técnicas con descripción" })
+      .getAttribute("value"),
+    "2",
+  );
+  assert.equal(
+    await page
+      .getByRole("progressbar", { name: "Técnicas con descripción" })
+      .getAttribute("max"),
+    "36",
+  );
+  await page.locator(".student-detail details summary").first().click();
+  await page
+    .getByLabel("Comentario", { exact: true })
+    .first()
+    .fill("Comentario del entrenador fixture");
+  await page
+    .getByRole("button", { name: "Guardar comentario remoto" })
+    .first()
+    .click();
+  await page.getByRole("button", { name: "Actualizar", exact: true }).click();
+  await page.waitForFunction(() =>
+    document
+      .querySelector(".student-detail")
+      ?.textContent.includes("Student Fixture"),
+  );
+  assert.equal(
+    files.get(
+      "PGT/users_data/browser-student@example.com/trainer_comments.json",
+    ).data.comments[0].comment,
+    "Comentario del entrenador fixture",
+  );
+  assert.equal(
+    files.get("PGT/users_data/browser-student@example.com/tecnics.json").data
+      .positions[0].tecnicas[0].descripcion_del_alumno,
+    "Edición offline",
+  );
+  for (const width of [360, 390, 768, 1280, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    assert.equal(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth > innerWidth,
+      ),
+      false,
+      `Dashboard overflows at ${width}px`,
+    );
+    await page.screenshot({
+      path: `.browser-artifacts/trainer-${width}.png`,
+      fullPage: true,
+    });
+  }
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  assert.equal(
+    await page
+      .getByRole("button", { name: "Sincronizar", exact: true })
+      .evaluate((el) => getComputedStyle(el).transitionDuration),
+    "0s",
+  );
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByLabel("Buscar alumnos", { exact: true }).fill("");
+
   await page.getByLabel("Fecha inicial", { exact: true }).fill("2026-10-13");
   await page.getByLabel("Fecha del torneo", { exact: true }).fill("2026-10-23");
   await page.locator("input[name=student]").check();
@@ -333,6 +430,14 @@ try {
     .getByRole("button", { name: "Crear competición con configuración fija" })
     .click();
   await visible(page.getByRole("heading", { name: "Torneo · 2026-10-23" }));
+  assert.deepEqual(
+    await page.locator(".dashboard-overview dd").allTextContents(),
+    ["1", "1", "1"],
+  );
+  await page.screenshot({
+    path: ".browser-artifacts/trainer-competition.png",
+    fullPage: true,
+  });
   await page.getByRole("button", { name: "Salir", exact: true }).click();
   await visible(page.getByRole("button", { name: "Entrar", exact: true }));
   await login("browser-student@example.com");

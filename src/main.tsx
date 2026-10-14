@@ -17,6 +17,27 @@ import { exportPlan } from "./infrastructure/pdf.ts";
 import "./app.css";
 const format = (seconds: number) =>
   `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+function SectionIcon({ name }: { name: string }) {
+  const paths: Record<string, string> = {
+    techniques: "M5 4h14v16H5z M9 8h6 M9 12h6 M9 16h4",
+    plans: "M4 6h16v14H4z M8 3v6 M16 3v6 M4 11h16 M8 15h2 M14 15h2",
+    profile: "M16 7a4 4 0 1 1-8 0a4 4 0 0 1 8 0 M4 21v-2a8 8 0 0 1 16 0v2",
+    trainer: "M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z",
+  };
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d={paths[name]} />
+    </svg>
+  );
+}
 function App() {
   const [entries, setEntries] = useState<LocalEntry[]>([]),
     [version, setVersion] = useState(0),
@@ -117,10 +138,16 @@ function App() {
     setCatalog(await client.request("/api/app/catalog"));
   }
   return (
-    <div className="shell">
+    <div className={`shell ${active ? "signed-in" : "signed-out"}`}>
+      <a className="skip-link" href="#main-content">
+        Ir al contenido
+      </a>
       <header>
         <a className="brand" href="/">
-          PGT<span>COMPETIDORES</span>
+          <img src="/logo-pgt.jpg" alt="" width="48" height="48" />
+          <span className="brand-copy">
+            PGT<strong>BJJ Planner</strong>
+          </span>
         </a>
         <div className="identity">
           {active ? (
@@ -150,212 +177,294 @@ function App() {
         <Auth run={run} busy={busy} />
       ) : (
         <>
-          <section className="welcome">
-            <p className="eyebrow">PREPARACIÓN DE COMPETICIÓN</p>
-            <h1>Construye tu juego.</h1>
-            <p>
-              Trabaja lo que te funciona. Guarda tus técnicas y llega al torneo
-              con un plan.
-            </p>
-            <div className="sync">
-              <span role="status">{client.status}</span>
+          <div className="app-layout">
+            <nav aria-label="Secciones">
               <button
-                disabled={busy}
-                onClick={() => void run(() => client.sync())}
+                aria-current={tab === "techniques" ? "page" : undefined}
+                className={tab === "techniques" ? "selected" : ""}
+                onClick={() => setTab("techniques")}
               >
-                Sincronizar
+                <SectionIcon name="techniques" />
+                Mis técnicas
               </button>
-            </div>
-          </section>
-          <nav aria-label="Secciones">
-            <button
-              className={tab === "techniques" ? "selected" : ""}
-              onClick={() => setTab("techniques")}
-            >
-              Mis técnicas
-            </button>
-            <button
-              className={tab === "plans" ? "selected" : ""}
-              onClick={() => setTab("plans")}
-            >
-              Mis planes <b>{plans.length}</b>
-            </button>
-            <button
-              className={tab === "profile" ? "selected" : ""}
-              onClick={() => setTab("profile")}
-            >
-              Perfil
-            </button>
-            {trainer && (
               <button
-                className={tab === "trainer" ? "selected" : ""}
-                onClick={() => {
-                  setTab("trainer");
-                  void run(trainers);
-                }}
+                aria-current={tab === "plans" ? "page" : undefined}
+                className={tab === "plans" ? "selected" : ""}
+                onClick={() => setTab("plans")}
               >
-                Entrenador
+                <SectionIcon name="plans" />
+                Mis planes <b>{plans.length}</b>
               </button>
-            )}
-          </nav>
-          {entries
-            .filter((e) => e.conflicts.length)
-            .map((e) => (
-              <section key={e.key} className="conflict">
-                <h2>Conflicto en {e.key}</h2>
-                <p>{e.conflicts.join(", ")}</p>
+              <button
+                aria-current={tab === "profile" ? "page" : undefined}
+                className={tab === "profile" ? "selected" : ""}
+                onClick={() => setTab("profile")}
+              >
+                <SectionIcon name="profile" />
+                Perfil
+              </button>
+              {trainer && (
                 <button
-                  onClick={() => void run(() => client.resolve(e.key, "local"))}
+                  aria-current={tab === "trainer" ? "page" : undefined}
+                  className={tab === "trainer" ? "selected" : ""}
+                  onClick={() => {
+                    setTab("trainer");
+                    void run(trainers);
+                  }}
                 >
-                  Conservar mi versión
+                  <SectionIcon name="trainer" />
+                  Entrenador
                 </button>
-                <button
-                  onClick={() =>
-                    void run(() => client.resolve(e.key, "remote"))
-                  }
-                >
-                  Usar remoto en conflictos
-                </button>
-                <p>
-                  Exporta una copia antes de escoger si necesitas conservar
-                  ambas.
-                </p>
-              </section>
-            ))}
-          {tab === "techniques" && techniques && (
-            <>
-              <section className="section-head">
+              )}
+              <div className="nav-team">
+                <img src="/logo-pgt.jpg" alt="Portugal Gold Team" />
+                <p>Jiu-jitsu de competición</p>
+              </div>
+            </nav>
+            <main id="main-content">
+              <section
+                className={`welcome ${tab === "trainer" ? "welcome-trainer" : ""}`}
+              >
                 <div>
-                  <h2>Tu repertorio</h2>
+                  <h1>
+                    {tab === "trainer"
+                      ? "Panel del entrenador"
+                      : "Construye tu juego."}
+                  </h1>
                   <p>
-                    {techniques.positions.length} posiciones ·{" "}
-                    {
-                      techniques.positions
-                        .flatMap((p) => p.tecnicas)
-                        .filter((t) => t.descripcion_del_alumno.trim()).length
-                    }
-                    /{techniques.positions.flatMap((p) => p.tecnicas).length}{" "}
-                    técnicas descritas
+                    {tab === "trainer"
+                      ? "Tu equipo, sus técnicas y la preparación de cada competición."
+                      : "Trabaja lo que te funciona. Guarda tus técnicas y llega al torneo con un plan."}
                   </p>
                 </div>
-                <input
-                  aria-label="Buscar posiciones"
-                  placeholder="Buscar posición…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
+                <div className="sync">
+                  <span role="status">{client.status}</span>
+                  <button
+                    disabled={busy}
+                    onClick={() => void run(() => client.sync())}
+                  >
+                    Sincronizar
+                  </button>
+                </div>
               </section>
-              {techniques.positions
-                .filter((p) =>
-                  p.posicion.toLowerCase().includes(search.toLowerCase()),
-                )
-                .map((p) => (
-                  <article className="position" key={p.id}>
-                    <div className="position-title">
-                      <div>
-                        <span className="pill">P{p.prioridad}</span>
-                        <input
-                          aria-label="Nombre de posición"
-                          value={p.posicion}
-                          onChange={(e) =>
-                            void saveTech({
-                              ...techniques,
-                              positions: techniques.positions.map((v) =>
-                                v.id === p.id
-                                  ? { ...v, posicion: e.target.value }
-                                  : v,
-                              ),
-                            })
-                          }
-                        />
-                      </div>
-                      <label className="priority">
-                        Prioridad
-                        <input
-                          type="number"
-                          min="1"
-                          value={p.prioridad}
-                          onChange={(e) =>
-                            void saveTech({
-                              ...techniques,
-                              positions: techniques.positions.map((v) =>
-                                v.id === p.id
-                                  ? { ...v, prioridad: Number(e.target.value) }
-                                  : v,
-                              ),
-                            })
-                          }
-                        />
-                      </label>
+
+              {entries
+                .filter((e) => e.conflicts.length)
+                .map((e) => (
+                  <section key={e.key} className="conflict">
+                    <h2>Conflicto en {e.key}</h2>
+                    <p>{e.conflicts.join(", ")}</p>
+                    <button
+                      onClick={() =>
+                        void run(() => client.resolve(e.key, "local"))
+                      }
+                    >
+                      Conservar mi versión
+                    </button>
+                    <button
+                      onClick={() =>
+                        void run(() => client.resolve(e.key, "remote"))
+                      }
+                    >
+                      Usar remoto en conflictos
+                    </button>
+                    <p>
+                      Exporta una copia antes de escoger si necesitas conservar
+                      ambas.
+                    </p>
+                  </section>
+                ))}
+              {tab === "techniques" && techniques && (
+                <>
+                  <section className="section-head">
+                    <div>
+                      <h2>Tu repertorio</h2>
+                      <p>
+                        {techniques.positions.length} posiciones ·{" "}
+                        {
+                          techniques.positions
+                            .flatMap((p) => p.tecnicas)
+                            .filter((t) => t.descripcion_del_alumno.trim())
+                            .length
+                        }
+                        /
+                        {techniques.positions.flatMap((p) => p.tecnicas).length}{" "}
+                        técnicas descritas
+                      </p>
                     </div>
-                    {p.tecnicas.map((t, i) => (
-                      <div className="technique" key={t.id}>
-                        <span className="number">{i + 1}</span>
-                        <div>
-                          <input
-                            aria-label="Tipo de técnica"
-                            value={t.tipo}
-                            onChange={(e) =>
-                              void saveTech({
-                                ...techniques,
-                                positions: techniques.positions.map((v) =>
-                                  v.id === p.id
-                                    ? {
-                                        ...v,
-                                        tecnicas: v.tecnicas.map((x) =>
-                                          x.id === t.id
-                                            ? { ...x, tipo: e.target.value }
-                                            : x,
-                                        ),
-                                      }
-                                    : v,
-                                ),
-                              })
-                            }
-                          />
-                          <textarea
-                            aria-label="Descripción de técnica o enlace de vídeo"
-                            placeholder="La técnica que te funciona en combate, o su vídeo…"
-                            value={t.descripcion_del_alumno}
-                            onChange={(e) =>
-                              void saveTech({
-                                ...techniques,
-                                positions: techniques.positions.map((v) =>
-                                  v.id === p.id
-                                    ? {
-                                        ...v,
-                                        tecnicas: v.tecnicas.map((x) =>
-                                          x.id === t.id
-                                            ? {
-                                                ...x,
-                                                descripcion_del_alumno:
-                                                  e.target.value,
-                                              }
-                                            : x,
-                                        ),
-                                      }
-                                    : v,
-                                ),
-                              })
-                            }
-                          />
-                          {comments?.comments.find(
-                            (c) => c.techniqueId === t.id,
-                          )?.comment && (
-                            <p className="note">
-                              Entrenador:{" "}
-                              {
-                                comments.comments.find(
-                                  (c) => c.techniqueId === t.id,
-                                )?.comment
+                    <input
+                      aria-label="Buscar posiciones"
+                      placeholder="Buscar posición…"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                    />
+                  </section>
+                  {techniques.positions
+                    .filter((p) =>
+                      p.posicion.toLowerCase().includes(search.toLowerCase()),
+                    )
+                    .map((p) => (
+                      <article className="position" key={p.id}>
+                        <div className="position-title">
+                          <div>
+                            <span className="pill">P{p.prioridad}</span>
+                            <input
+                              aria-label="Nombre de posición"
+                              value={p.posicion}
+                              onChange={(e) =>
+                                void saveTech({
+                                  ...techniques,
+                                  positions: techniques.positions.map((v) =>
+                                    v.id === p.id
+                                      ? { ...v, posicion: e.target.value }
+                                      : v,
+                                  ),
+                                })
                               }
-                            </p>
-                          )}
+                            />
+                          </div>
+                          <label className="priority">
+                            Prioridad
+                            <input
+                              type="number"
+                              min="1"
+                              value={p.prioridad}
+                              onChange={(e) =>
+                                void saveTech({
+                                  ...techniques,
+                                  positions: techniques.positions.map((v) =>
+                                    v.id === p.id
+                                      ? {
+                                          ...v,
+                                          prioridad: Number(e.target.value),
+                                        }
+                                      : v,
+                                  ),
+                                })
+                              }
+                            />
+                          </label>
                         </div>
-                        <div className="mini-actions">
+                        {p.tecnicas.map((t, i) => (
+                          <div className="technique" key={t.id}>
+                            <span className="number">{i + 1}</span>
+                            <div>
+                              <input
+                                aria-label="Tipo de técnica"
+                                value={t.tipo}
+                                onChange={(e) =>
+                                  void saveTech({
+                                    ...techniques,
+                                    positions: techniques.positions.map((v) =>
+                                      v.id === p.id
+                                        ? {
+                                            ...v,
+                                            tecnicas: v.tecnicas.map((x) =>
+                                              x.id === t.id
+                                                ? { ...x, tipo: e.target.value }
+                                                : x,
+                                            ),
+                                          }
+                                        : v,
+                                    ),
+                                  })
+                                }
+                              />
+                              <textarea
+                                aria-label="Descripción de técnica o enlace de vídeo"
+                                placeholder="La técnica que te funciona en combate, o su vídeo…"
+                                value={t.descripcion_del_alumno}
+                                onChange={(e) =>
+                                  void saveTech({
+                                    ...techniques,
+                                    positions: techniques.positions.map((v) =>
+                                      v.id === p.id
+                                        ? {
+                                            ...v,
+                                            tecnicas: v.tecnicas.map((x) =>
+                                              x.id === t.id
+                                                ? {
+                                                    ...x,
+                                                    descripcion_del_alumno:
+                                                      e.target.value,
+                                                  }
+                                                : x,
+                                            ),
+                                          }
+                                        : v,
+                                    ),
+                                  })
+                                }
+                              />
+                              {comments?.comments.find(
+                                (c) => c.techniqueId === t.id,
+                              )?.comment && (
+                                <p className="note">
+                                  Entrenador:{" "}
+                                  {
+                                    comments.comments.find(
+                                      (c) => c.techniqueId === t.id,
+                                    )?.comment
+                                  }
+                                </p>
+                              )}
+                            </div>
+                            <div className="mini-actions">
+                              <button
+                                aria-label="Subir técnica"
+                                disabled={!i}
+                                onClick={() =>
+                                  void saveTech({
+                                    ...techniques,
+                                    positions: techniques.positions.map((v) =>
+                                      v.id === p.id
+                                        ? {
+                                            ...v,
+                                            tecnicas: move(
+                                              v.tecnicas,
+                                              i,
+                                              i - 1,
+                                            ),
+                                          }
+                                        : v,
+                                    ),
+                                  })
+                                }
+                              >
+                                ↑
+                              </button>
+                              <button
+                                aria-label="Borrar técnica"
+                                onClick={() => {
+                                  if (
+                                    confirm(
+                                      "¿Eliminar esta técnica? Sus planes existentes se conservarán.",
+                                    )
+                                  )
+                                    void saveTech({
+                                      ...techniques,
+                                      positions: techniques.positions.map(
+                                        (v) =>
+                                          v.id === p.id
+                                            ? {
+                                                ...v,
+                                                tecnicas: v.tecnicas.filter(
+                                                  (x) => x.id !== t.id,
+                                                ),
+                                              }
+                                            : v,
+                                      ),
+                                    });
+                                }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                        <div className="position-footer">
                           <button
-                            aria-label="Subir técnica"
-                            disabled={!i}
+                            className="secondary"
                             onClick={() =>
                               void saveTech({
                                 ...techniques,
@@ -363,336 +472,424 @@ function App() {
                                   v.id === p.id
                                     ? {
                                         ...v,
-                                        tecnicas: move(v.tecnicas, i, i - 1),
+                                        tecnicas: [
+                                          ...v.tecnicas,
+                                          {
+                                            id: crypto.randomUUID(),
+                                            tipo: "Nueva técnica",
+                                            descripcion_del_alumno: "",
+                                          },
+                                        ],
                                       }
                                     : v,
                                 ),
                               })
                             }
                           >
-                            ↑
+                            Añadir técnica
                           </button>
                           <button
-                            aria-label="Borrar técnica"
+                            className="subtle"
+                            disabled={techniques.positions.indexOf(p) === 0}
+                            onClick={() =>
+                              void saveTech({
+                                ...techniques,
+                                positions: move(
+                                  techniques.positions,
+                                  techniques.positions.indexOf(p),
+                                  techniques.positions.indexOf(p) - 1,
+                                ),
+                              })
+                            }
+                          >
+                            Subir posición
+                          </button>
+                          <button
+                            className="danger"
                             onClick={() => {
                               if (
-                                confirm(
-                                  "¿Eliminar esta técnica? Sus planes existentes se conservarán.",
-                                )
+                                confirm("¿Eliminar la posición y sus técnicas?")
                               )
                                 void saveTech({
                                   ...techniques,
-                                  positions: techniques.positions.map((v) =>
-                                    v.id === p.id
-                                      ? {
-                                          ...v,
-                                          tecnicas: v.tecnicas.filter(
-                                            (x) => x.id !== t.id,
-                                          ),
-                                        }
-                                      : v,
+                                  positions: techniques.positions.filter(
+                                    (v) => v.id !== p.id,
                                   ),
                                 });
                             }}
                           >
-                            ×
+                            Eliminar posición
                           </button>
                         </div>
-                      </div>
+                      </article>
                     ))}
-                    <div className="position-footer">
-                      <button
-                        className="secondary"
-                        onClick={() =>
-                          void saveTech({
-                            ...techniques,
-                            positions: techniques.positions.map((v) =>
-                              v.id === p.id
-                                ? {
-                                    ...v,
-                                    tecnicas: [
-                                      ...v.tecnicas,
-                                      {
-                                        id: crypto.randomUUID(),
-                                        tipo: "Nueva técnica",
-                                        descripcion_del_alumno: "",
-                                      },
-                                    ],
-                                  }
-                                : v,
-                            ),
-                          })
-                        }
-                      >
-                        Añadir técnica
-                      </button>
-                      <button
-                        className="subtle"
-                        disabled={techniques.positions.indexOf(p) === 0}
-                        onClick={() =>
-                          void saveTech({
-                            ...techniques,
-                            positions: move(
-                              techniques.positions,
-                              techniques.positions.indexOf(p),
-                              techniques.positions.indexOf(p) - 1,
-                            ),
-                          })
-                        }
-                      >
-                        Subir posición
-                      </button>
-                      <button
-                        className="danger"
-                        onClick={() => {
-                          if (confirm("¿Eliminar la posición y sus técnicas?"))
-                            void saveTech({
-                              ...techniques,
-                              positions: techniques.positions.filter(
-                                (v) => v.id !== p.id,
-                              ),
-                            });
-                        }}
-                      >
-                        Eliminar posición
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              <button
-                onClick={() =>
-                  void saveTech({
-                    ...techniques,
-                    positions: [
-                      ...techniques.positions,
-                      {
-                        id: crypto.randomUUID(),
-                        posicion: "Nueva posición",
-                        prioridad: 1,
-                        tecnicas: [],
-                      },
-                    ],
-                  })
-                }
-              >
-                Añadir posición
-              </button>
-            </>
-          )}
-          {tab === "plans" && (
-            <section>
-              <div className="section-head">
-                <div>
-                  <h2>Camino al torneo</h2>
-                  <p>
-                    Los planes conservan tus técnicas tal como estaban al
-                    generarse.
-                  </p>
-                </div>
-              </div>
-              {!plans.length && (
-                <div className="empty">
-                  Tu entrenador puede asignarte una competición. Sincroniza para
-                  recibirla.
-                </div>
-              )}
-              {plans.map((plan) => (
-                <PlanView
-                  key={plan.planId}
-                  plan={plan}
-                  run={run}
-                  edit={(next) => client.edit("plan:" + plan.planId, next)}
-                />
-              ))}
-            </section>
-          )}
-          {tab === "profile" && profile && (
-            <ProfileView
-              profile={profile}
-              sha={entries.find((e) => e.key === "profile")?.sha || null}
-              trainer={Boolean(trainer)}
-              run={run}
-            />
-          )}
-          {tab === "trainer" && trainer && (
-            <>
-              <div className="section-head">
-                <h2>Alumnos y competiciones</h2>
-                <input
-                  aria-label="Buscar alumnos"
-                  placeholder="Buscar alumno…"
-                  value={studentSearch}
-                  onChange={(e) => setStudentSearch(e.target.value)}
-                />
-                <button onClick={() => void run(trainers)}>Actualizar</button>
-              </div>
-              <div className="student-grid">
-                {students
-                  .filter((s) =>
-                    (
-                      s.profile.mail +
-                      " " +
-                      s.profile.nombre +
-                      " " +
-                      s.profile.apellidos
-                    )
-                      .toLowerCase()
-                      .includes(studentSearch.toLowerCase()),
-                  )
-                  .map((s) => (
-                    <button
-                      key={s.profile.mail}
-                      className="student-card"
-                      onClick={() =>
-                        void run(async () =>
-                          setStudent(
-                            await client.request(
-                              `/api/app/users/${encodeURIComponent(s.profile.mail)}/snapshot`,
-                            ),
-                          ),
-                        )
-                      }
-                    >
-                      <strong>{s.profile.nombre || s.profile.mail}</strong>
-                      <span>
-                        {s.profile.cinturon} · {s.profile.perfil}
-                      </span>
-                    </button>
-                  ))}
-              </div>
-              {student && (
-                <TrainerStudent
-                  snapshot={student}
-                  run={run}
-                  reload={async () =>
-                    setStudent(
-                      await client.request(
-                        `/api/app/users/${encodeURIComponent(student.profile.data.mail)}/snapshot`,
-                      ),
-                    )
-                  }
-                />
-              )}
-              {catalog && (
-                <>
-                  <CompetitionForm
-                    students={students}
-                    run={run}
-                    sha={catalog.sha}
-                    reload={trainers}
-                  />
-                  {catalog.data.plans.map((c) => (
-                    <article key={c.planId} className="card">
-                      <h3>Torneo · {c.fecha_torneo}</h3>
-                      <p>
-                        Inicio {c.fecha_comienzo} · {c.ejercicios_por_sesion}{" "}
-                        ejercicios · días {c.dias_de_entrenamiento.join(", ")}
-                      </p>
-                      <p>Configuración fijada al crear la competición.</p>
-                      {students.map((s) => (
-                        <label className="check" key={s.profile.mail}>
-                          <input
-                            type="checkbox"
-                            checked={c.alumnos.includes(s.profile.mail)}
-                            onChange={(e) =>
-                              void run(async () => {
-                                await client.request(
-                                  "/api/app/assignment",
-                                  "POST",
-                                  {
-                                    planId: c.planId,
-                                    alumnos: e.target.checked
-                                      ? [...c.alumnos, s.profile.mail]
-                                      : c.alumnos.filter(
-                                          (m) => m !== s.profile.mail,
-                                        ),
-                                    sha: catalog.sha,
-                                  },
-                                );
-                                await trainers();
-                              })
-                            }
-                          />
-                          {s.profile.nombre || s.profile.mail}
-                        </label>
-                      ))}
-                      <button
-                        className="danger"
-                        onClick={() => {
-                          if (
-                            confirm(
-                              "¿Borrar esta competición y todos sus planes individuales? Desasignar solo un alumno se hace con su casilla.",
-                            )
-                          )
-                            void run(async () => {
-                              await client.request(
-                                "/api/app/delete-competition",
-                                "POST",
-                                { planId: c.planId, sha: catalog.sha },
-                              );
-                              await trainers();
-                            });
-                        }}
-                      >
-                        Borrar competición completa
-                      </button>
-                    </article>
-                  ))}
+                  <button
+                    onClick={() =>
+                      void saveTech({
+                        ...techniques,
+                        positions: [
+                          ...techniques.positions,
+                          {
+                            id: crypto.randomUUID(),
+                            posicion: "Nueva posición",
+                            prioridad: 1,
+                            tecnicas: [],
+                          },
+                        ],
+                      })
+                    }
+                  >
+                    Añadir posición
+                  </button>
                 </>
               )}
-            </>
-          )}
-          <section className="backup">
-            <h3>Copia de seguridad</h3>
-            <button
-              className="secondary"
-              onClick={() =>
-                void run(async () => {
-                  const data = await client.load();
-                  const blob = new Blob(
-                    [
-                      JSON.stringify(
-                        {
-                          schemaVersion: 1,
-                          mail: client.identity!.mail,
-                          entries: data.map(({ key, data }) => ({ key, data })),
-                        },
-                        null,
-                        2,
-                      ),
-                    ],
-                    { type: "application/json" },
-                  );
-                  download(blob, "PGT_copia.json");
-                })
-              }
-            >
-              Exportar mi copia JSON
-            </button>
-            <label>
-              Restaurar copia propia
-              <input
-                type="file"
-                accept="application/json"
-                onChange={(e) =>
-                  void run(async () => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    const backup = JSON.parse(await file.text());
-                    if (backup.mail !== client.identity!.mail)
-                      throw Error("La copia pertenece a otro alumno");
-                    if (
-                      !confirm(
-                        "Se importará como cambios locales pendientes, sin sobrescribir GitHub automáticamente.",
-                      )
-                    )
-                      return;
-                    await client.importBackup(backup);
-                  })
-                }
-              />
-            </label>
-          </section>
+              {tab === "plans" && (
+                <section>
+                  <div className="section-head">
+                    <div>
+                      <h2>Camino al torneo</h2>
+                      <p>
+                        Los planes conservan tus técnicas tal como estaban al
+                        generarse.
+                      </p>
+                    </div>
+                  </div>
+                  {!plans.length && (
+                    <div className="empty">
+                      Tu entrenador puede asignarte una competición. Sincroniza
+                      para recibirla.
+                    </div>
+                  )}
+                  {plans.map((plan) => (
+                    <PlanView
+                      key={plan.planId}
+                      plan={plan}
+                      run={run}
+                      edit={(next) => client.edit("plan:" + plan.planId, next)}
+                    />
+                  ))}
+                </section>
+              )}
+              {tab === "profile" && profile && (
+                <ProfileView
+                  profile={profile}
+                  sha={entries.find((e) => e.key === "profile")?.sha || null}
+                  trainer={Boolean(trainer)}
+                  run={run}
+                />
+              )}
+              {tab === "trainer" && trainer && (
+                <section
+                  className="trainer-dashboard"
+                  aria-label="Dashboard del entrenador"
+                >
+                  <div className="dashboard-heading">
+                    <div>
+                      <h2>Alumnos y competiciones</h2>
+                      <p>
+                        Consulta el repertorio de cada alumno y organiza sus
+                        próximos torneos.
+                      </p>
+                    </div>
+                    <a className="action-link" href="#competition-create">
+                      Crear competición
+                    </a>
+                  </div>
+                  <dl
+                    className="dashboard-overview"
+                    aria-label="Resumen del equipo"
+                  >
+                    <div>
+                      <dt>Alumnos registrados</dt>
+                      <dd>
+                        {catalog
+                          ? students.filter(
+                              (s) => s.profile.perfil === "alumno",
+                            ).length
+                          : "—"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Competiciones creadas</dt>
+                      <dd>{catalog ? catalog.data.plans.length : "—"}</dd>
+                    </div>
+                    <div>
+                      <dt>Asignaciones a competición</dt>
+                      <dd>
+                        {catalog
+                          ? catalog.data.plans.reduce(
+                              (n, c) => n + c.alumnos.length,
+                              0,
+                            )
+                          : "—"}
+                      </dd>
+                    </div>
+                  </dl>
+                  <div className="team-workspace">
+                    <section className="roster" aria-label="Listado de alumnos">
+                      <div className="roster-heading">
+                        <h3>Equipo</h3>
+                        <button
+                          className="subtle"
+                          disabled={busy}
+                          onClick={() => void run(trainers)}
+                        >
+                          Actualizar
+                        </button>
+                      </div>
+                      <label className="search-label">
+                        Buscar alumnos
+                        <input
+                          type="search"
+                          placeholder="Nombre o correo…"
+                          value={studentSearch}
+                          onChange={(e) => setStudentSearch(e.target.value)}
+                        />
+                      </label>
+                      <div className="student-grid">
+                        {students
+                          .filter((s) =>
+                            (
+                              s.profile.mail +
+                              " " +
+                              s.profile.nombre +
+                              " " +
+                              s.profile.apellidos
+                            )
+                              .toLowerCase()
+                              .includes(studentSearch.toLowerCase()),
+                          )
+                          .map((s) => (
+                            <button
+                              key={s.profile.mail}
+                              className={`student-card ${student?.profile.data.mail === s.profile.mail ? "student-selected" : ""}`}
+                              aria-pressed={
+                                student?.profile.data.mail === s.profile.mail
+                              }
+                              onClick={() =>
+                                void run(async () =>
+                                  setStudent(
+                                    await client.request(
+                                      `/api/app/users/${encodeURIComponent(s.profile.mail)}/snapshot`,
+                                    ),
+                                  ),
+                                )
+                              }
+                            >
+                              <span
+                                className="student-avatar"
+                                aria-hidden="true"
+                              >
+                                {(s.profile.nombre || s.profile.mail)
+                                  .slice(0, 1)
+                                  .toUpperCase()}
+                              </span>
+                              <span className="student-info">
+                                <strong>
+                                  {s.profile.nombre
+                                    ? `${s.profile.nombre} ${s.profile.apellidos || ""}`
+                                    : s.profile.mail}
+                                </strong>
+                                <span>
+                                  {s.profile.cinturon ||
+                                    "Sin cinturón indicado"}{" "}
+                                  · {s.profile.perfil}
+                                </span>
+                              </span>
+                            </button>
+                          ))}
+                      </div>
+                      {catalog &&
+                        !students.some((s) =>
+                          `${s.profile.mail} ${s.profile.nombre} ${s.profile.apellidos}`
+                            .toLowerCase()
+                            .includes(studentSearch.toLowerCase()),
+                        ) && (
+                          <p className="roster-empty">
+                            {studentSearch
+                              ? "No hay coincidencias. Prueba con otro nombre o correo."
+                              : "Todavía no hay usuarios registrados."}
+                          </p>
+                        )}
+                      {!catalog && (
+                        <p className="roster-empty">
+                          {busy
+                            ? "Cargando equipo…"
+                            : "Pulsa Actualizar para cargar el equipo."}
+                        </p>
+                      )}
+                    </section>
+                    <div className="student-workspace">
+                      {!student && (
+                        <section className="student-placeholder">
+                          <SectionIcon name="techniques" />
+                          <h3>Trabaja el juego de cada alumno.</h3>
+                          <p>
+                            Selecciona a alguien del equipo para consultar sus
+                            técnicas, escribir comentarios y revisar sus planes.
+                          </p>
+                          <p className="placeholder-detail">
+                            Las descripciones son del alumno. Tus comentarios se
+                            guardan por separado.
+                          </p>
+                        </section>
+                      )}
+                      {student && (
+                        <TrainerStudent
+                          snapshot={student}
+                          run={run}
+                          reload={async () =>
+                            setStudent(
+                              await client.request(
+                                `/api/app/users/${encodeURIComponent(student.profile.data.mail)}/snapshot`,
+                              ),
+                            )
+                          }
+                        />
+                      )}
+                    </div>
+                  </div>
+                  {catalog && (
+                    <div className="competition-workspace">
+                      <CompetitionForm
+                        students={students}
+                        run={run}
+                        sha={catalog.sha}
+                        reload={trainers}
+                      />
+                      <section
+                        className="competition-list"
+                        aria-label="Competiciones creadas"
+                      >
+                        <h3>Competiciones del equipo</h3>
+                        {!catalog.data.plans.length && (
+                          <p className="competition-empty">
+                            Aún no hay competiciones. Define las fechas y asigna
+                            alumnos en el formulario.
+                          </p>
+                        )}
+                        {catalog.data.plans.map((c) => (
+                          <article
+                            key={c.planId}
+                            className="card competition-card"
+                          >
+                            <h3>Torneo · {c.fecha_torneo}</h3>
+                            <p>
+                              Inicio {c.fecha_comienzo} ·{" "}
+                              {c.ejercicios_por_sesion} ejercicios · días{" "}
+                              {c.dias_de_entrenamiento.join(", ")}
+                            </p>
+                            <p>Configuración fijada al crear la competición.</p>
+                            {students.map((s) => (
+                              <label className="check" key={s.profile.mail}>
+                                <input
+                                  type="checkbox"
+                                  checked={c.alumnos.includes(s.profile.mail)}
+                                  onChange={(e) =>
+                                    void run(async () => {
+                                      await client.request(
+                                        "/api/app/assignment",
+                                        "POST",
+                                        {
+                                          planId: c.planId,
+                                          alumnos: e.target.checked
+                                            ? [...c.alumnos, s.profile.mail]
+                                            : c.alumnos.filter(
+                                                (m) => m !== s.profile.mail,
+                                              ),
+                                          sha: catalog.sha,
+                                        },
+                                      );
+                                      await trainers();
+                                    })
+                                  }
+                                />
+                                {s.profile.nombre || s.profile.mail}
+                              </label>
+                            ))}
+                            <button
+                              className="danger"
+                              onClick={() => {
+                                if (
+                                  confirm(
+                                    "¿Borrar esta competición y todos sus planes individuales? Desasignar solo un alumno se hace con su casilla.",
+                                  )
+                                )
+                                  void run(async () => {
+                                    await client.request(
+                                      "/api/app/delete-competition",
+                                      "POST",
+                                      { planId: c.planId, sha: catalog.sha },
+                                    );
+                                    await trainers();
+                                  });
+                              }}
+                            >
+                              Borrar competición completa
+                            </button>
+                          </article>
+                        ))}
+                      </section>
+                    </div>
+                  )}
+                </section>
+              )}
+              <section className="backup">
+                <h3>Copia de seguridad</h3>
+                <button
+                  className="secondary"
+                  onClick={() =>
+                    void run(async () => {
+                      const data = await client.load();
+                      const blob = new Blob(
+                        [
+                          JSON.stringify(
+                            {
+                              schemaVersion: 1,
+                              mail: client.identity!.mail,
+                              entries: data.map(({ key, data }) => ({
+                                key,
+                                data,
+                              })),
+                            },
+                            null,
+                            2,
+                          ),
+                        ],
+                        { type: "application/json" },
+                      );
+                      download(blob, "PGT_copia.json");
+                    })
+                  }
+                >
+                  Exportar mi copia JSON
+                </button>
+                <label>
+                  Restaurar copia propia
+                  <input
+                    type="file"
+                    accept="application/json"
+                    onChange={(e) =>
+                      void run(async () => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const backup = JSON.parse(await file.text());
+                        if (backup.mail !== client.identity!.mail)
+                          throw Error("La copia pertenece a otro alumno");
+                        if (
+                          !confirm(
+                            "Se importará como cambios locales pendientes, sin sobrescribir GitHub automáticamente.",
+                          )
+                        )
+                          return;
+                        await client.importBackup(backup);
+                      })
+                    }
+                  />
+                </label>
+              </section>
+            </main>
+          </div>
         </>
       )}
       {update && (
@@ -747,8 +944,8 @@ function Auth({
   const [register, setRegister] = useState(false),
     [bootstrap, setBootstrap] = useState(false);
   return (
-    <section className="auth">
-      <p className="eyebrow">PGT · TU JUEGO, TU PLAN</p>
+    <section className="auth" id="main-content">
+      <p className="auth-team">Portugal Gold Team</p>
       <h1>Prepárate para competir.</h1>
       <p>
         Tu repertorio personal, tus sesiones y los comentarios de tu entrenador.
@@ -1112,25 +1309,34 @@ function TrainerStudent({
     t = snapshot.techniques.data as Techniques,
     [search, setSearch] = useState("");
   const notes = snapshot.comments.data as Comments;
+  const total = t.positions.reduce((n, p) => n + p.tecnicas.length, 0);
+  const described = t.positions
+    .flatMap((p) => p.tecnicas)
+    .filter((t) => t.descripcion_del_alumno.trim()).length;
+  const percent = Math.round((described / Math.max(1, total)) * 100);
   return (
-    <section className="card">
-      <h3>{p.nombre || p.mail}</h3>
-      <p>
-        {
-          t.positions
-            .flatMap((p) => p.tecnicas)
-            .filter((t) => t.descripcion_del_alumno.trim()).length
-        }
-        /{t.positions.flatMap((p) => p.tecnicas).length} técnicas descritas ·{" "}
-        {Math.round(
-          (t.positions
-            .flatMap((p) => p.tecnicas)
-            .filter((t) => t.descripcion_del_alumno.trim()).length /
-            Math.max(1, t.positions.flatMap((p) => p.tecnicas).length)) *
-            100,
-        )}{" "}
-        %
-      </p>
+    <section className="card student-detail">
+      <div className="student-detail-heading">
+        <div>
+          <p className="muted">Ficha del alumno</p>
+          <h3>{p.nombre ? `${p.nombre} ${p.apellidos || ""}` : p.mail}</h3>
+          <p>{p.mail}</p>
+        </div>
+        <span className="pill">{p.cinturon || "Sin cinturón indicado"}</span>
+      </div>
+      <div className="repertoire-progress">
+        <div>
+          <span>
+            {described}/{total} técnicas descritas
+          </span>
+          <strong>{percent} %</strong>
+        </div>
+        <progress
+          value={described}
+          max={Math.max(1, total)}
+          aria-label="Técnicas con descripción"
+        />
+      </div>
       <label>
         Rol
         <select
@@ -1228,7 +1434,7 @@ function CompetitionForm({
   reload: () => Promise<void>;
 }) {
   return (
-    <section className="card">
+    <section className="card competition-create" id="competition-create">
       <h3>Crear competición</h3>
       <form
         onSubmit={(e) => {
