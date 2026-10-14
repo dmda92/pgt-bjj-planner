@@ -15,6 +15,7 @@ export interface Position {
   tecnicas: Technique[];
 }
 export interface Techniques extends Version {
+  descriptionUpdates?: Record<string, string>;
   positions: Position[];
 }
 export interface Template extends Version {
@@ -36,6 +37,7 @@ export interface Profile extends Version {
   probeOnly?: boolean;
 }
 export interface Comments extends Version {
+  commentUpdates?: Record<string, string>;
   comments: { techniqueId: string; comment: string }[];
 }
 export interface Index extends Version {
@@ -68,6 +70,8 @@ export interface Exercise {
   positionComplete: boolean;
 }
 export interface TrainingPlan extends Version, Competition {
+  appliedDescriptionUpdates?: Record<string, string>;
+  appliedCommentUpdates?: Record<string, string>;
   mail: string;
   generatedAt: string;
   sessions: { date: string; exercises: Exercise[] }[];

@@ -574,8 +574,9 @@ function App() {
                     <div>
                       <h2>Camino al torneo</h2>
                       <p>
-                        Los planes conservan tus técnicas tal como estaban al
-                        generarse.
+                        Las sesiones pasadas y la de hoy conservan sus textos.
+                        Las futuras reciben las descripciones y comentarios
+                        actualizados.
                       </p>
                     </div>
                   </div>

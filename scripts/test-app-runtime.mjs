@@ -1,3 +1,4 @@
+import { madridDate } from "../src/domain/plan-text-updates.ts";
 import { template } from "../tests/template-fixture.ts";
 import assert from "node:assert/strict";
 import { pbkdf2Sync } from "node:crypto";
@@ -156,21 +157,6 @@ try {
   });
   let snap = await call(bp + "snapshot", "GET", undefined, b.token);
   assert.equal(snap.techniques.data.positions.length, 17);
-  const comment = {
-    ...snap.comments.data,
-    comments: [
-      {
-        techniqueId: snap.techniques.data.positions[0].tecnicas[0].id,
-        comment: "Fixture comment",
-      },
-    ],
-  };
-  await call(
-    bp + "comments",
-    "PUT",
-    { data: comment, sha: snap.comments.sha },
-    trainer.token,
-  );
   const competition = {
     fecha_comienzo: "2026-10-13",
     fecha_torneo: "2026-10-23",
@@ -189,20 +175,69 @@ try {
   );
   snap = await call(bp + "snapshot", "GET", undefined, b.token);
   assert.equal(snap.plans.length, 1);
-  const plan = snap.plans[0];
-  assert.equal(plan.data.sessions[0].exercises[0].comment, "Fixture comment");
+  let plan = snap.plans[0];
+  const today = madridDate();
+  const futureId = plan.data.sessions.find((s) => s.date > today).exercises[0]
+    .techniqueId;
+  const protectedSessions = structuredClone(
+    plan.data.sessions.filter((s) => s.date <= today),
+  );
+  const futureComments = {
+    ...snap.comments.data,
+    comments: [{ techniqueId: futureId, comment: "Runtime future comment" }],
+  };
+  await call(
+    bp + "comments",
+    "PUT",
+    { data: futureComments, sha: snap.comments.sha },
+    trainer.token,
+  );
+  snap = await call(bp + "snapshot", "GET", undefined, b.token);
+  plan = snap.plans[0];
+  assert.deepEqual(
+    plan.data.sessions.filter((s) => s.date <= today),
+    protectedSessions,
+  );
+  assert.ok(
+    plan.data.sessions.some(
+      (s) =>
+        s.date > today &&
+        s.exercises.some(
+          (e) =>
+            e.techniqueId === futureId &&
+            e.comment === "Runtime future comment",
+        ),
+    ),
+  );
   const changed = structuredClone(snap.techniques.data);
   changed.positions[0].tecnicas[0].descripcion_del_alumno =
-    "Changed after snapshot";
+    "Changed after protected snapshot";
+  changed.positions
+    .flatMap((p) => p.tecnicas)
+    .find((t) => t.id === futureId).descripcion_del_alumno =
+    "Runtime future only";
   await call(
     bp + "techniques",
     "PUT",
     { data: changed, sha: snap.techniques.sha },
     b.token,
   );
+  snap = await call(bp + "snapshot", "GET", undefined, b.token);
+  plan = snap.plans[0];
   assert.deepEqual(
-    (await call(bp + "snapshot", "GET", undefined, b.token)).plans[0],
-    plan,
+    plan.data.sessions.filter((s) => s.date <= today),
+    protectedSessions,
+  );
+  assert.ok(
+    plan.data.sessions.some(
+      (s) =>
+        s.date > today &&
+        s.exercises.some(
+          (e) =>
+            e.techniqueId === futureId &&
+            e.descripcion_del_alumno === "Runtime future only",
+        ),
+    ),
   );
   const manual = structuredClone(plan.data);
   manual.sessions[0].exercises[0].descripcion_del_alumno = "Manual";
@@ -232,7 +267,7 @@ try {
   await call("/api/app/logout", "POST", {}, b.token);
   await call(bp + "snapshot", "GET", undefined, b.token, 401);
   console.log(
-    "Aplicación en workerd + SQLite DO: altas con fixture, hash 600000 independiente, roles, bootstrap, comentarios, competición, snapshot estable, edición manual, CAS, desasignación, borrado y revocación OK. GitHub interceptado; sin datos reales.",
+    "Aplicación en workerd + SQLite DO: altas con fixture, hash 600000 independiente, roles, bootstrap, comentarios, competición, histórico protegido y actualización futura de textos, edición manual, CAS, desasignación, borrado y revocación OK. GitHub interceptado; sin datos reales.",
   );
 } finally {
   await runtime.dispose();

@@ -1,6 +1,6 @@
 # PGT — Especificación funcional y técnica para implementación
 
-**Versión:** 2.0 · **Estado:** listo para prototipo técnico y desarrollo, sujeto a validar GitHub privado como almacenamiento mediante Cloudflare Worker gratuito.
+**Versión:** 2.1 (corrección del propietario, 14/10/2026; requisitos iniciales 2.0) · **Estado:** listo para prototipo técnico y desarrollo, sujeto a validar GitHub privado como almacenamiento mediante Cloudflare Worker gratuito.
 
 ## 0. Encargo para ChatGPT Work
 
@@ -133,17 +133,17 @@ PGT/
 
 ```json
 {
-  "schemaVersion": 1,
-  "mail": "alumno@ejemplo.com",
-  "nombre": "",
-  "apellidos": "",
-  "fecha_nacimiento": "1992-08-24",
-  "peso": null,
-  "cinturon": "Blanco",
-  "perfil": "alumno",
-  "pwd": "<hash_con_sal>",
-  "revision": 1,
-  "updatedAt": "2026-10-13T00:00:00Z"
+  "schemaVersion": 1,
+  "mail": "alumno@ejemplo.com",
+  "nombre": "",
+  "apellidos": "",
+  "fecha_nacimiento": "1992-08-24",
+  "peso": null,
+  "cinturon": "Blanco",
+  "perfil": "alumno",
+  "pwd": "<hash_con_sal>",
+  "revision": 1,
+  "updatedAt": "2026-10-13T00:00:00Z"
 }
 ```
 
@@ -163,18 +163,18 @@ PGT/
 
 ```json
 [
-  {
-    "id": "<uuid-posicion>",
-    "posicion": "Guardia cerrada (guardiero)",
-    "prioridad": 1,
-    "tecnicas": [
-      {
-        "id": "<uuid-tecnica>",
-        "tipo": "Sumision",
-        "descripcion_del_alumno": ""
-      }
-    ]
-  }
+  {
+    "id": "<uuid-posicion>",
+    "posicion": "Guardia cerrada (guardiero)",
+    "prioridad": 1,
+    "tecnicas": [
+      {
+        "id": "<uuid-tecnica>",
+        "tipo": "Sumision",
+        "descripcion_del_alumno": ""
+      }
+    ]
+  }
 ]
 ```
 
@@ -192,12 +192,10 @@ PGT/
 
 ```json
 {
-  "schemaVersion": 1,
-  "comments": [
-    {"techniqueId": "<uuid-tecnica>", "comment": ""}
-  ],
-  "revision": 1,
-  "updatedAt": "2026-10-13T00:00:00Z"
+  "schemaVersion": 1,
+  "comments": [{ "techniqueId": "<uuid-tecnica>", "comment": "" }],
+  "revision": 1,
+  "updatedAt": "2026-10-13T00:00:00Z"
 }
 ```
 
@@ -209,17 +207,17 @@ PGT/
 
 ```json
 [
-  {
-    "planId": "<uuid-plan>",
-    "fecha_comienzo": "2026-10-08",
-    "fecha_torneo": "2026-12-13",
-    "alumnos": ["alumno@ejemplo.com"],
-    "dias_de_entrenamiento": [2, 4],
-    "ejercicios_por_sesion": 5,
-    "tiempo_por_tecnica_segundos": 180,
-    "descanso_entre_ciclos_segundos": 10,
-    "descanso_entre_tecnicas_segundos": 20
-  }
+  {
+    "planId": "<uuid-plan>",
+    "fecha_comienzo": "2026-10-08",
+    "fecha_torneo": "2026-12-13",
+    "alumnos": ["alumno@ejemplo.com"],
+    "dias_de_entrenamiento": [2, 4],
+    "ejercicios_por_sesion": 5,
+    "tiempo_por_tecnica_segundos": 180,
+    "descanso_entre_ciclos_segundos": 10,
+    "descanso_entre_tecnicas_segundos": 20
+  }
 ]
 ```
 
@@ -234,7 +232,12 @@ PGT/
 ### 4.5 Índice `plans_index.json`
 
 ```json
-{"schemaVersion": 1, "planIds": ["<uuid-plan>"], "revision": 1, "updatedAt": "2026-10-13T00:00:00Z"}
+{
+  "schemaVersion": 1,
+  "planIds": ["<uuid-plan>"],
+  "revision": 1,
+  "updatedAt": "2026-10-13T00:00:00Z"
+}
 ```
 
 - Mantenido por entrenador; descargado por alumno. Nuevos IDs activan la generación individual al sincronizar.
@@ -247,7 +250,7 @@ PGT/
 
 - Cada sesión contiene fecha, técnicas ordenadas y **snapshot** de `positionId`, `techniqueId`, nombre completo de posición con rol, prioridad, tipo, descripción del alumno y comentario del entrenador en el momento de generación.
 
-- Se generan una única vez al recibir una nueva asignación. Después **nunca se regeneran automáticamente**, aunque cambien técnicas o comentarios; el alumno puede modificar manualmente su plan.
+- Se generan al recibir una nueva asignación. La regla de inmutabilidad absoluta queda sustituida por la actualización de textos exclusivamente futura del apartado 11. Las descripciones y comentarios se actualizan por UUID sin regenerar la distribución. Sesiones pasadas, sesión de hoy y competiciones finalizadas quedan protegidas. Los cambios estructurales se analizarán y consultarán antes de activar el recálculo futuro. El alumno puede modificar manualmente su plan.
 
 - Guardar edición manual sin recalcular automáticamente el resto de sesiones.
 
@@ -465,7 +468,7 @@ No tienen por qué ser todas desde exactamente la misma situación. Por ejemplo,
 
 7. Todos los días programados tienen exactamente el número de técnicas configurado al crear la competición (5 por defecto); los tres tiempos (trabajo por alumno, cambio de compañero entre ciclos y descanso entre técnicas) se configuran al crearla (180 s, 10 s y 20 s por defecto), quedan fijados para el plan y determinan la duración efectiva y el Tábata (siempre 2 ciclos y tantos sets como ejercicios por sesión); el patrón circular/continuidad pasa los tests para distintos valores positivos.
 
-8. Cambios posteriores de técnicas no regeneran planes; la edición manual sí persiste.
+8. Cambios de descripción y comentarios actualizan únicamente sesiones posteriores a hoy (Europe/Madrid) en competiciones posteriores a hoy, por UUID y sin regenerar ejercicios. El histórico y hoy permanecen exactos; la edición manual persiste. El recálculo estructural requiere el análisis y las decisiones del apartado 11.
 
 9. Desasignar alumno retira referencia sin eliminar plan ya descargado; eliminar un plan entero sí limpia sus referencias y archivos.
 
@@ -489,3 +492,29 @@ No tienen por qué ser todas desde exactamente la misma situación. Por ejemplo,
 - Limitaciones de transacciones multiarchivo de GitHub Contents API; recuperación de fallos parciales y conflictos entre dispositivos.
 
 **Instrucción final a Work:** primero comprobar permisos de GitHub sobre el repositorio de código y preparar una prueba funcional mínima del Worker con un repositorio GitHub privado de datos propiedad de `dmda92`: lectura/escritura de JSON bajo `PGT/`, escritura condicional por SHA y conflictos, login PGT y aislamiento de usuarios, sin cuentas GitHub de alumnos. El propietario creará `dmda92/pgt-bjj-data` privado y configurará el token GitHub de permisos mínimos en el entorno seguro cuando sea necesario. Si la prueba real no es viable gratuitamente y sin tarjeta, detenerse y explicar el bloqueo; no sustituir el proveedor sin permiso. Después desarrollar y probar frontend y Worker, documentar los pasos exactos de GitHub y Cloudflare para el propietario, guardar íntegro este documento en `docs/REQUISITOS_PGT_APP.md` y referenciarlo desde `AGENTS.md`, comprobar `npm run build` y, si existe autorización GitHub, subir el código a `dmda92/pgt-bjj-planner` en `main`. Work no debe acceder a Cloudflare ni realizar allí el despliegue; el propietario configura Pages, Worker, secretos y conexión GitHub–Cloudflare.
+
+## 11. Corrección de requisitos: actualización solo hacia el futuro (14/10/2026)
+
+Este apartado sustituye expresamente la regla original de planes completamente inmutables y cualquier petición anterior de actualizar también textos históricos. **Nunca modificar automáticamente sesiones pasadas, sesiones de hoy ni planes cuya fecha de competición sea anterior o igual a hoy.** Usar exclusivamente Europe/Madrid, tanto en el Worker como en la proyección offline. Pasada: fecha < hoy; hoy: fecha = hoy; futura: fecha > hoy; plan activo: fecha de torneo > hoy.
+
+### 11.1 Implementación obligatoria de textos
+
+- Al cambiar descripcion_del_alumno en tecnics.json, actualizarla en todas las apariciones futuras de esa techniqueId dentro de los planes activos del mismo usuario. No usar nombres o índices para relacionar técnicas.
+- Al añadir, editar, vaciar o quitar un comentario del entrenador en trainer_comments.json, actualizar comment en las mismas condiciones. Alumno no puede escribir comentarios; entrenador no puede escribir técnicas de otro usuario.
+- No modificar distribución, UUID, nombre de posición, prioridad, tipo, pass, positionComplete, fechas, ejercicios por sesión ni parámetros Tábata por estos cambios de texto.
+- Persistir en el repositorio privado las fuentes y los planes mediante SHA. Mantener cada sesión histórica como instantánea exacta de positionId, techniqueId, nombre/rol, prioridad, tipo, descripción y comentario.
+- Los planes activos ya recibidos se incluyen aunque luego se haya retirado su asignación: desasignar sigue conservando el plan individual, salvo borrado completo explícito.
+- Una nueva modificación de fuente actualiza todas sus futuras apariciones, incluidas descripciones manuales previas de ese campo. Una edición manual posterior se conserva hasta que exista una nueva modificación de esa fuente. Una lectura o sincronización repetida sin cambio de fuente no debe machacar ediciones manuales.
+- Cambios offline de descripción actualizan la vista local de sesiones futuras y quedan pendientes de sincronizar. Al reconectar, guardar fuente y planes; otro dispositivo recibe ambos mediante su sincronización. Las proyecciones locales no se suben como una segunda escritura autónoma del plan. Los conflictos manuales concurrentes siguen siendo explícitos.
+- No afirmar éxito de propagación si alguna escritura falla. Como fuente y planes no son una transacción GitHub multiarquivo, persistir versión de actualización junto con la fuente y checkpoint aplicado junto con cada plan. Una sincronización/relectura reintenta lo pendiente de forma idempotente, recalculando el corte temporal Madrid al reintentar; una sesión que ya pasó o es hoy no se toca en la recuperación.
+- Extensión compatible del schemaVersion 1: descriptionUpdates en Techniques, commentUpdates en Comments, appliedDescriptionUpdates/appliedCommentUpdates en TrainingPlan, todos mapas opcionales UUID → versión de actualización. Metadatos asignados por el Worker; ignorar cualquier valor suministrado por el cliente al escribir. Sin valores secretos, endpoints nuevos ni datos de negocio en SQLite DO.
+
+### 11.2 Cambios estructurales: análisis previo obligatorio
+
+Nuevas posiciones/técnicas, eliminaciones, prioridades y reordenaciones no deben modificar el histórico ni hoy. El objetivo es rellenar solamente las fechas futuras originales con el mismo N y Tábata, manteniendo el algoritmo circular desde el punto alcanzado, sin reiniciar ni repetir para rellenar. Usar el orden actual del alumno de acuerdo con las decisiones de cursor que se aprueben. Si una posición terminó su pasada, sus nuevas técnicas esperan a la siguiente aparición. Si no queda calendario suficiente, quedan pendientes.
+
+Antes de activar esta parte, consultar las ambigüedades sobre inserciones anteriores al cursor, eliminación de elementos en curso, cambios de lista circular, prioridad/orden y planes editados manualmente. Análisis en ANALISIS_CAMBIOS_ESTRUCTURALES.md. En esta entrega **no se activa el recálculo estructural**; las pruebas verifican que añadir o reordenar no altera implícitamente las sesiones mientras se resuelven dichas decisiones.
+
+### 11.3 Pruebas requeridas
+
+Verificar: todas las apariciones futuras de descripciones y comentarios, histórico exacto, competiciones finalizadas incluso en su día de torneo, sesión de hoy protegida, cambios de día en España, secuencia/fechas/N/Tábata intactos, versiones idempotentes, recuperación tras escritura parcial, conflictos SHA, edición offline y sincronización entre dispositivos, permisos y aislamiento de otros alumnos. Las pruebas de incorporación/replanificación de nuevas técnicas se añadirán cuando se apruebe la política estructural, sin confundir la ausencia actual de recálculo con una incorporación ya implementada.

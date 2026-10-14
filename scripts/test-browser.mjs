@@ -1,3 +1,4 @@
+import { madridDate } from "../src/domain/plan-text-updates.ts";
 import { template } from "../tests/template-fixture.ts";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -554,6 +555,105 @@ try {
     .fill("synthetic-browser-password");
   await mirror.getByRole("button", { name: "Entrar", exact: true }).click();
   await visible(mirror.getByRole("heading", { name: "Tu repertorio" }));
+  // Future text projections are visible offline and converge on both devices after sync.
+  const todayMadrid = madridDate();
+  const savedPlan = structuredClone(planFile[1].data);
+  const futureSessionIndex = savedPlan.sessions.findIndex(
+    (s) => s.date > todayMadrid,
+  );
+  assert.ok(futureSessionIndex >= 0);
+  const futureId =
+    savedPlan.sessions[futureSessionIndex].exercises[0].techniqueId;
+  const sourceIndex = files
+    .get("PGT/users_data/browser-student@example.com/tecnics.json")
+    .data.positions.flatMap((p) => p.tecnicas)
+    .findIndex((t) => t.id === futureId);
+  await context.setOffline(true);
+  await page.getByRole("button", { name: "Mis técnicas", exact: true }).click();
+  await page
+    .getByLabel("Descripción de técnica o enlace de vídeo")
+    .nth(sourceIndex)
+    .fill("Texto futuro offline");
+  await page
+    .getByRole("status")
+    .filter({ hasText: /Cambios guardados/ })
+    .waitFor();
+  await page.getByRole("button", { name: /Mis planes/ }).click();
+  await page.locator(".session summary").nth(futureSessionIndex).click();
+  assert.equal(
+    await page
+      .locator(".session")
+      .nth(futureSessionIndex)
+      .getByLabel("Editar descripción del plan")
+      .first()
+      .inputValue(),
+    "Texto futuro offline",
+  );
+  assert.deepEqual(files.get(planFile[0]).data, savedPlan); // no cloud write while offline
+  await context.setOffline(false);
+  await sync();
+  await sync(mirror);
+  const afterDescription = files.get(planFile[0]).data;
+  assert.deepEqual(
+    afterDescription.sessions.filter((s) => s.date <= todayMadrid),
+    savedPlan.sessions.filter((s) => s.date <= todayMadrid),
+  );
+  for (const session of afterDescription.sessions)
+    if (session.date > todayMadrid)
+      for (const e of session.exercises)
+        if (e.techniqueId === futureId)
+          assert.equal(e.descripcion_del_alumno, "Texto futuro offline");
+  await mirror.getByRole("button", { name: /Mis planes/ }).click();
+  await mirror.locator(".session summary").nth(futureSessionIndex).click();
+  assert.equal(
+    await mirror
+      .locator(".session")
+      .nth(futureSessionIndex)
+      .getByLabel("Editar descripción del plan")
+      .first()
+      .inputValue(),
+    "Texto futuro offline",
+  );
+  // A trainer's authorised source update reaches pupil plans without regenerating them.
+  const teacherAuth = await (
+    await context.request.post(origin + "/api/app/login", {
+      data: {
+        mail: "browser-trainer@example.com",
+        password: "synthetic-browser-password",
+      },
+    })
+  ).json();
+  const commentsFile = files.get(
+    "PGT/users_data/browser-student@example.com/trainer_comments.json",
+  );
+  const commentData = {
+    ...commentsFile.data,
+    comments: [
+      ...commentsFile.data.comments.filter((c) => c.techniqueId !== futureId),
+      { techniqueId: futureId, comment: "Comentario para el futuro" },
+    ],
+  };
+  const commentResponse = await context.request.put(
+    origin + "/api/app/users/browser-student@example.com/comments",
+    {
+      headers: { Authorization: "Bearer " + teacherAuth.token },
+      data: { data: commentData, sha: commentsFile.sha },
+    },
+  );
+  assert.equal(commentResponse.status(), 200);
+  await sync();
+  await sync(mirror);
+  await visible(
+    mirror.getByText("Entrenador: Comentario para el futuro", { exact: true }),
+  );
+  assert.deepEqual(
+    files.get(planFile[0]).data.sessions.filter((s) => s.date <= todayMadrid),
+    savedPlan.sessions.filter((s) => s.date <= todayMadrid),
+  );
+  await context.request.post(origin + "/api/app/logout", {
+    headers: { Authorization: "Bearer " + teacherAuth.token },
+    data: {},
+  });
   await mirror.getByRole("button", { name: "Perfil", exact: true }).click();
   await page.getByRole("button", { name: "Perfil", exact: true }).click();
   const businessBeforeProfile = JSON.stringify(
@@ -674,7 +774,7 @@ try {
   );
   assert.deepEqual(errors, []);
   console.log(
-    "Chromium local: registro, IndexedDB, offline/reload, pendientes/cambio A→B, restauración, entrenador/asignación, plan/PDF offline, edición, contraseña, dos pestañas y responsive 390px OK. Sin conexiones externas ni datos reales.",
+    "Chromium local: registro, IndexedDB, offline/reload, pendientes/cambio A→B, restauración, entrenador/asignación, textos futuros offline y sincronizados entre dispositivos, plan/PDF offline, edición, contraseña, dos pestañas y responsive 390px OK. Sin conexiones externas ni datos reales.",
   );
 } finally {
   await context.close();

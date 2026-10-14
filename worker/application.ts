@@ -29,6 +29,13 @@ import {
   type Competition,
   type TrainingPlan,
 } from "../src/domain/models.ts";
+import {
+  madridDate,
+  descriptionChanges,
+  commentChanges,
+  updateTextVersions,
+  updateFuturePlanText,
+} from "../src/domain/plan-text-updates.ts";
 import { generatePlan } from "../src/domain/planner.ts";
 interface AppEnv {
   PROBE_ADMIN_KEY: string;
@@ -54,14 +61,17 @@ export class AppApi {
     privateStore: DurableObjectStorage,
     cloud: CloudStorageProvider,
     env: AppEnv,
+    clock: () => Date = () => new Date(),
   ) {
     this.store = privateStore;
     this.cloud = cloud;
     this.env = env;
+    this.clock = clock;
   }
   private store: DurableObjectStorage;
   private cloud: CloudStorageProvider;
   private env: AppEnv;
+  private clock: () => Date;
   private async profile(mail: string) {
     const p = await this.cloud.read<Profile>(profilePath(mail));
     if (!p || !p.data.pwd) return reject(404, "USER_NOT_FOUND");
@@ -131,6 +141,67 @@ export class AppApi {
       prefix: "app-session:",
     }))
       if (s.mail === mail) await this.store.delete(key);
+  }
+  private async updatePlanTexts(mail: string) {
+    const planFiles = (
+      (await this.cloud.list?.(`${root(mail)}/training_plans`)) || []
+    ).filter(
+      (f) => f.type === "file" && /^plan_[0-9a-f-]{36}\.json$/.test(f.name),
+    );
+    if (!planFiles.length) return;
+    const techniques = await this.cloud.read<Techniques>(
+      `${root(mail)}/tecnics.json`,
+    );
+    const comments = await this.cloud.read<Comments>(
+      `${root(mail)}/trainer_comments.json`,
+    );
+    if (
+      !techniques ||
+      !comments ||
+      (!techniques.data.descriptionUpdates && !comments.data.commentUpdates)
+    )
+      return;
+    for (const file of planFiles) {
+      const path = `${root(mail)}/training_plans/${file.name}`;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const current = await this.cloud.read<TrainingPlan>(path);
+        if (
+          !current ||
+          current.data.mail !== mail ||
+          current.data.fecha_torneo <= madridDate(this.clock())
+        )
+          break;
+        const latestTechniques = await this.cloud.read<Techniques>(
+          `${root(mail)}/tecnics.json`,
+        );
+        const latestComments = await this.cloud.read<Comments>(
+          `${root(mail)}/trainer_comments.json`,
+        );
+        if (!latestTechniques || !latestComments) break;
+        const next = updateFuturePlanText(
+          current.data,
+          latestTechniques.data,
+          latestComments.data,
+          madridDate(this.clock()),
+        );
+        if (next === current.data) break;
+        try {
+          await this.cloud.write(
+            path,
+            { ...next, revision: current.data.revision + 1, updatedAt: now() },
+            current.sha,
+          );
+          break;
+        } catch (error) {
+          if (
+            !(error instanceof ApiError) ||
+            ![409, 422].includes(error.status) ||
+            attempt === 2
+          )
+            throw error;
+        }
+      }
+    }
   }
   private async reconcile(onlyMail?: string) {
     // The catalog is the authority for assignments/deletions; incomplete multi-file writes
@@ -445,6 +516,7 @@ export class AppApi {
         }
       }
       await this.reconcile(mail);
+      await this.updatePlanTexts(mail);
       const profile = own ? actor.profile : await this.profile(mail),
         catalog = await this.cloud.read<Catalog>("PGT/master_data/plans.json");
       const record = (key: string, r: CloudRecord<unknown>) =>
@@ -519,6 +591,12 @@ export class AppApi {
             notes as unknown as Comments,
             now(),
           );
+          plan.appliedDescriptionUpdates = {
+            ...(t as Techniques).descriptionUpdates,
+          };
+          plan.appliedCommentUpdates = {
+            ...(notes as Comments).commentUpdates,
+          };
           const path = `${root(mail)}/training_plans/plan_${id}.json`;
           const existing = await this.cloud.read<TrainingPlan>(path);
           plans.push(
@@ -575,6 +653,22 @@ export class AppApi {
       const old = await this.checkSha(path, b.sha);
       const next = b.data as Techniques;
       validate(() => validateTechniques(next));
+      const idsChanged = descriptionChanges(
+        old!.data as unknown as Techniques,
+        next,
+      );
+      const versions = updateTextVersions(
+        (old!.data as unknown as Techniques).descriptionUpdates,
+        idsChanged,
+        opaqueToken(),
+      );
+      const retainedIds = new Set(
+        next.positions.flatMap((p) => p.tecnicas.map((t) => t.id)),
+      );
+      for (const id of Object.keys(versions))
+        if (!retainedIds.has(id)) delete versions[id];
+      if (Object.keys(versions).length) next.descriptionUpdates = versions;
+      else delete next.descriptionUpdates;
       next.revision = Number(old?.data.revision || 0) + 1;
       next.updatedAt = now();
       const same = old && unchanged(next, old.data);
@@ -603,6 +697,7 @@ export class AppApi {
             notes.sha,
           );
       }
+      await this.updatePlanTexts(mail);
       return respond({
         data: same ? old.data : next,
         sha,
@@ -636,13 +731,32 @@ export class AppApi {
           c.comment.length > 10000
         )
           return reject(400, "COMMENT_INVALID");
+      const versions = updateTextVersions(
+        (old?.data as unknown as Comments)?.commentUpdates,
+        commentChanges(
+          (old?.data as unknown as Comments) || {
+            ...initialVersion(),
+            comments: [],
+          },
+          notes,
+        ),
+        opaqueToken(),
+      );
+      for (const id of Object.keys(versions))
+        if (!ids.has(id)) delete versions[id];
+      if (Object.keys(versions).length) notes.commentUpdates = versions;
+      else delete notes.commentUpdates;
       notes.revision = Number(old?.data.revision || 0) + 1;
       notes.updatedAt = now();
-      if (old && unchanged(notes, old.data))
-        return respond({ ...old, status: "UNCHANGED_NO_COMMIT" });
+      const same = old && unchanged(notes, old.data);
+      const sha = same
+        ? old.sha
+        : await this.cloud.write(path, notes, old?.sha || null);
+      await this.updatePlanTexts(mail);
       return respond({
-        data: notes,
-        sha: await this.cloud.write(path, notes, old?.sha || null),
+        data: same ? old.data : notes,
+        sha,
+        status: same ? "UNCHANGED_NO_COMMIT" : "WRITE_CONFIRMED",
       });
     }
     if (request.method === "PUT" && kind === "plan") {
@@ -668,6 +782,13 @@ export class AppApi {
       ] as const)
         if (JSON.stringify(plan[key]) !== JSON.stringify(original[key]))
           return reject(400, "PLAN_CONFIG_IMMUTABLE");
+      // Checkpoints belong to the server, including for manual plan edits.
+      if (original.appliedDescriptionUpdates)
+        plan.appliedDescriptionUpdates = original.appliedDescriptionUpdates;
+      else delete plan.appliedDescriptionUpdates;
+      if (original.appliedCommentUpdates)
+        plan.appliedCommentUpdates = original.appliedCommentUpdates;
+      else delete plan.appliedCommentUpdates;
       validate(() => validatePlan(plan));
       plan.revision = original.revision + 1;
       plan.updatedAt = now();

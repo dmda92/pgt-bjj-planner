@@ -211,7 +211,7 @@ test("Contraseña cambia solo pwd, revoca sesiones y conserva técnicas y perfil
     200,
   );
 });
-test("Competición: asignación, snapshot único, comentarios, manual, CAS, desasignación y tombstone", async () => {
+test("Competición: asignación, snapshot histórico protegido, comentarios, manual, CAS, desasignación y tombstone", async () => {
   const f = fixture(),
     password = "synthetic-test-password";
   for (const mail of ["trainer@example.com", "student@example.com"])

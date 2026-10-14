@@ -3,6 +3,7 @@ import type {
   Document,
   RemoteRecord,
   TrainingPlan,
+  Techniques,
 } from "../domain/models.ts";
 import {
   validateTechniques,
@@ -12,6 +13,10 @@ import {
 } from "../domain/models.ts";
 import { db, repository, type LocalEntry } from "../infrastructure/local.ts";
 import { merge, resolveRemote } from "../domain/merge.ts";
+import {
+  madridDate,
+  projectFutureDescriptions,
+} from "../domain/plan-text-updates.ts";
 const API = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 export interface Identity {
   mail: string;
@@ -261,10 +266,29 @@ export class Client implements AuthenticationProvider, SyncService {
     if (!old || old.mail !== identity.mail) throw Error("Datos de otra sesión");
     this.requireIdentity();
     if (JSON.stringify(old.data) === JSON.stringify(data)) return;
-    await repository.save(
-      { ...old, data: structuredClone(data), dirty: true, conflicts: [] },
-      identity.mail,
-    );
+    await db.transaction("rw", db.entries, db.meta, async () => {
+      await repository.save(
+        { ...old, data: structuredClone(data), dirty: true, conflicts: [] },
+        identity.mail,
+      );
+      if (key === "techniques") {
+        for (const entry of await repository.entries(identity.mail)) {
+          if (
+            !entry.key.startsWith("plan:") ||
+            (entry.data as TrainingPlan).mail !== identity.mail
+          )
+            continue;
+          const projected = projectFutureDescriptions(
+            entry.data as TrainingPlan,
+            old.data as Techniques,
+            data as Techniques,
+            madridDate(),
+          );
+          if (projected !== entry.data)
+            await repository.save({ ...entry, data: projected }, identity.mail);
+        }
+      }
+    });
     this.status = "Cambios guardados en este dispositivo";
     this.onChange();
   }
@@ -289,7 +313,10 @@ export class Client implements AuthenticationProvider, SyncService {
       this.validate(snapshot);
       const remote = this.snapshotEntries(snapshot, identity.mail);
       const byKey = new Map(remote.map((e) => [e.key, e]));
-      for (const entry of await repository.entries(identity.mail)) {
+      for (const entry of (await repository.entries(identity.mail)).sort(
+        (a, b) =>
+          Number(a.key !== "techniques") - Number(b.key !== "techniques"),
+      )) {
         this.requireIdentity();
         if (!entry.dirty) continue;
         const current = byKey.get(entry.key);
@@ -353,6 +380,12 @@ export class Client implements AuthenticationProvider, SyncService {
             identity.mail,
           );
         });
+        if (entry.key === "techniques") {
+          const refreshed = await this.snapshot(identity.mail);
+          this.validate(refreshed);
+          for (const e of this.snapshotEntries(refreshed, identity.mail))
+            byKey.set(e.key, e);
+        }
       }
       snapshot = await this.snapshot(identity.mail);
       this.validate(snapshot);
