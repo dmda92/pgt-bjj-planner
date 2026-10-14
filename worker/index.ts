@@ -200,7 +200,7 @@ export class ProbeSecurity {
       if (!(error instanceof ApiError)) logUnexpectedDiagnostic(error, context);
       result = response(
         error instanceof ApiError
-          ? { error: error.message }
+          ? { error: error.message, ...(error.size ? {size: error.size} : {}) }
           : { error: "INTERNAL_ERROR", diagnosticId: context.diagnosticId },
         error instanceof ApiError ? error.status : 500,
       );

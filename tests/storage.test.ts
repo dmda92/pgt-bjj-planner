@@ -62,7 +62,7 @@ test("Contenido corrupto/grande y recurso que no es archivo se rechazan", async 
     { type: "dir" },
     {
       type: "file",
-      size: 999999,
+      size: 4194305,
       encoding: "base64",
       content: "e30=",
       sha: one,
@@ -159,4 +159,33 @@ test("Error transitorio de lectura reintenta con backoff limitado; mutación amb
     (e: unknown) => e instanceof ApiError && e.message === "DATA_NETWORK_RETRY",
   );
   assert.equal(count, 1);
+});
+
+test('Large Unicode JSON survives failed write, retry, download by immutable blob, and size rejection', async () => {
+  const {MAX_JSON_BYTES,jsonBytes}=await import('../src/domain/json-limits.ts');
+  const value={positions:Array.from({length:12},(_,i)=>({id:crypto.randomUUID(),posicion:`Posición ${i} áéíóú`,tecnicas:[{id:crypto.randomUUID(),tipo:'Salida',descripcion_del_alumno:('Ángulo 日本語 🙂\nhttps://video.example/watch?v=é&x=1\n').repeat(1800)}]}))};
+  assert.ok(jsonBytes(value)>1000000);assert.ok(jsonBytes(value)<MAX_JSON_BYTES);
+  const original=JSON.stringify(value);let content='',fail=true,writes=0;
+  const provider=new GithubContentsStorage('synthetic','main',async(url,init)=>{
+    const path=String(url);
+    if(init?.method==='PUT'){
+      writes++;
+      if(fail){fail=false;return Response.json({}, {status:503});}
+      content=JSON.parse(String(init.body)).content;
+      return Response.json({content:{sha:two}});
+    }
+    if(path.includes('/git/blobs/')){assert.ok(path.endsWith(two));return Response.json({sha:two,size:Buffer.from(content,'base64').length,encoding:'base64',content});}
+    assert.equal(new Headers(init?.headers).get('Accept'),'application/vnd.github.object+json');
+    return Response.json({type:'file',sha:two,size:Buffer.from(content,'base64').length,encoding:'none',content:''});
+  });
+  await assert.rejects(provider.write('PGT/users_data/qa@example.com/tecnics.json',value,one));
+  assert.equal(JSON.stringify(value),original);
+  await provider.write('PGT/users_data/qa@example.com/tecnics.json',value,one);
+  const downloaded=await provider.read('PGT/users_data/qa@example.com/tecnics.json');
+  assert.deepEqual(downloaded?.data,value);assert.equal(downloaded?.sha,two);
+  const before=writes;const tooLarge={text:'á'.repeat(MAX_JSON_BYTES)};
+  await assert.rejects(provider.write('PGT/tecnics.json',tooLarge,two),(e:unknown)=>e instanceof ApiError&&e.status===413&&e.size?.file==='tecnics.json'&&e.size.bytes===jsonBytes(tooLarge)&&e.size.limitBytes===MAX_JSON_BYTES);
+  assert.equal(writes,before);
+  const oversizeRead=new GithubContentsStorage('synthetic','main',async()=>Response.json({type:'file',sha:one,size:MAX_JSON_BYTES+1,encoding:'none',content:''}));
+  await assert.rejects(oversizeRead.read('PGT/plan_test.json'),(e:unknown)=>e instanceof ApiError&&e.size?.file==='plan_test.json'&&e.message==='REMOTE_JSON_TOO_LARGE');
 });

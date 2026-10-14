@@ -1,4 +1,5 @@
-import { reject } from "./security.ts";
+import {MAX_JSON_BYTES, documentFile} from "../src/domain/json-limits.ts";
+import { ApiError, reject } from "./security.ts";
 import {
   classifyTransportFailure,
   logGithubDiagnostic,
@@ -44,11 +45,11 @@ export function safePath(path: string): string {
 function version(sha: string): void {
   if (!/^[0-9a-f]{40}$/.test(sha)) reject(400, "SHA_INVALID");
 }
-function encoded(value: unknown): string {
+function encoded(value: unknown, path: string): string {
   const bytes = new TextEncoder().encode(JSON.stringify(value));
-  if (bytes.length > 65536) return reject(413, "JSON_TOO_LARGE");
+  if (bytes.length > MAX_JSON_BYTES) throw new ApiError(413, "JSON_TOO_LARGE", undefined, {file: documentFile(path), bytes: bytes.length, limitBytes: MAX_JSON_BYTES, scope: "document", exact: true});
   let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
+  for (let i=0;i<bytes.length;i+=8192) binary += String.fromCharCode(...bytes.subarray(i,i+8192));
   return btoa(binary);
 }
 export class GithubContentsStorage implements CloudStorageProvider {
@@ -79,7 +80,7 @@ export class GithubContentsStorage implements CloudStorageProvider {
     if (method !== "GET") await this.beforeMutation?.();
     const headers = new Headers(init.headers);
     headers.set("Authorization", `Bearer ${this.token}`);
-    headers.set("Accept", "application/vnd.github+json");
+    if (!headers.has("Accept")) headers.set("Accept", "application/vnd.github+json");
     headers.set("X-GitHub-Api-Version", "2026-03-10");
     headers.set("User-Agent", "PGT-viability-worker");
     let response: Response;
@@ -211,6 +212,7 @@ export class GithubContentsStorage implements CloudStorageProvider {
   ): Promise<CloudRecord<T> | null> {
     const response = await this.request(
       `${ROOT}/contents/${safePath(path)}?ref=${this.branch}`,
+      {headers: {Accept: "application/vnd.github.object+json"}},
     );
     if (response.status === 404) return null;
     const file = (await response.json()) as {
@@ -220,25 +222,33 @@ export class GithubContentsStorage implements CloudStorageProvider {
       sha?: string;
       size?: number;
     };
-    if (
-      file.type !== "file" ||
-      file.encoding !== "base64" ||
-      !file.sha ||
-      !file.content ||
-      Number(file.size) > 65536
-    )
-      return reject(502, "REMOTE_JSON_INVALID");
+    if (file.type !== "file" || !file.sha) return reject(502, "REMOTE_JSON_INVALID");
     version(file.sha);
+    const oversized = (bytes: number) => { throw new ApiError(413, "REMOTE_JSON_TOO_LARGE", undefined, {file: documentFile(path), bytes, limitBytes: MAX_JSON_BYTES, scope: "document", exact: true}); };
+    if (Number(file.size) > MAX_JSON_BYTES) oversized(Number(file.size));
+    // Contents returns encoding=none for >1 MB; read the immutable blob by its SHA.
+    let content = file.content, encoding = file.encoding;
+    if (encoding === "none") {
+      const response = await this.request(`${ROOT}/git/blobs/${file.sha}`);
+      const blob = await response.json() as {sha?:string; size?:number; content?:string; encoding?:string};
+      if (blob.sha !== file.sha) return reject(502, "REMOTE_JSON_INVALID");
+      if (Number(blob.size) > MAX_JSON_BYTES) oversized(Number(blob.size));
+      content = blob.content; encoding = blob.encoding;
+    }
+    if (encoding !== "base64" || !content) return reject(502, "REMOTE_JSON_INVALID");
+    const compact = content.replace(/\s/g, "");
+    if (compact.length > 4 * Math.ceil(MAX_JSON_BYTES / 3)) oversized(Math.floor(compact.length * 3 / 4));
     try {
-      const binary = atob(file.content.replace(/\s/g, ""));
-      if (binary.length > 65536) reject(413, "REMOTE_JSON_TOO_LARGE");
+      const binary = atob(compact);
+      if (binary.length > MAX_JSON_BYTES) oversized(binary.length);
       const data = JSON.parse(
         new TextDecoder("utf-8", { fatal: true }).decode(
           Uint8Array.from(binary, (c) => c.charCodeAt(0)),
         ),
       ) as T;
       return { data, sha: file.sha };
-    } catch {
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
       return reject(502, "REMOTE_JSON_INVALID");
     }
   }
@@ -253,7 +263,7 @@ export class GithubContentsStorage implements CloudStorageProvider {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         message: "PGT: persist JSON",
-        content: encoded(data),
+        content: encoded(data, path),
         branch: this.branch,
         ...(expectedSha !== null ? { sha: expectedSha } : {}),
       }),

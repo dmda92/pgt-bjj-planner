@@ -883,6 +883,47 @@ try {
     ),
     false,
   );
+
+  // Long descriptions: retry a failed synchronization without logout or clearing IndexedDB.
+  const largeContext = await browser.newContext();
+  const largePage = await largeContext.newPage();
+  await largePage.goto(origin);
+  await largePage.getByRole('button',{name:'Registrarme',exact:true}).click();
+  await largePage.getByLabel('Correo',{exact:true}).fill('browser-large@example.com');
+  await largePage.getByLabel('Nombre',{exact:true}).fill('Large');
+  await largePage.getByLabel('Apellidos',{exact:true}).fill('Fixture');
+  await largePage.getByLabel('Contraseña',{exact:true}).fill('synthetic-browser-password');
+  await largePage.getByLabel('Repetir contraseña',{exact:true}).fill('synthetic-browser-password');
+  await largePage.getByRole('button',{name:'Crear cuenta de alumno',exact:true}).click();
+  await visible(largePage.getByRole('heading',{name:'Tu repertorio'}));
+  const longText=('Ángulo 日本語 🙂 https://video.example/watch?v=é&x=1\n').repeat(400);
+  for(let i=0;i<9;i++) await largePage.getByLabel('Descripción de técnica o enlace de vídeo').nth(i).fill(`${i}: ${longText}`);
+  let rejected=false;
+  const routePattern='**/api/app/users/*/techniques';
+  await largeContext.route(routePattern,async route=>{
+    const bytes=new TextEncoder().encode(JSON.stringify(route.request().postDataJSON().data)).length;
+    rejected=true;
+    await route.fulfill({status:413,contentType:'application/json',body:JSON.stringify({error:'JSON_TOO_LARGE',size:{file:'tecnics.json',bytes,limitBytes:65536,scope:'document',exact:true}})});
+  });
+  await largePage.getByRole('button',{name:'Sincronizar',exact:true}).click();
+  await largePage.getByRole('alert').filter({hasText:'tecnics.json'}).waitFor();
+  assert.equal(rejected,true);
+  assert.match(await largePage.getByRole('alert').innerText(),/bytes/);
+  for(let i=0;i<9;i++)assert.equal(await largePage.getByLabel('Descripción de técnica o enlace de vídeo').nth(i).inputValue(),`${i}: ${longText}`);
+  await largeContext.unroute(routePattern);
+  await largePage.getByRole('button',{name:'Sincronizar',exact:true}).click();
+  await largePage.getByRole('status').filter({hasText:/^Sincronizado$/}).waitFor();
+  await largePage.reload();
+  await visible(largePage.getByRole('heading',{name:'Tu repertorio'}));
+  for(let i=0;i<9;i++)assert.equal(await largePage.getByLabel('Descripción de técnica o enlace de vídeo').nth(i).inputValue(),`${i}: ${longText}`);
+  const restoredContext=await browser.newContext();const restoredPage=await restoredContext.newPage();
+  await restoredPage.goto(origin);
+  await restoredPage.getByLabel('Correo',{exact:true}).fill('browser-large@example.com');
+  await restoredPage.getByLabel('Contraseña',{exact:true}).fill('synthetic-browser-password');
+  await restoredPage.getByRole('button',{name:'Entrar',exact:true}).click();
+  await visible(restoredPage.getByRole('heading',{name:'Tu repertorio'}));
+  for(let i=0;i<9;i++)assert.equal(await restoredPage.getByLabel('Descripción de técnica o enlace de vídeo').nth(i).inputValue(),`${i}: ${longText}`);
+  await restoredContext.close();await largeContext.close();
   assert.deepEqual(errors, []);
   console.log(
     "Chromium local: registro, IndexedDB, offline/reload, pendientes/cambio A→B, restauración, entrenador/asignación, textos futuros offline y sincronizados entre dispositivos, plan de solo lectura/PDF offline, contraseña, dos pestañas y responsive 390px OK. Sin conexiones externas ni datos reales.",

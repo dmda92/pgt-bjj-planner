@@ -537,3 +537,7 @@ Sustituye toda exigencia anterior de bootstrap o clave especial. Alta pública s
 ## 14. CI/CD automático autorizado (14/10/2026)
 
 Cada push a main debe validar instalación, tests, typecheck y build antes de publicar el Worker y PWA. GitHub Actions utiliza únicamente secretos Cloudflare de despliegue y se habilita una vez configurados manualmente. Fallos bloquean publicación. No alterar datos, secretos existentes ni identidad de recursos. Evitar despliegues concurrentes y SHA obsoletos. Reusar Pages Git si existe sin añadir pages deploy duplicado; Worker con assets es la publicación conjunta por defecto. Guía CI_CD.md. Sustituye el despliegue manual obligatorio por versión; Work sigue sin configurar Cloudflare directamente.
+
+## 15. Corrección de límites JSON (14/10/2026)
+
+Sustituye límites anteriores de 64 KiB por JSON y 10.000 caracteres por texto. Adoptar 4.194.304 bytes UTF-8 por documento y 4.259.840 bytes por petición AppApi, con descripciones/comentarios de hasta 100.000 unidades UTF-16. Límites compartidos cliente/servidor; comprobar al sincronizar, sin truncar ni borrar ediciones locales. Informar archivo, tamaño y máximo ante exceso. Lectura GitHub de archivos mayores de 1 MB por blob inmutable/SHA. Reintentar pendientes tras actualizar sin reiniciar sesión/IndexedDB. Mantener permisos, SHA, histórico y seguridad. Análisis y validación en JSON_SIZE_LIMITS.md.

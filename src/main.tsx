@@ -45,6 +45,9 @@ function SectionIcon({ name }: { name: string }) {
   );
 }
 function App() {
+  const techniqueSaves = useRef<Promise<void>>(Promise.resolve());
+  const pendingTechniqueSaves = useRef(0);
+  const loadSequence = useRef(0);
   const [entries, setEntries] = useState<LocalEntry[]>([]),
     [version, setVersion] = useState(0),
     [tab, setTab] = useState("techniques"),
@@ -80,10 +83,11 @@ function App() {
   useEffect(() => {
     if (active) {
       const mail = client.identity!.mail;
+      const sequence = ++loadSequence.current;
       void client
         .load()
         .then((data) => {
-          if (client.identity?.mail === mail && !client.locked)
+          if (client.identity?.mail === mail && !client.locked && pendingTechniqueSaves.current === 0 && sequence === loadSequence.current)
             setEntries(data);
         })
         .catch((e) => setError(e.message));
@@ -117,6 +121,7 @@ function App() {
     setError("");
     setBusy(true);
     try {
+      await techniqueSaves.current;
       await action();
       setVersion((v) => v + 1);
     } catch (e) {
@@ -132,16 +137,23 @@ function App() {
       setError(e instanceof Error ? e.message : "Prioridad no válida");
       return;
     }
+    const mail = client.identity?.mail;
+    pendingTechniqueSaves.current++;
+    loadSequence.current++;
     setEntries((e) =>
-      e.map((v) =>
-        v.key === "techniques" ? { ...v, data: next, dirty: true } : v,
-      ),
+      e.map((v) => v.key === "techniques" ? { ...v, data: next, dirty: true } : v),
     );
-    try {
+    const save = techniqueSaves.current.then(async () => {
+      if (client.identity?.mail !== mail || client.locked) throw Error("Sesión cerrada o cambiada");
       await client.edit("techniques", next);
-    } catch (e) {
+    });
+    techniqueSaves.current = save.catch((e) => {
       setError(e instanceof Error ? e.message : "No se pudo guardar");
-    }
+    }).finally(() => {
+      pendingTechniqueSaves.current--;
+      if (pendingTechniqueSaves.current === 0) setVersion((v) => v + 1);
+    });
+    await techniqueSaves.current;
   }
   const plans = entries
     .filter((e) => e.key.startsWith("plan:"))

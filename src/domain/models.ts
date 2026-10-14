@@ -1,3 +1,4 @@
+import {MAX_TEXT_LENGTH} from "./json-limits.ts";
 export interface Version {
   schemaVersion: 1;
   revision: number;
@@ -169,7 +170,7 @@ export function validateTechniques(
         !t.tipo.trim() ||
         t.tipo.length > 500 ||
         typeof t.descripcion_del_alumno !== "string" ||
-        t.descripcion_del_alumno.length > 10000
+        t.descripcion_del_alumno.length > MAX_TEXT_LENGTH
       )
         throw Error("Técnica no válida");
     }
@@ -265,9 +266,9 @@ export function validatePlan(value: unknown): asserts value is TrainingPlan {
         !e.tipo.trim() ||
         e.tipo.length > 500 ||
         typeof e.descripcion_del_alumno !== "string" ||
-        e.descripcion_del_alumno.length > 10000 ||
+        e.descripcion_del_alumno.length > MAX_TEXT_LENGTH ||
         typeof e.comment !== "string" ||
-        e.comment.length > 10000 ||
+        e.comment.length > MAX_TEXT_LENGTH ||
         !Number.isSafeInteger(e.prioridad) ||
         e.prioridad < 1 ||
         !Number.isSafeInteger(e.pass) ||

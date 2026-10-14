@@ -595,3 +595,18 @@ test("Invalid weight is rejected without writes; null and decimal can subsequent
     assert.equal((f.files.get(path)!.data as any).peso,peso);
   }
 });
+
+test('Large tecnics request persists and restores identical descriptions across positions',async()=>{
+ const {jsonBytes}=await import('../src/domain/json-limits.ts');
+ const f=fixture(),mail='large@example.com',password='synthetic-test-password';
+ const auth=await (await f.call('/api/app/register','POST',{mail,password,confirm:password,nombre:'QA',apellidos:''})).json() as any;
+ const path=`/api/app/users/${mail}/`;
+ const snap=await (await f.call(path+'snapshot','GET',undefined,auth.token)).json() as any;
+ const techniques=structuredClone(snap.techniques.data);
+ for(const p of techniques.positions)for(const t of p.tecnicas)t.descripcion_del_alumno=`${t.id}\n`+('Ángulo, ñ, 日本語 y enlace https://video.example/?v=é&x=1\n').repeat(500);
+ const bytes=jsonBytes(techniques);assert.ok(bytes>98304);assert.ok(bytes<4194304);
+ assert.equal((await f.call(path+'techniques','PUT',{data:techniques,sha:snap.techniques.sha},auth.token)).status,200);
+ const restored=await (await f.call(path+'snapshot','GET',undefined,auth.token)).json() as any;
+ assert.deepEqual(restored.techniques.data.positions,techniques.positions);
+ console.log(`Fixture tecnics.json: ${bytes} bytes UTF-8 antes de metadatos servidor`);
+});

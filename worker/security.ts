@@ -1,13 +1,16 @@
+import {documentFile, type SizeDetails} from "../src/domain/json-limits.ts";
 import { pbkdf2Async } from "@noble/hashes/pbkdf2.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { isPbkdf2IterationLimit } from "./diagnostics.ts";
 export class ApiError extends Error {
   status: number;
   retryAfter?: number;
-  constructor(status: number, code: string, retryAfter?: number) {
+  size?: SizeDetails;
+  constructor(status: number, code: string, retryAfter?: number, size?: SizeDetails) {
     super(code);
     this.status = status;
     this.retryAfter = retryAfter;
+    this.size = size;
   }
 }
 export function reject(
@@ -144,7 +147,7 @@ export async function jsonBody(
     length += value.length;
     if (length > maxBytes) {
       await reader.cancel();
-      reject(413, "BODY_TOO_LARGE");
+      throw new ApiError(413, "BODY_TOO_LARGE", undefined, { file: documentFile(new URL(request.url).pathname), bytes: length, limitBytes: maxBytes, scope: "request", exact: false });
     }
     parts.push(value);
   }

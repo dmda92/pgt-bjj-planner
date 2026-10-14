@@ -1,3 +1,4 @@
+import {MAX_JSON_BYTES, MAX_APP_BODY_BYTES, jsonBytes, documentFile, sizeMessage} from "../domain/json-limits.ts";
 import type {
   Profile,
   Document,
@@ -91,13 +92,20 @@ export class Client implements AuthenticationProvider, SyncService {
   ): Promise<T> {
     const token =
       credential === undefined ? this.requireIdentity().token : credential;
+    if (method === "PUT" && body && typeof body === "object" && "data" in body) {
+      const bytes = jsonBytes((body as {data: unknown}).data);
+      if (bytes > MAX_JSON_BYTES) throw new ApiFailure(413, sizeMessage({file: documentFile(path), bytes, limitBytes: MAX_JSON_BYTES, scope: "document"}));
+    }
+    const serialized = body ? JSON.stringify(body) : undefined;
+    if (serialized && new TextEncoder().encode(serialized).length > MAX_APP_BODY_BYTES)
+      throw new ApiFailure(413, sizeMessage({file: documentFile(path), bytes: new TextEncoder().encode(serialized).length, limitBytes: MAX_APP_BODY_BYTES, scope: "request"}));
     const response = await fetch(API + path, {
       method,
       headers: {
         ...(token ? { Authorization: "Bearer " + token } : {}),
         ...(body ? { "Content-Type": "application/json" } : {}),
       },
-      body: body ? JSON.stringify(body) : undefined,
+      body: serialized,
       cache: "no-store",
     });
     const value = (await response.json()) as any;
@@ -107,7 +115,7 @@ export class Client implements AuthenticationProvider, SyncService {
         this.status = "La sesión remota fue revocada. Vuelve a entrar.";
         this.onChange();
       }
-      throw new ApiFailure(response.status, value.error || "Error de API");
+      throw new ApiFailure(response.status, value.size ? sizeMessage(value.size) : value.error || "Error de API");
     }
     return value as T;
   }

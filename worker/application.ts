@@ -1,3 +1,4 @@
+import {MAX_APP_BODY_BYTES, MAX_TEXT_LENGTH} from "../src/domain/json-limits.ts";
 import {
   ApiError,
   reject,
@@ -249,7 +250,7 @@ export class AppApi {
     };
     await this.cloud.verifyPrivate();
     if (route === "POST /api/app/register") {
-      const b = await jsonBody(request, 98304);
+      const b = await jsonBody(request, MAX_APP_BODY_BYTES);
       onlyFields(b, ["mail", "password", "confirm", "nombre", "apellidos"]);
       const mail = normalizedMail(b.mail);
       if (b.password !== b.confirm) return reject(400, "PASSWORDS_DIFFER");
@@ -285,7 +286,7 @@ export class AppApi {
       return respond({ profile: clean(p), token: await this.mint(p) }, 201);
     }
     if (route === "POST /api/app/login") {
-      const b = await jsonBody(request, 98304);
+      const b = await jsonBody(request, MAX_APP_BODY_BYTES);
       onlyFields(b, ["mail", "password"]);
       const mail = normalizedMail(b.mail);
       const p = await this.cloud.read<Profile>(profilePath(mail));
@@ -311,7 +312,7 @@ export class AppApi {
     }
     if (route === "POST /api/app/password") {
       const actor = await this.session(request);
-      const b = await jsonBody(request, 98304);
+      const b = await jsonBody(request, MAX_APP_BODY_BYTES);
       onlyFields(b, ["mail", "password", "confirm", "sha"]);
       const mail = normalizedMail(b.mail || actor.session.mail);
       if (
@@ -349,7 +350,7 @@ export class AppApi {
     }
     if (route === "POST /api/app/role") {
       const actor = await this.trainer(request);
-      const b = await jsonBody(request, 98304);
+      const b = await jsonBody(request, MAX_APP_BODY_BYTES);
       onlyFields(b, ["mail", "perfil", "sha"]);
       if (!["alumno", "entrenador"].includes(String(b.perfil)))
         return reject(400, "ROLE_INVALID");
@@ -397,7 +398,7 @@ export class AppApi {
       route === "POST /api/app/delete-competition"
     ) {
       await this.trainer(request);
-      const b = await jsonBody(request, 98304);
+      const b = await jsonBody(request, MAX_APP_BODY_BYTES);
       const old = await this.cloud.read<Catalog>("PGT/master_data/plans.json");
       if (b.sha !== (old?.sha ?? null)) return reject(409, "VERSION_CONFLICT");
       const c: Catalog = old
@@ -583,7 +584,7 @@ export class AppApi {
     }
     if (request.method === "PUT" && kind === "profile") {
       if (!own) return reject(403, "OWN_PROFILE_ONLY");
-      const b = await jsonBody(request, 98304);
+      const b = await jsonBody(request, MAX_APP_BODY_BYTES);
       onlyFields(b, ["data", "sha"]);
       const current = await this.profile(mail);
       if (b.sha !== current.sha) return reject(409, "VERSION_CONFLICT");
@@ -610,7 +611,7 @@ export class AppApi {
     }
     if (request.method === "PUT" && kind === "techniques") {
       if (!own) return reject(403, "OWN_TECHNIQUES_ONLY");
-      const b = await jsonBody(request, 98304);
+      const b = await jsonBody(request, MAX_APP_BODY_BYTES);
       onlyFields(b, ["data", "sha"]);
       const path = `${root(mail)}/tecnics.json`;
       const old = await this.checkSha(path, b.sha);
@@ -670,7 +671,7 @@ export class AppApi {
     if (request.method === "PUT" && kind === "comments") {
       if (actor.profile.data.perfil !== "entrenador")
         return reject(403, "TRAINER_REQUIRED");
-      const b = await jsonBody(request, 98304);
+      const b = await jsonBody(request, MAX_APP_BODY_BYTES);
       onlyFields(b, ["data", "sha"]);
       const path = `${root(mail)}/trainer_comments.json`;
       const old = await this.checkSha(path, b.sha);
@@ -691,7 +692,7 @@ export class AppApi {
         if (
           !ids.has(c.techniqueId) ||
           typeof c.comment !== "string" ||
-          c.comment.length > 10000
+          c.comment.length > MAX_TEXT_LENGTH
         )
           return reject(400, "COMMENT_INVALID");
       const versions = updateTextVersions(

@@ -324,7 +324,7 @@ test("Validación exhaustiva de versiones, perfiles, técnicas y configuración"
     { tipo: 2 },
     { tipo: "a".repeat(501) },
     { descripcion_del_alumno: 2 },
-    { descripcion_del_alumno: "a".repeat(10001) },
+    { descripcion_del_alumno: "a".repeat(100001) },
   ])
     assert.throws(() =>
       validateTechniques({
