@@ -21,3 +21,5 @@ Validación de la dirección actual (capturas de referencia y cobertura) en `doc
 Cambios autorizados el 14/10/2026: PRO 01 (refresco de todos los campos del perfil tras sincronizar, preservando borradores sin guardar) y entrenadores como participantes de competiciones. Detalles y validación en `docs/CAMBIOS_PERFIL_PARTICIPANTES.md`. No filtrar entrenadores del selector de participantes.
 
 Corrección de planes futura del 14/10/2026 en apartado 11 de requisitos. Metadatos de propagación solo asignados por servidor; cliente no puede falsificar checkpoints. No sobrescribir ediciones manuales por mera lectura. Validación en `docs/VALIDACION_ACTUALIZACIONES_FUTURAS.md`.
+
+Decisión vigente (14/10/2026), apartado 12: planes de solo lectura para participantes, también entrenadores competidores. No habilitar edición manual en UI/API/cliente ni importación de planes como cambios. Las modificaciones se realizan en técnicas y comentarios; mantener propagación futura e histórico protegido. Conservar borradores antiguos para exportación, sin subirlos o descartarlos silenciosamente.

@@ -268,14 +268,20 @@ function App() {
                 .map((e) => (
                   <section key={e.key} className="conflict">
                     <h2>Conflicto en {e.key}</h2>
-                    <p>{e.conflicts.join(", ")}</p>
-                    <button
-                      onClick={() =>
-                        void run(() => client.resolve(e.key, "local"))
-                      }
-                    >
-                      Conservar mi versión
-                    </button>
+                    <p>
+                      {e.key.startsWith("plan:")
+                        ? "Este plan es de solo lectura. Exporta tu copia si quieres conservar el borrador anterior y después utiliza la versión sincronizada."
+                        : e.conflicts.join(", ")}
+                    </p>
+                    {!e.key.startsWith("plan:") && (
+                      <button
+                        onClick={() =>
+                          void run(() => client.resolve(e.key, "local"))
+                        }
+                      >
+                        Conservar mi versión
+                      </button>
+                    )}
                     <button
                       onClick={() =>
                         void run(() => client.resolve(e.key, "remote"))
@@ -587,12 +593,7 @@ function App() {
                     </div>
                   )}
                   {plans.map((plan) => (
-                    <PlanView
-                      key={plan.planId}
-                      plan={plan}
-                      run={run}
-                      edit={(next) => client.edit("plan:" + plan.planId, next)}
-                    />
+                    <PlanView key={plan.planId} plan={plan} run={run} />
                   ))}
                 </section>
               )}
@@ -1272,11 +1273,9 @@ function PasswordForm({
 function PlanView({
   plan,
   run,
-  edit,
 }: {
   plan: TrainingPlan;
   run: (a: () => Promise<unknown>) => Promise<void>;
-  edit?: (p: TrainingPlan) => Promise<void>;
 }) {
   const t = tabata(plan);
   return (
@@ -1287,13 +1286,17 @@ function PlanView({
           Exportar PDF
         </button>
       </div>
+      <p>
+        Plan de solo lectura. Se actualiza desde las técnicas del participante
+        y los comentarios del entrenador.
+      </p>
       <p className="timer">
         Trabajo {format(t.work)} · Cambio {format(t.rest)} · {t.cycles} ciclos ·{" "}
         {t.sets} sets · Entre técnicas {format(t.betweenSets)} · Total{" "}
         {format(t.duration)}
       </p>
       <div className="plan-sessions">
-        {plan.sessions.map((session, si) => (
+        {plan.sessions.map((session) => (
           <details className="session" key={session.date}>
             <summary>
               {new Date(session.date + "T12:00:00").toLocaleDateString(
@@ -1312,34 +1315,7 @@ function PlanView({
                   {ei + 1}. P{ex.prioridad} · {ex.posicion}
                 </strong>
                 <p>{ex.tipo}</p>
-                {edit ? (
-                  <textarea
-                    aria-label="Editar descripción del plan"
-                    value={ex.descripcion_del_alumno}
-                    onChange={(e) =>
-                      void edit({
-                        ...plan,
-                        sessions: plan.sessions.map((s, i) =>
-                          i === si
-                            ? {
-                                ...s,
-                                exercises: s.exercises.map((x, j) =>
-                                  j === ei
-                                    ? {
-                                        ...x,
-                                        descripcion_del_alumno: e.target.value,
-                                      }
-                                    : x,
-                                ),
-                              }
-                            : s,
-                        ),
-                      })
-                    }
-                  />
-                ) : (
-                  <p>{ex.descripcion_del_alumno}</p>
-                )}
+                <p className="plan-description">{ex.descripcion_del_alumno}</p>
                 {ex.comment && <p className="note">Entrenador: {ex.comment}</p>}
               </div>
             ))}

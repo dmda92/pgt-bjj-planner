@@ -211,7 +211,7 @@ test("Contraseña cambia solo pwd, revoca sesiones y conserva técnicas y perfil
     200,
   );
 });
-test("Competición: asignación, snapshot histórico protegido, comentarios, manual, CAS, desasignación y tombstone", async () => {
+test("Competición: asignación, snapshot histórico protegido, comentarios, bloqueo de edición manual, CAS, desasignación y tombstone", async () => {
   const f = fixture(),
     password = "synthetic-test-password";
   for (const mail of ["trainer@example.com", "student@example.com"])
@@ -379,7 +379,7 @@ test("Competición: asignación, snapshot histórico protegido, comentarios, man
         student,
       )
     ).status,
-    200,
+    403,
   );
   assert.equal(
     (
@@ -390,7 +390,7 @@ test("Competición: asignación, snapshot histórico protegido, comentarios, man
         student,
       )
     ).status,
-    409,
+    403,
   );
   let catalog = (await (
     await f.call("/api/app/catalog", "GET", undefined, trainer)
@@ -596,6 +596,7 @@ test("Entrenador puede participar, recibir su propio plan y ser desasignado sin 
   assert.equal(snapshot.profile.data.perfil, "entrenador");
   assert.equal(snapshot.plans.length, 1);
   assert.equal(snapshot.plans[0].data.mail, mail);
+  assert.equal((await f.call(path.replace("snapshot", "plan"), "PUT", { data: snapshot.plans[0].data, sha: snapshot.plans[0].sha }, token)).status, 403);
   assert.ok(snapshot.plans[0].data.sessions.every((s: any) => s.exercises.length === 5));
   const catalog = await (await f.call("/api/app/catalog", "GET", undefined, token)).json() as any;
   assert.equal((await f.call("/api/app/assignment", "POST", { planId: catalog.data.plans[0].planId, alumnos: [], sha: catalog.sha }, token)).status, 200);

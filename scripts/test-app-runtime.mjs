@@ -241,8 +241,8 @@ try {
   );
   const manual = structuredClone(plan.data);
   manual.sessions[0].exercises[0].descripcion_del_alumno = "Manual";
-  await call(bp + "plan", "PUT", { data: manual, sha: plan.sha }, b.token);
-  await call(bp + "plan", "PUT", { data: manual, sha: plan.sha }, b.token, 409);
+  await call(bp + "plan", "PUT", { data: manual, sha: plan.sha }, b.token, 403);
+  await call(bp + "plan", "PUT", { data: manual, sha: plan.sha }, b.token, 403);
   let catalog = await call("/api/app/catalog", "GET", undefined, trainer.token);
   const id = catalog.data.plans[0].planId;
   await call(
@@ -267,7 +267,7 @@ try {
   await call("/api/app/logout", "POST", {}, b.token);
   await call(bp + "snapshot", "GET", undefined, b.token, 401);
   console.log(
-    "Aplicación en workerd + SQLite DO: altas con fixture, hash 600000 independiente, roles, bootstrap, comentarios, competición, histórico protegido y actualización futura de textos, edición manual, CAS, desasignación, borrado y revocación OK. GitHub interceptado; sin datos reales.",
+    "Aplicación en workerd + SQLite DO: altas con fixture, hash 600000 independiente, roles, bootstrap, comentarios, competición, histórico protegido y actualización futura de textos, plan de solo lectura, CAS, desasignación, borrado y revocación OK. GitHub interceptado; sin datos reales.",
   );
 } finally {
   await runtime.dispose();

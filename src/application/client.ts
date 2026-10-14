@@ -262,6 +262,7 @@ export class Client implements AuthenticationProvider, SyncService {
   }
   async edit(key: string, data: Document) {
     const identity = this.requireIdentity();
+    if (key.startsWith("plan:")) throw Error("PLAN_READ_ONLY");
     const old = await db.entries.get(key);
     if (!old || old.mail !== identity.mail) throw Error("Datos de otra sesión");
     this.requireIdentity();
@@ -333,6 +334,18 @@ export class Client implements AuthenticationProvider, SyncService {
           throw Error(
             "Recurso remoto desaparecido; cambios locales conservados",
           );
+        }
+        if (entry.key.startsWith("plan:")) {
+          // Preserve legacy pending drafts for export; never upload manual plan changes.
+          await repository.save(
+            {
+              ...entry,
+              conflicts: ["/"],
+              remote: { data: current.data, sha: current.sha! },
+            },
+            identity.mail,
+          );
+          continue;
         }
         const merged = merge(entry.base, entry.data, current.data);
         if (merged.conflicts.length) {
@@ -457,6 +470,7 @@ export class Client implements AuthenticationProvider, SyncService {
         validatePlan(e.data);
         if (e.data.mail !== identity.mail || e.key !== "plan:" + e.data.planId)
           throw Error("Plan de otro alumno");
+        continue; // plans in backups are reference snapshots, not importable edits
       } else throw Error("Archivo no importable");
       pending.push(e);
     }
@@ -471,13 +485,16 @@ export class Client implements AuthenticationProvider, SyncService {
         );
       }
     });
-    this.status = "Copia importada como cambios pendientes";
+    this.status =
+      "Perfil y técnicas importados como cambios pendientes; planes de solo lectura";
     this.onChange();
   }
   async resolve(key: string, choice: "local" | "remote") {
     const identity = this.requireIdentity();
     const entry = await db.entries.get(key);
     if (!entry) throw Error("No hay conflicto");
+    if (key.startsWith("plan:") && choice === "local")
+      throw Error("PLAN_READ_ONLY");
     if (!entry.remote) {
       if (
         choice === "remote" &&

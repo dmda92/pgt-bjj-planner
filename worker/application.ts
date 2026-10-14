@@ -19,7 +19,6 @@ import {
   validateVersion,
   validateProfile,
   validateCompetition,
-  validatePlan,
   type Profile,
   type Template,
   type Techniques,
@@ -760,44 +759,7 @@ export class AppApi {
       });
     }
     if (request.method === "PUT" && kind === "plan") {
-      if (!own) return reject(403, "OWN_PLAN_ONLY");
-      const b = await jsonBody(request, 98304);
-      onlyFields(b, ["data", "sha"]);
-      const plan = b.data as TrainingPlan;
-      if (!plan || !/^[0-9a-f-]{36}$/.test(plan.planId) || plan.mail !== mail)
-        return reject(400, "PLAN_INVALID");
-      const path = `${root(mail)}/training_plans/plan_${plan.planId}.json`;
-      const old = await this.checkSha(path, b.sha);
-      if (!old) return reject(404, "PLAN_NOT_FOUND");
-      const original = old.data as unknown as TrainingPlan;
-      for (const key of [
-        "fecha_comienzo",
-        "fecha_torneo",
-        "dias_de_entrenamiento",
-        "ejercicios_por_sesion",
-        "tiempo_por_tecnica_segundos",
-        "descanso_entre_ciclos_segundos",
-        "descanso_entre_tecnicas_segundos",
-        "generatedAt",
-      ] as const)
-        if (JSON.stringify(plan[key]) !== JSON.stringify(original[key]))
-          return reject(400, "PLAN_CONFIG_IMMUTABLE");
-      // Checkpoints belong to the server, including for manual plan edits.
-      if (original.appliedDescriptionUpdates)
-        plan.appliedDescriptionUpdates = original.appliedDescriptionUpdates;
-      else delete plan.appliedDescriptionUpdates;
-      if (original.appliedCommentUpdates)
-        plan.appliedCommentUpdates = original.appliedCommentUpdates;
-      else delete plan.appliedCommentUpdates;
-      validate(() => validatePlan(plan));
-      plan.revision = original.revision + 1;
-      plan.updatedAt = now();
-      if (unchanged(plan, original))
-        return respond({ ...old, status: "UNCHANGED_NO_COMMIT" });
-      return respond({
-        data: plan,
-        sha: await this.cloud.write(path, plan, old.sha),
-      });
+      return reject(403, "PLAN_READ_ONLY");
     }
     return reject(404, "ENDPOINT_NOT_FOUND");
   }

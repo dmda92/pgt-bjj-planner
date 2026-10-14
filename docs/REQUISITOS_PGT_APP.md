@@ -518,3 +518,13 @@ Antes de activar esta parte, consultar las ambigüedades sobre inserciones anter
 ### 11.3 Pruebas requeridas
 
 Verificar: todas las apariciones futuras de descripciones y comentarios, histórico exacto, competiciones finalizadas incluso en su día de torneo, sesión de hoy protegida, cambios de día en España, secuencia/fechas/N/Tábata intactos, versiones idempotentes, recuperación tras escritura parcial, conflictos SHA, edición offline y sincronización entre dispositivos, permisos y aislamiento de otros alumnos. Las pruebas de incorporación/replanificación de nuevas técnicas se añadirán cuando se apruebe la política estructural, sin confundir la ausencia actual de recálculo con una incorporación ya implementada.
+
+## 12. Decisión del propietario: planes de solo lectura (14/10/2026)
+
+Sustituye cualquier permiso anterior de edición manual de planes, incluido el apartado 11. El alumno consulta y exporta su plan, pero no modifica manualmente sesiones, ejercicios ni descripciones dentro del plan. Un entrenador participante utiliza igualmente un plan de solo lectura. El entrenador sigue modificando comentarios de las técnicas, sin editar directamente los planes.
+
+La fuente de cambios son tecnics.json y trainer_comments.json. La propagación automática de descripciones/comentarios futuros se mantiene; el histórico, hoy y torneos finalizados permanecen protegidos. El recálculo estructural aún requiere resolver el resto de decisiones del análisis.
+
+Frontend sin controles de edición; cliente local rechaza editar claves plan:*; PUT de plan devuelve 403 PLAN_READ_ONLY tras verificar sesión/autorización. Una importación de copia valida sus planes como referencias, pero no los utiliza para sobrescribir la planificación; perfil y técnicas siguen restaurándose. Los borradores manuales pendientes de versiones anteriores no se envían, se mantienen exportables y se sustituyen por el remoto solo por decisión explícita del usuario. Los planes ya persistidos no se borran ni se migran destructivamente.
+
+Pruebas: denegación de escritura directa para alumno y entrenador participante, plan sin controles editables, copia/cola antigua incapaz de sobrescribir el remoto, PDF y consulta offline conservados y actualizaciones automáticas futuras operativas.

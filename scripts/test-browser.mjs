@@ -530,19 +530,116 @@ try {
   await pdf.saveAs(".browser-artifacts/plan.pdf");
   assert.ok((await readFile(".browser-artifacts/plan.pdf")).length > 10000);
   await page.locator(".session summary").first().click();
-  await page
-    .getByLabel("Editar descripción del plan")
-    .first()
-    .fill("Plan manual offline");
+  assert.equal(await page.getByLabel("Editar descripción del plan").count(), 0);
+  assert.equal(
+    await page.locator(".plan-card textarea, .plan-card input").count(),
+    0,
+  );
   await context.setOffline(false);
   await sync();
   const planFile = [...files].find(([k]) =>
     k.includes("/browser-student@example.com/training_plans/"),
   );
-  assert.equal(
-    planFile[1].data.sessions[0].exercises[0].descripcion_del_alumno,
-    "Plan manual offline",
+  const copiedEntries = await page.evaluate(async () => {
+    const database = await new Promise((resolve, reject) => {
+      const r = indexedDB.open("pgt-active-user-v1");
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+    });
+    const result = await new Promise((resolve, reject) => {
+      const tx = database.transaction("entries", "readonly"),
+        r = tx.objectStore("entries").getAll();
+      r.onsuccess = () =>
+        resolve(r.result.map(({ key, data }) => ({ key, data })));
+      r.onerror = () => reject(r.error);
+    });
+    database.close();
+    return result;
+  });
+  copiedEntries.find((e) =>
+    e.key.startsWith("plan:"),
+  ).data.sessions[0].exercises[0].descripcion_del_alumno = "Copia no permitida";
+  await page.getByLabel("Restaurar copia propia").setInputFiles({
+    name: "readonly-backup.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(
+      JSON.stringify({
+        schemaVersion: 1,
+        mail: "browser-student@example.com",
+        entries: copiedEntries,
+      }),
+    ),
+  });
+  await page
+    .getByRole("status")
+    .filter({ hasText: /planes de solo lectura/ })
+    .waitFor();
+  await sync();
+  assert.ok(
+    !JSON.stringify(files.get(planFile[0])).includes("Copia no permitida"),
   );
+  await page.evaluate(() => scrollTo(0, 0));
+  await page.screenshot({
+    path: ".browser-artifacts/plan-readonly-desktop.png",
+  });
+  await page.setViewportSize({ width: 390, height: 900 });
+  assert.equal(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > innerWidth,
+    ),
+    false,
+  );
+  await page.screenshot({
+    path: ".browser-artifacts/plan-readonly-mobile.png",
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  // Old pending plan drafts are preserved for export, but never sent to the API.
+  const readonlyCloudPlan = JSON.stringify(files.get(planFile[0]));
+  await page.evaluate(async () => {
+    const database = await new Promise((resolve, reject) => {
+      const r = indexedDB.open("pgt-active-user-v1");
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+    });
+    await new Promise((resolve, reject) => {
+      const tx = database.transaction("entries", "readwrite"),
+        store = tx.objectStore("entries");
+      const request = store.getAll();
+      request.onsuccess = () => {
+        const entry = request.result.find((e) => e.key.startsWith("plan:"));
+        entry.data.sessions[0].exercises[0].descripcion_del_alumno =
+          "Borrador heredado";
+        entry.dirty = true;
+        store.put(entry);
+      };
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    database.close();
+  });
+  await page.getByRole("button", { name: "Sincronizar", exact: true }).click();
+  await visible(page.locator(".conflict"));
+  assert.equal(JSON.stringify(files.get(planFile[0])), readonlyCloudPlan);
+  assert.equal(
+    await page
+      .locator(".conflict")
+      .getByRole("button", { name: "Conservar mi versión" })
+      .count(),
+    0,
+  );
+  const legacyDownload = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "Exportar mi copia JSON", exact: true })
+    .click();
+  await (await legacyDownload).saveAs(".browser-artifacts/legacy-draft.json");
+  assert.ok(
+    (await readFile(".browser-artifacts/legacy-draft.json", "utf8")).includes(
+      "Borrador heredado",
+    ),
+  );
+  await page.getByRole("button", { name: "Usar remoto en conflictos" }).click();
+  await sync();
+  assert.equal(await page.locator(".conflict").count(), 0);
   // PRO 01: profile stays mounted on two independent devices during synchronization.
   const profileDevice = await browser.newContext();
   const mirror = await profileDevice.newPage();
@@ -584,9 +681,9 @@ try {
     await page
       .locator(".session")
       .nth(futureSessionIndex)
-      .getByLabel("Editar descripción del plan")
+      .locator(".plan-description")
       .first()
-      .inputValue(),
+      .innerText(),
     "Texto futuro offline",
   );
   assert.deepEqual(files.get(planFile[0]).data, savedPlan); // no cloud write while offline
@@ -609,9 +706,9 @@ try {
     await mirror
       .locator(".session")
       .nth(futureSessionIndex)
-      .getByLabel("Editar descripción del plan")
+      .locator(".plan-description")
       .first()
-      .inputValue(),
+      .innerText(),
     "Texto futuro offline",
   );
   // A trainer's authorised source update reaches pupil plans without regenerating them.
@@ -774,7 +871,7 @@ try {
   );
   assert.deepEqual(errors, []);
   console.log(
-    "Chromium local: registro, IndexedDB, offline/reload, pendientes/cambio A→B, restauración, entrenador/asignación, textos futuros offline y sincronizados entre dispositivos, plan/PDF offline, edición, contraseña, dos pestañas y responsive 390px OK. Sin conexiones externas ni datos reales.",
+    "Chromium local: registro, IndexedDB, offline/reload, pendientes/cambio A→B, restauración, entrenador/asignación, textos futuros offline y sincronizados entre dispositivos, plan de solo lectura/PDF offline, contraseña, dos pestañas y responsive 390px OK. Sin conexiones externas ni datos reales.",
   );
 } finally {
   await context.close();

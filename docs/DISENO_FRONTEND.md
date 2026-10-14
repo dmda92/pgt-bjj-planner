@@ -23,7 +23,7 @@ Consultar [.agents/skills/frontend-design/SKILL.md](../.agents/skills/frontend-d
 
 Barlow local regular y semibold, también en títulos. Títulos principales 28–38 px, títulos de zona 23–28 px, lectura 16 px, metadatos 12–14 px. Texto alineado a la izquierda, cifras tabulares. Bordes finos y radios 6–10 px; no sombras repetidas ni gradientes. Los estados llevan texto, no dependen solo del color.
 
-En escritorio, lateral pizarra persistente de 220 px y cabecera de sesión discreta. Repertorio en dos columnas cuando hay espacio, una en pantallas estrechas. Sesiones en dos columnas y apertura individual; conserva edición manual, exportación y orden. Hasta 850 px, navegación superior; hasta 640 px, controles y sesiones en una columna. La tabla de cobertura tiene scroll interno en móvil sin desbordar la página.
+En escritorio, lateral pizarra persistente de 220 px y cabecera de sesión discreta. Repertorio en dos columnas cuando hay espacio, una en pantallas estrechas. Sesiones en dos columnas y apertura individual; conserva consulta de solo lectura, exportación y orden. Hasta 850 px, navegación superior; hasta 640 px, controles y sesiones en una columna. La tabla de cobertura tiene scroll interno en móvil sin desbordar la página.
 
 ## Entrenador
 

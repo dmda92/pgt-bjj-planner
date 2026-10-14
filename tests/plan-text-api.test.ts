@@ -268,7 +268,7 @@ test("Future text sync persists to GitHub adapter, recovers partial failures, is
         aToken,
       )
     ).status,
-    200,
+    403,
   );
   snap = await snapshot();
   assert.equal(
@@ -276,7 +276,7 @@ test("Future text sync persists to GitHub adapter, recovers partial failures, is
       .find((p: any) => p.data.planId === active.data.planId)
       .data.sessions.find((s: any) => s.date === future.date)
       .exercises.find((e: any) => e.techniqueId === id).descripcion_del_alumno,
-    "Manual posterior",
+    "Nueva preferida",
   );
   assert.equal(
     (
