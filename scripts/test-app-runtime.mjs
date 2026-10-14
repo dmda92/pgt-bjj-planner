@@ -25,7 +25,7 @@ const runtime = new Miniflare(
       SECURITY: { className: "ProbeSecurity", useSQLite: true },
     },
     bindings: {
-      ALLOWED_ORIGIN: "https://pgt.example",
+      ALLOWED_ORIGINS: "https://pgt.example,https://pgt.pages.dev",
       DATA_BRANCH: "main",
       PROBE_ADMIN_KEY: admin,
       GITHUB_DATA_TOKEN: "synthetic-github",
@@ -105,6 +105,7 @@ async function call(path, method = "GET", body, token = "", expected = 200) {
     method,
     headers: {
       "CF-Connecting-IP": "fixture-" + ++calls,
+      Origin: calls % 2 ? "https://pgt.example" : "https://pgt.pages.dev",
       ...(token ? { Authorization: "Bearer " + token } : {}),
       ...(body ? { "Content-Type": "application/json" } : {}),
     },
@@ -144,13 +145,10 @@ try {
   );
   const bp = "/api/app/users/runtime-b@example.com/";
   await call(bp + "snapshot", "GET", undefined, a.token, 403);
-  await call(
-    "/api/app/bootstrap",
-    "POST",
-    { mail: "runtime-a@example.com" },
-    admin,
-  );
-  await call("/api/app/catalog", "GET", undefined, a.token, 401);
+  const path = "PGT/users_data/runtime-a@example.com/user_data.json";
+  const profile = JSON.parse(Buffer.from(files.get(path).content, "base64").toString());
+  profile.perfil = "entrenador";
+  files.set(path, {content: Buffer.from(JSON.stringify(profile)).toString("base64"), sha: (++seq).toString(16).padStart(40,"0")});
   const trainer = await call("/api/app/login", "POST", {
     mail: "runtime-a@example.com",
     password,
@@ -267,7 +265,7 @@ try {
   await call("/api/app/logout", "POST", {}, b.token);
   await call(bp + "snapshot", "GET", undefined, b.token, 401);
   console.log(
-    "Aplicación en workerd + SQLite DO: altas con fixture, hash 600000 independiente, roles, bootstrap, comentarios, competición, histórico protegido y actualización futura de textos, plan de solo lectura, CAS, desasignación, borrado y revocación OK. GitHub interceptado; sin datos reales.",
+    "Aplicación en workerd + SQLite DO: altas con fixture, hash 600000 independiente, roles manuales, comentarios, competición, histórico protegido y actualización futura de textos, plan de solo lectura, CAS, desasignación, borrado y revocación OK. GitHub interceptado; sin datos reales.",
   );
 } finally {
   await runtime.dispose();

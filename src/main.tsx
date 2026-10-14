@@ -1015,8 +1015,7 @@ function Auth({
   run: (a: () => Promise<unknown>) => Promise<void>;
   busy: boolean;
 }) {
-  const [register, setRegister] = useState(false),
-    [bootstrap, setBootstrap] = useState(false);
+  const [register, setRegister] = useState(false);
   return (
     <section className="auth" id="main-content">
       <p className="auth-team">Portugal Gold Team</p>
@@ -1091,39 +1090,6 @@ function Auth({
       >
         ¿Olvidó su contraseña?
       </button>
-      <details>
-        <summary>Configuración inicial del propietario</summary>
-        <p>
-          Registra primero tu cuenta. La clave administrativa existente permite
-          crear el primer entrenador una sola vez.
-        </p>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            const f = new FormData(e.currentTarget);
-            void run(async () => {
-              await client.request(
-                "/api/app/bootstrap",
-                "POST",
-                { mail: String(f.get("mail")) },
-                String(f.get("key")),
-              );
-              setBootstrap(true);
-            });
-          }}
-        >
-          <label>
-            Correo registrado
-            <input name="mail" type="email" required />
-          </label>
-          <label>
-            Clave de configuración
-            <input name="key" type="password" required autoComplete="off" />
-          </label>
-          <button>Crear primer entrenador</button>
-        </form>
-        {bootstrap && <p>Entrenador creado. Inicia sesión.</p>}
-      </details>
     </section>
   );
 }
@@ -1189,7 +1155,7 @@ function ProfileView({
           </label>
           <label>
             Peso (kg)
-            <input name="peso" type="number" step="0.1" {...field("peso")} />
+            <input name="peso" type="number" min="0.1" max="499.9" step="0.1" {...field("peso")} />
           </label>
           <label>
             Cinturón

@@ -528,3 +528,8 @@ La fuente de cambios son tecnics.json y trainer_comments.json. La propagación a
 Frontend sin controles de edición; cliente local rechaza editar claves plan:*; PUT de plan devuelve 403 PLAN_READ_ONLY tras verificar sesión/autorización. Una importación de copia valida sus planes como referencias, pero no los utiliza para sobrescribir la planificación; perfil y técnicas siguen restaurándose. Los borradores manuales pendientes de versiones anteriores no se envían, se mantienen exportables y se sustituyen por el remoto solo por decisión explícita del usuario. Los planes ya persistidos no se borran ni se migran destructivamente.
 
 Pruebas: denegación de escritura directa para alumno y entrenador participante, plan sin controles editables, copia/cola antigua incapaz de sobrescribir el remoto, PDF y consulta offline conservados y actualizaciones automáticas futuras operativas.
+
+
+## 13. Corrección del propietario: acceso y alta manual de entrenador (14/10/2026)
+
+Sustituye toda exigencia anterior de bootstrap o clave especial. Alta pública siempre como alumno; primer entrenador mediante edición manual de perfil en GitHub privado por el propietario. Retirar UI, estados y endpoint de bootstrap; los roles siguen validados en servidor y gestionados por entrenadores autorizados. No borrar datos pendientes al cerrar sesión o cambiar de usuario. Peso vacío es null; peso informado debe ser finito, mayor que cero y menor que 500 kg. Rechazarlo antes de persistir localmente y en API. Autorizar exclusivamente orígenes legítimos enumerados explícitamente, sin wildcard ni confianza derivada de Host.

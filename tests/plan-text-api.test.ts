@@ -59,7 +59,6 @@ function fixture() {
   const api = new AppApi(
     storage as unknown as DurableObjectStorage,
     cloud,
-    { PROBE_ADMIN_KEY: "fixture-admin" },
     () => instant,
   );
   async function call(
@@ -115,12 +114,7 @@ test("Future text sync persists to GitHub adapter, recovers partial failures, is
   const aToken = await f.register(a),
     bToken = await f.register(b);
   await f.register("coach@example.com");
-  await f.call(
-    "/api/app/bootstrap",
-    "POST",
-    { mail: "coach@example.com" },
-    "fixture-admin",
-  );
+  f.files.get("PGT/users_data/coach@example.com/user_data.json")!.data.perfil = "entrenador";
   const trainer = (
     (await (
       await f.call("/api/app/login", "POST", {

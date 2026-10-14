@@ -263,6 +263,7 @@ export class Client implements AuthenticationProvider, SyncService {
   async edit(key: string, data: Document) {
     const identity = this.requireIdentity();
     if (key.startsWith("plan:")) throw Error("PLAN_READ_ONLY");
+    if (key === "profile") validateProfile(data as Profile);
     const old = await db.entries.get(key);
     if (!old || old.mail !== identity.mail) throw Error("Datos de otra sesión");
     this.requireIdentity();

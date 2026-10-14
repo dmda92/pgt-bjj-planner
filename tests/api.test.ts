@@ -9,7 +9,7 @@ import {
   fingerprint,
 } from "../worker/security.ts";
 const admin = "admin-probe-example-32-characters-long";
-function fixture() {
+function fixture(origins = "https://pgt.example") {
   const transient = new Map<string, unknown>();
   const business = new Map<string, CloudRecord>();
   let writes = 0,
@@ -45,7 +45,7 @@ function fixture() {
   };
   const env = {
     PROBE_ADMIN_KEY: admin,
-    ALLOWED_ORIGIN: "https://pgt.example",
+    ALLOWED_ORIGINS: origins,
     DATA_BRANCH: "main",
   } as Env;
   const instance = new ProbeSecurity(
@@ -261,4 +261,38 @@ test("Límite de frecuencia proporciona Retry-After sin nuevas llamadas remotas"
   assert.equal(response!.status, 429);
   assert.ok(Number(response!.headers.get("Retry-After")) > 0);
   assert.equal(f.checks(), 0);
+});
+
+
+test("Origin mismatch reproduces GET success vs login/write rejection independently of payload", async () => {
+  const f = fixture("https://replace-with-your-worker.workers.dev");
+  const read = await f.call("/api/app/catalog", "GET");
+  assert.equal(read.status, 401);
+  const checks = f.checks();
+  for (const path of ["/api/app/login", "/api/app/logout", "/api/app/users/a@example.com/profile"]) {
+    const res = await f.call(path, "POST", { peso: -1 }, "", "https://pgt.example");
+    assert.equal(res.status, 403);
+    assert.equal(((await res.json()) as any).error, "ORIGIN_FORBIDDEN");
+  }
+  assert.equal(f.checks(), checks);
+});
+
+test("Exact Worker/Pages origins admit preflight and login before/after logout, hostile origins blocked", async () => {
+  const f = fixture("https://pgt.example, https://pgt.pages.dev");
+  for (const origin of ["https://pgt.example", "https://pgt.pages.dev"]) {
+    const preflight = await f.call("/api/app/login", "OPTIONS", undefined, undefined, origin);
+    assert.equal(preflight.status, 204);
+    assert.equal(preflight.headers.get("Access-Control-Allow-Origin"), origin);
+    assert.match(preflight.headers.get("Access-Control-Allow-Headers")!, /Authorization/);
+    for (const path of ["/api/app/login", "/api/app/logout"]) {
+      const res = await f.call(path, "POST", {mail:"missing@example.com", password:"synthetic-password"}, undefined, origin);
+      assert.notEqual(((await res.json()) as any).error, "ORIGIN_FORBIDDEN");
+      assert.equal(res.headers.get("Access-Control-Allow-Origin"), origin);
+    }
+  }
+  for (const origin of ["null", "https://pgt.example.evil.test", "https://preview.pgt.pages.dev", "http://pgt.example", "https://evil.test"]) {
+    const res = await f.call("/api/app/login", "OPTIONS", undefined, undefined, origin);
+    assert.equal(res.status, 403);
+    assert.equal(res.headers.has("Access-Control-Allow-Origin"), false);
+  }
 });

@@ -6,7 +6,6 @@ import {
   passwordMatches,
   opaqueToken,
   fingerprint,
-  equal,
   jsonBody,
   onlyFields,
 } from "./security.ts";
@@ -36,9 +35,6 @@ import {
   updateFuturePlanText,
 } from "../src/domain/plan-text-updates.ts";
 import { generatePlan } from "../src/domain/planner.ts";
-interface AppEnv {
-  PROBE_ADMIN_KEY: string;
-}
 type Session = { mail: string; pwdFingerprint: string };
 const root = (mail: string) => `PGT/users_data/${mail}`;
 const profilePath = (mail: string) => `${root(mail)}/user_data.json`;
@@ -59,17 +55,14 @@ export class AppApi {
   constructor(
     privateStore: DurableObjectStorage,
     cloud: CloudStorageProvider,
-    env: AppEnv,
     clock: () => Date = () => new Date(),
   ) {
     this.store = privateStore;
     this.cloud = cloud;
-    this.env = env;
     this.clock = clock;
   }
   private store: DurableObjectStorage;
   private cloud: CloudStorageProvider;
-  private env: AppEnv;
   private clock: () => Date;
   private async profile(mail: string) {
     const p = await this.cloud.read<Profile>(profilePath(mail));
@@ -246,6 +239,7 @@ export class AppApi {
   }
   async handle(request: Request, url: URL): Promise<Response> {
     const route = `${request.method} ${url.pathname}`;
+    if (url.pathname === "/api/app/bootstrap") return reject(404, "ENDPOINT_NOT_FOUND");
     const validate = (fn: () => void) => {
       try {
         fn();
@@ -306,36 +300,6 @@ export class AppApi {
         profile: clean(p.data),
         token: await this.mint(p.data),
       });
-    }
-    if (route === "POST /api/app/bootstrap") {
-      if (
-        !this.env.PROBE_ADMIN_KEY ||
-        !equal(
-          request.headers.get("Authorization") || "",
-          `Bearer ${this.env.PROBE_ADMIN_KEY}`,
-        )
-      )
-        return reject(403, "ADMIN_REQUIRED");
-      if (await this.store.get("app-bootstrap-done"))
-        return reject(409, "BOOTSTRAP_ALREADY_USED");
-      const b = await jsonBody(request, 98304);
-      onlyFields(b, ["mail"]);
-      const mail = normalizedMail(b.mail);
-      const p = await this.profile(mail);
-      if (p.data.probeOnly) return reject(400, "REGISTER_REAL_PROFILE_FIRST");
-      await this.cloud.write(
-        profilePath(mail),
-        {
-          ...p.data,
-          perfil: "entrenador",
-          revision: p.data.revision + 1,
-          updatedAt: now(),
-        },
-        p.sha,
-      );
-      await this.store.put("app-bootstrap-done", true);
-      await this.revoke(mail);
-      return respond({ status: "FIRST_TRAINER_CREATED" });
     }
     if (route === "POST /api/app/logout") {
       const s = await this.session(request);

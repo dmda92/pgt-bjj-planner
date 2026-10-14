@@ -52,9 +52,7 @@ function fixture() {
         sha:files.get(directory+'/'+name)?.sha,
       })),
   };
-  const api = new AppApi(store as unknown as DurableObjectStorage, cloud, {
-    PROBE_ADMIN_KEY: "admin-key",
-  });
+  const api = new AppApi(store as unknown as DurableObjectStorage, cloud);
   const call = async (
     path: string,
     method: string,
@@ -77,9 +75,9 @@ function fixture() {
       throw e;
     }
   };
-  return { call, files, reads };
+  return { call, files, reads, promote: (mail: string) => { const p = files.get(`PGT/users_data/${mail}/user_data.json`)!; (p.data as any).perfil = "entrenador"; } };
 }
-test("Registro completo, plantilla sintética, UUID exclusivos, bootstrap único y permisos", async () => {
+test("Registro completo, plantilla sintética, UUID exclusivos, roles manuales y permisos", async () => {
   const f = fixture();
   const register = async (mail: string) => {
     const r = await f.call("/api/app/register", "POST", {
@@ -117,32 +115,12 @@ test("Registro completo, plantilla sintética, UUID exclusivos, bootstrap único
     ).status,
     403,
   );
-  assert.equal(
-    (
-      await f.call(
-        "/api/app/bootstrap",
-        "POST",
-        { mail: "app-a@example.com" },
-        "admin-key",
-      )
-    ).status,
-    200,
-  );
-  assert.equal(
-    (
-      await f.call(
-        "/api/app/bootstrap",
-        "POST",
-        { mail: "app-b@example.com" },
-        "admin-key",
-      )
-    ).status,
-    409,
-  );
-  assert.equal(
-    (await f.call("/api/app/catalog", "GET", undefined, a.token)).status,
-    401,
-  );
+  assert.equal(a.profile.perfil, "alumno");
+  assert.equal(b.profile.perfil, "alumno");
+  for (const credential of ["", "admin-key", a.token]) {
+    assert.equal((await f.call("/api/app/bootstrap", "POST", {mail: "app-a@example.com"}, credential)).status, 404);
+  }
+  assert.equal((f.files.get("PGT/users_data/app-a@example.com/user_data.json")!.data as any).perfil, "alumno");
 });
 test("Contraseña cambia solo pwd, revoca sesiones y conserva técnicas y perfil", async () => {
   const f = fixture();
@@ -227,12 +205,7 @@ test("Competición: asignación, snapshot histórico protegido, comentarios, blo
       ).status,
       201,
     );
-  await f.call(
-    "/api/app/bootstrap",
-    "POST",
-    { mail: "trainer@example.com" },
-    "admin-key",
-  );
+  f.promote("trainer@example.com");
   const login = async (mail: string) =>
     (
       (await (
@@ -443,12 +416,7 @@ test("Trainer reset: inexistente, confirmación, CAS, hash nuevo y roles sin aut
       nombre: "Test",
       apellidos: "",
     });
-  await f.call(
-    "/api/app/bootstrap",
-    "POST",
-    { mail: "trainer@example.com" },
-    "admin-key",
-  );
+  f.promote("trainer@example.com");
   const trainer = (
     (await (
       await f.call("/api/app/login", "POST", {
@@ -587,7 +555,7 @@ test("Entrenador puede participar, recibir su propio plan y ser desasignado sin 
   const f = fixture();
   const mail = "competing-trainer@example.com";
   await f.call("/api/app/register", "POST", { mail, password: "synthetic-test-password", confirm: "synthetic-test-password", nombre: "Coach", apellidos: "" });
-  assert.equal((await f.call("/api/app/bootstrap", "POST", { mail }, "admin-key")).status, 200);
+  f.promote(mail);
   const { token } = await (await f.call("/api/app/login", "POST", { mail, password: "synthetic-test-password" })).json() as any;
   const competition = { fecha_comienzo: "2026-10-13", fecha_torneo: "2026-10-23", dias_de_entrenamiento: [2,4], ejercicios_por_sesion: 5, tiempo_por_tecnica_segundos: 180, descanso_entre_ciclos_segundos: 10, descanso_entre_tecnicas_segundos: 20, alumnos: [mail] };
   assert.equal((await f.call("/api/app/competition", "POST", { competition, sha: null }, token)).status, 200);
@@ -606,4 +574,24 @@ test("Entrenador puede participar, recibir su propio plan y ser desasignado sin 
   const latest = await (await f.call("/api/app/catalog", "GET", undefined, token)).json() as any;
   assert.equal((await f.call("/api/app/assignment", "POST", { planId: latest.data.plans[0].planId, alumnos: [mail], sha: latest.sha }, token)).status, 200);
   assert.equal((await (await f.call(path, "GET", undefined, token)).json() as any).index.data.planIds.length, 1);
+});
+
+
+test("Invalid weight is rejected without writes; null and decimal can subsequently synchronize", async () => {
+  const f=fixture(), mail="weight@example.com", password="synthetic-test-password";
+  const auth=await (await f.call("/api/app/register","POST",{mail,password,confirm:password,nombre:"Weight",apellidos:""})).json() as any;
+  const path=`PGT/users_data/${mail}/user_data.json`;
+  const endpoint=`/api/app/users/${mail}/profile`;
+  const before=JSON.stringify([...f.files]);
+  const record=f.files.get(path)!;
+  for (const peso of [-5,0,500,"bad"]) {
+    const res=await f.call(endpoint,"PUT",{data:{...record.data as any,peso},sha:record.sha},auth.token);
+    assert.equal(res.status,400);
+    assert.equal(JSON.stringify([...f.files]),before);
+  }
+  for (const peso of [72.5,null]) {
+    const current=f.files.get(path)!;
+    assert.equal((await f.call(endpoint,"PUT",{data:{...current.data as any,peso},sha:current.sha},auth.token)).status,200);
+    assert.equal((f.files.get(path)!.data as any).peso,peso);
+  }
 });

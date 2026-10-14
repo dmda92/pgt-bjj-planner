@@ -202,6 +202,8 @@ export function validateCompetition(c: Competition): void {
 }
 export function validateProfile(p: Profile): void {
   validateVersion(p);
+  if (p.peso !== null && !(typeof p.peso === "number" && Number.isFinite(p.peso) && p.peso > 0 && p.peso < 500))
+    throw Error("El peso debe ser mayor que 0 y menor que 500 kg, o estar vacío");
   if (
     typeof p.mail !== "string" ||
     typeof p.nombre !== "string" ||

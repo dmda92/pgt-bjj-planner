@@ -17,6 +17,7 @@ import {
   logUnexpectedDiagnostic,
   type RequestContext,
 } from "./diagnostics.ts";
+import { allowedOrigins } from "./origins.ts";
 import { AppApi } from "./application.ts";
 
 export interface Env {
@@ -24,7 +25,8 @@ export interface Env {
   ASSETS: Fetcher;
   GITHUB_DATA_TOKEN: string;
   PROBE_ADMIN_KEY: string;
-  ALLOWED_ORIGIN: string;
+  ALLOWED_ORIGIN?: string;
+  ALLOWED_ORIGINS?: string;
   DATA_BRANCH: string;
 }
 interface Session {
@@ -178,11 +180,12 @@ export class ProbeSecurity {
   }
   private async handle(request: Request): Promise<Response> {
     const origin = request.headers.get("Origin");
+    const permitted = origin !== null && allowedOrigins(this.env).has(origin);
     let result: Response;
     const context = requestContext(request);
     try {
       context.stage = "validate_origin";
-      if (origin && origin !== this.env.ALLOWED_ORIGIN)
+      if (origin !== null && !permitted)
         reject(403, "ORIGIN_FORBIDDEN");
       const url = new URL(request.url);
       if (request.method === "OPTIONS")
@@ -204,7 +207,7 @@ export class ProbeSecurity {
       if (error instanceof ApiError && error.retryAfter)
         result.headers.set("Retry-After", String(error.retryAfter));
     }
-    if (origin === this.env.ALLOWED_ORIGIN) {
+    if (permitted && origin) {
       result.headers.set("Access-Control-Allow-Origin", origin);
       result.headers.set("Vary", "Origin");
       result.headers.set(
@@ -226,7 +229,7 @@ export class ProbeSecurity {
     context: RequestContext,
   ): Promise<Response> {
     if (url.pathname.startsWith("/api/app/"))
-      return new AppApi(this.state.storage, this.provider(), this.env).handle(
+      return new AppApi(this.state.storage, this.provider()).handle(
         request,
         url,
       );

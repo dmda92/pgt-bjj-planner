@@ -49,7 +49,7 @@ Fuentes oficiales revisadas (13/10/2026):
 
 ## Aceptación pendiente a cargo del propietario
 
-1. Desplegar la nueva versión y crear su entrenador con registro nuevo + bootstrap de un solo uso.
+1. Desplegar la nueva versión y configurar el primer entrenador manualmente en el perfil de GitHub privado.
 2. Dos cuentas nuevas reales, aislamiento, comentario, asignación, manual/PDF, cambio/reset de contraseña y 409 entre dispositivos.
 3. Android Chrome e iPhone Safari reales: instalación PWA, reinicio, teclado/táctil, offline, PDF, actualización y sincronización PC. La prueba responsive en Chromium no acredita Safari/iOS.
 4. Medir CPU/latencia/cuotas en su cuenta Free, con el número real de alumnos y planes, sin cambiar parámetros de autenticación.
@@ -63,3 +63,16 @@ No se considera esta matriz terminada por el hecho de que funcionase la interfaz
 El componente compartido PlanView muestra el tipo en strong tanto en Mis planes como en el plan del alumno consultado por Entrenador. Las técnicas de TrainerStudent ya usan strong; se conserva ese formato. No cambia datos ni exportación PDF.
 
 Validación local: npm test (63/63), typecheck, build, check:worker, test:runtime y test:browser correctos. Chromium local mediante PGT_TEST_CHROMIUM_PATH; revisión de capturas de planes en escritorio y móvil. Fixtures locales, sin aceptación remota ni comprobación Safari/iOS. Despliegue pendiente del propietario.
+
+
+## Incidencia Origin, login, peso y retirada de bootstrap — 14/10/2026
+
+Causa reproducida: ALLOWED_ORIGIN único y dominio de ejemplo en wrangler.jsonc. La validación de Origin precede al payload y autenticación: POST/PUT con Origin rechazados, mientras GET sin Origin puede funcionar. No depende del peso ni del bootstrap. No se ha inspeccionado la configuración desplegada de Cloudflare; confirmación remota pendiente.
+
+ALLOWED_ORIGINS permite únicamente orígenes exactos enumerados; configuración con URL real del Worker y soporte de la variable singular anterior. Sin comodines ni confianza basada en Host. Origen null, previews y dominios arbitrarios rechazados. OPTIONS permitido solo para orígenes declarados. Sesión Bearer, sin cookies; SW no cachea API y build renueva versión de assets.
+
+Retirados formulario/estado y operación de bootstrap; ruta antigua 404. AppApi no recibe clave especial. Primer entrenador configurado manualmente en GitHub; fixtures simulan ese procedimiento. PROBE_ADMIN_KEY sigue exclusivamente en endpoints heredados de viabilidad, por lo que no es un secreto exclusivo del bootstrap. No se han cambiado secretos ni datos reales.
+
+Peso validado en HTML, dominio y Client.edit antes de persistir; API rechaza inválidos sin escrituras. Decimal y null se sincronizan posteriormente. Se conservan pendientes antiguos y bloqueo de cambio de cuenta para evitar pérdida de datos.
+
+Validación: 66/66 tests, typecheck, build, check:worker, runtime y Chromium local correctos. Regresión de allowlist/preflight, mismatch independientemente de peso, bootstrap retirado, registro alumno y peso sin escrituras. Runtime completo alterna Worker/Pages en Origin incluso durante login/logout/escrituras. Browser prueba ausencia de formulario, peso negativo, offline, reentrada, aislamiento y perfil entre dispositivos. Producción y PWA móvil real/Safari/iOS pendientes de aceptación del propietario.

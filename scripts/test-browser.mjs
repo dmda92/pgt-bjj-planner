@@ -50,7 +50,7 @@ const cloud = {
       ),
     ].map((name) => ({ name, type: name.endsWith(".json") ? "file" : "dir" })),
 };
-const api = new AppApi(store, cloud, { PROBE_ADMIN_KEY: "fixture-admin" });
+const api = new AppApi(store, cloud);
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://127.0.0.1");
@@ -172,15 +172,8 @@ try {
   });
   await page.getByRole("button", { name: "Salir", exact: true }).click();
   await visible(page.getByRole("button", { name: "Entrar", exact: true }));
-  assert.equal(
-    (
-      await context.request.post(origin + "/api/app/bootstrap", {
-        headers: { Authorization: "Bearer fixture-admin" },
-        data: { mail: "browser-trainer@example.com" },
-      })
-    ).status(),
-    200,
-  );
+  files.get("PGT/users_data/browser-trainer@example.com/user_data.json").data.perfil = "entrenador";
+  assert.equal(await page.getByText("Configuración inicial del propietario").count(), 0);
   await register("browser-student@example.com", "Student");
   await page
     .getByLabel("Descripción de técnica o enlace de vídeo")
@@ -753,6 +746,12 @@ try {
   });
   await mirror.getByRole("button", { name: "Perfil", exact: true }).click();
   await page.getByRole("button", { name: "Perfil", exact: true }).click();
+  const weight = page.getByLabel("Peso (kg)");
+  await weight.fill("-5");
+  assert.equal(await weight.evaluate(el => el.validity.rangeUnderflow), true);
+  await page.getByRole("button", {name: "Guardar en este dispositivo"}).click();
+  assert.equal(await weight.evaluate(el => el.validity.valid), false);
+  await weight.fill("");
   const businessBeforeProfile = JSON.stringify(
     [...files].filter(([k]) => !k.endsWith("user_data.json")),
   );

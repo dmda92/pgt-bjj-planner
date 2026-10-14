@@ -7,7 +7,7 @@
   "observability": { "enabled": false },
   "vars": {
     "DATA_BRANCH": "main",
-    "ALLOWED_ORIGIN": "https://replace-with-your-worker.workers.dev",
+    "ALLOWED_ORIGINS": "https://pgt-github-probe.david-dzm5.workers.dev",
   },
   "assets": {
     "directory": "./dist",
