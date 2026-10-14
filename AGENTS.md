@@ -29,3 +29,7 @@ Corrección 14/10/2026 apartado 13: eliminar bootstrap de propietario y clave es
 Autorización CI/CD del propietario (14/10/2026): preparar GitHub Actions para validar y publicar Worker + PWA en cada push a main, con secretos Actions configurados manualmente y activación CLOUDFLARE_DEPLOY_ENABLED=true. Sustituye la obligación anterior de ejecutar deploy manual por cada versión. Work no accede al panel Cloudflare ni establece secretos. Workflow .github/workflows/cloudflare.yml, guía docs/CI_CD.md; serializar producción, verificar HEAD y no duplicar Workers Builds. Conservar datos, nombre/bindings/migración y secretos existentes.
 
 Límites JSON vigentes (apartado 15, 14/10/2026): constantes src/domain/json-limits.ts, 4 MiB por documento, envoltorio AppApi +64 KiB y 100.000 unidades UTF-16 por descripción/comentario. No truncar/borrar automáticamente. Errores identifican archivo y bytes sin contenido ni rutas privadas. Contents object + blob inmutable por SHA para lectura >1 MB; nunca URLs arbitrarias. Mantener dirty/checkpoints tras fallos. Guía docs/JSON_SIZE_LIMITS.md. Verificar Actions y el paso efectivo de deploy después de subir a main.
+
+### PDF: requisito vigente de sesiones largas
+
+La sección 16 de docs/REQUISITOS_PGT_APP.md sustituye las reglas anteriores que prohibían partir sesiones. Permitir continuidad en páginas adicionales sin rechazar la exportación por longitud, sin truncar textos ni modificar datos, y con fecha y marca de continuación.

@@ -46,3 +46,7 @@ Ejecutar todas las verificaciones de AGENTS.md y `npm run test:browser`. Revisar
 ## Exportación PDF del plan (petición expresa 14/10/2026)
 
 La exportación adopta la misma paleta pizarra/azul y Barlow embebida. Resumen inicial con datos del snapshot, introducción literal y Tábata; sesiones en tarjetas por orden de lectura izquierda-derecha y arriba-abajo. Cada tarjeta muestra fecha, ordinal, posición/prioridad/pasada, tipos destacados y todos los textos guardados. No se imprimen encabezados del navegador ni URL de hosting. Logo original arriba a la derecha y páginas numeradas. Una sesión densa ocupa ancho completo y nunca se divide; si no cabe tras compactar, se informa antes de descargar. Esta autorización específica permite modificar el diseño PDF sin tocar datos ni planificación.
+
+### PDF con sesiones largas
+
+Las sesiones que exceden una página usan ancho completo y continúan en páginas adicionales a 10 pt, con fecha, número de sesión y Parte/Continuación. Se conserva íntegro el contenido y el orden; las sesiones cortas mantienen las tarjetas habituales. Se elimina el bloqueo que pedía acortar descripciones.

@@ -40,7 +40,7 @@ Tras actualizar la app, pulsar Sincronizar de nuevo en la sesión actual; no es 
 
 La prueba rápida de edición detectó una carrera adicional: recargas de estado tras guardados anteriores podían sobrescribir la vista optimista de ediciones posteriores. Se serializa el guardado de técnicas, se descartan cargas anteriores mientras hay guardados pendientes y Sincronizar espera a que termine la cola local. No se vacía IndexedDB ni se cambia de sesión.
 
-Ninguna medida sintética se presenta como tamaño del archivo del propietario. Los tests no acceden a datos reales. El PDF mantiene su requisito de no partir sesiones y puede rechazar sesiones físicamente imposibles de imprimir; ese límite de maquetación es independiente del tamaño JSON.
+Ninguna medida sintética se presenta como tamaño del archivo del propietario. Los tests no acceden a datos reales. El PDF permite que las sesiones largas continúen en páginas adicionales, conservando íntegros sus textos e identificando la fecha y la parte de la sesión. El límite de tamaño JSON es independiente de esta paginación.
 
 ## Fuentes oficiales
 

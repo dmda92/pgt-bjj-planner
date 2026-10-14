@@ -541,3 +541,7 @@ Cada push a main debe validar instalación, tests, typecheck y build antes de pu
 ## 15. Corrección de límites JSON (14/10/2026)
 
 Sustituye límites anteriores de 64 KiB por JSON y 10.000 caracteres por texto. Adoptar 4.194.304 bytes UTF-8 por documento y 4.259.840 bytes por petición AppApi, con descripciones/comentarios de hasta 100.000 unidades UTF-16. Límites compartidos cliente/servidor; comprobar al sincronizar, sin truncar ni borrar ediciones locales. Informar archivo, tamaño y máximo ante exceso. Lectura GitHub de archivos mayores de 1 MB por blob inmutable/SHA. Reintentar pendientes tras actualizar sin reiniciar sesión/IndexedDB. Mantener permisos, SHA, histórico y seguridad. Análisis y validación en JSON_SIZE_LIMITS.md.
+
+## 16. PDF: continuidad de sesiones largas (14/10/2026)
+
+Por petición expresa del propietario, se elimina la restricción que impedía exportar una sesión completa cuando no cabía en una página. Esta regla sustituye cualquier requisito anterior de no dividir sesiones. Las sesiones largas continúan en tantas páginas como necesiten, con la fecha, el número de sesión y una indicación de parte/continuación. Se mantienen todos los ejercicios, descripciones y comentarios, su orden y un tamaño legible de texto; no se exige acortar textos ni se truncan datos. Las sesiones cortas conservan su presentación habitual. La exportación sigue funcionando offline y no modifica los planes.

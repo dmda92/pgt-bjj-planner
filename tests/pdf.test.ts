@@ -20,13 +20,17 @@ test('PDF preserves snapshot and chronology, keeps entire sessions inside non-ov
  }
  assert.ok(pdf.output('arraybuffer').byteLength>10000);
 });
-test('Dense sessions use full width without splitting; impossible sessions fail explicitly',async()=>{
+test('Dense sessions use full width; very long sessions continue without rejecting or changing texts',async()=>{
  const source=plan();source.sessions=source.sessions.slice(0,1);
  for(const ex of source.sessions[0].exercises){ex.descripcion_del_alumno='Descripción larga con acentos y ángulo. '.repeat(12);ex.comment='Comentario del entrenador para practicar.';}
  const {placements}=await buildPlanPdf(source,assets);
  assert.equal(placements.length,1);assert.equal(placements[0].width,178);
  for(const ex of source.sessions[0].exercises)ex.descripcion_del_alumno='Texto imposible de encajar. '.repeat(1000);
- await assert.rejects(buildPlanPdf(source,assets),/no cabe completa en una página/);
+ const before=JSON.stringify(source);
+ const continued=await buildPlanPdf(source,assets);
+ assert.ok(continued.placements.length>1);
+ assert.ok(continued.placements.every(p=>p.date===source.sessions[0].date&&p.width===178&&p.y+p.height<=276));
+ assert.equal(JSON.stringify(source),before);
 });
 test('PDF accepts variable Tabata, zero rests, empty plans and long names',async()=>{
  const source=plan();source.ejercicios_por_sesion=3;source.tiempo_por_tecnica_segundos=60;source.descanso_entre_ciclos_segundos=0;source.descanso_entre_tecnicas_segundos=0;

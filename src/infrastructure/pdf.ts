@@ -44,15 +44,37 @@ export async function buildPlanPdf(plan: TrainingPlan, assets: PdfAssets) {
   pdf.addFont("Barlow-SemiBold.ttf", "Barlow", "bold");
   pdf.setProperties({title:`PGT · Plan de competición · ${shortDate(plan.fecha_torneo)}`, subject:"Preparación de competición", author:"PGT"});
   const timer = tabata(plan);
-  // Measure every session before drawing/downloading. Dense sessions get the full page width.
-  const cards = plan.sessions.map(session => {
-    let width=COL, layout=measure(pdf,session,width,10);
+  // Compact sessions stay together; long sessions continue across readable full-width cards.
+  const cards = plan.sessions.flatMap((session, ordinal) => {
+    let width = COL, layout = measure(pdf, session, width, 10);
     if (layout.height > BOTTOM - TOP) {
-      width=W; layout=measure(pdf,session,width,10);
-      for (let size=9;layout.height > BOTTOM - TOP && size>=7;size--) layout=measure(pdf,session,width,size);
+      width = W; layout = measure(pdf, session, width, 10);
     }
-    if (layout.height > BOTTOM - TOP) throw Error(`La sesión ${shortDate(session.date)} no cabe completa en una página; acorta las descripciones antes de exportar`);
-    return {session,width,...layout};
+    if (layout.height <= BOTTOM - TOP)
+      return [{session, ordinal, part: 1, parts: 1, width, ...layout}];
+    const capacity = BOTTOM - TOP - 40;
+    const chunks: TextRow[][] = [];
+    let rows: TextRow[] = [], used = 0;
+    const flush = () => { if (rows.length) chunks.push(rows); rows = []; used = 0; };
+    for (const [index, row] of layout.rows.entries()) {
+      const padding = row.kind === "position" ? 4 : row.kind === "type" ? 1.5 : 3;
+      const lineHeight = layout.size * 0.43;
+      // Keep a position heading with its technique, and a technique with the first text line.
+      const keep = row.kind === "position" ? (layout.rows[index + 1]?.height || 0) + lineHeight : row.kind === "type" ? lineHeight + 3 : 0;
+      if (used && row.height + keep > capacity - used && row.height <= capacity) flush();
+      let offset = 0;
+      while (offset < row.text.length) {
+        const available = Math.floor((capacity - used - padding) / lineHeight);
+        if (available < 1) { flush(); continue; }
+        const count = Math.min(available, row.text.length - offset);
+        const height = count * lineHeight + padding;
+        rows.push({...row, text: row.text.slice(offset, offset + count), height});
+        used += height; offset += count;
+        if (offset < row.text.length) flush();
+      }
+    }
+    flush();
+    return chunks.map((rows, index) => ({session, ordinal, part: index + 1, parts: chunks.length, width: W, size: layout.size, rows, height: 40 + rows.reduce((sum, row) => sum + row.height, 0)}));
   });
   const header = () => {
     font(pdf,10,true); pdf.text("PGT / Preparación de competición",M,17);
@@ -97,7 +119,7 @@ export async function buildPlanPdf(plan: TrainingPlan, assets: PdfAssets) {
   let cursor=TOP, column=0, rowHeight=0;
   const nextPage=()=>{pdf.addPage();header();cursor=TOP;column=0;rowHeight=0;};
   if(cards.length) nextPage();
-  for(const [index,card] of cards.entries()){
+  for(const card of cards){
     if(card.width===W && column===1){cursor+=rowHeight+GAP;column=0;rowHeight=0;}
     if(cursor+card.height>BOTTOM)nextPage();
     const x=M+(column===1?COL+GAP:0);
@@ -108,7 +130,8 @@ export async function buildPlanPdf(plan: TrainingPlan, assets: PdfAssets) {
     font(pdf,7,true,muted);pdf.text(date(card.session.date,{month:"short"}).replace(".","").toUpperCase(),x+11.5,cursor+17,{align:"center"});
     font(pdf,11,true);pdf.text(date(card.session.date,{weekday:"long"}),x+22,cursor+10);
     font(pdf,8,false,muted);pdf.text(shortDate(card.session.date),x+22,cursor+16);
-    font(pdf,8,false,muted);pdf.text(`${String(index+1).padStart(2,"0")} / ${cards.length}`,x+card.width-5,cursor+10,{align:"right"});
+    font(pdf,8,false,muted);pdf.text(`${String(card.ordinal+1).padStart(2,"0")} / ${plan.sessions.length}`,x+card.width-5,cursor+10,{align:"right"});
+    if (card.parts > 1) { font(pdf,8,true,blue); pdf.text(`${card.part === 1 ? "Parte" : "Continuación"} ${card.part} / ${card.parts}`,x+card.width-5,cursor+16,{align:"right"}); }
     pdf.setDrawColor(line);pdf.line(x+5,cursor+22,x+card.width-5,cursor+22);
     let textY=cursor+28;
     for(const row of card.rows){
