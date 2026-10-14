@@ -56,3 +56,10 @@ Fuentes oficiales revisadas (13/10/2026):
 5. Rotación/revocación real del token GitHub y recuperación tras caducidad, sin pérdida de pendientes.
 
 No se considera esta matriz terminada por el hecho de que funcionase la interfaz técnica del prototipo anterior.
+
+
+## Ajuste de tipo de técnica en negrita — 14/10/2026
+
+El componente compartido PlanView muestra el tipo en strong tanto en Mis planes como en el plan del alumno consultado por Entrenador. Las técnicas de TrainerStudent ya usan strong; se conserva ese formato. No cambia datos ni exportación PDF.
+
+Validación local: npm test (63/63), typecheck, build, check:worker, test:runtime y test:browser correctos. Chromium local mediante PGT_TEST_CHROMIUM_PATH; revisión de capturas de planes en escritorio y móvil. Fixtures locales, sin aceptación remota ni comprobación Safari/iOS. Despliegue pendiente del propietario.

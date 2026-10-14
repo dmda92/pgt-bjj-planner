@@ -1314,7 +1314,7 @@ function PlanView({
                 <strong>
                   {ei + 1}. P{ex.prioridad} · {ex.posicion}
                 </strong>
-                <p>{ex.tipo}</p>
+                <p><strong>{ex.tipo}</strong></p>
                 <p className="plan-description">{ex.descripcion_del_alumno}</p>
                 {ex.comment && <p className="note">Entrenador: {ex.comment}</p>}
               </div>
