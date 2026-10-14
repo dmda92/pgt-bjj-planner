@@ -1403,3 +1403,6 @@ footer {
 .competition-loading .loading-spinner { width: 20px; height: 20px; border-width: 2px; }
 .student-description { width: 100%; margin: 10px 0 16px; background: var(--canvas); color: var(--ink); resize: vertical; }
 .student-description[readonly] { cursor: text; }
+
+input[aria-invalid="true"] { border-color:#a43e3e; }
+.field-error { color:#a43e3e; font-size:14px; line-height:1.4; }

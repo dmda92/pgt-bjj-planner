@@ -1,3 +1,4 @@
+import {competitionDateErrors} from './application/competition-dates.ts';
 import {syncPresentation} from "./application/sync-presentation.ts";
 import type {TrainerView,TrainerSection} from "./application/trainer-cache.ts";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -1752,13 +1753,32 @@ function CompetitionForm({
   reload: () => Promise<void>;
 }) {
   const [creating,setCreating]=useState(false);
+  const [dateErrors,setDateErrors]=useState<{start?:string;end?:string}>({});
+  function checkDates(form:HTMLFormElement) {
+    const start=form.elements.namedItem('start') as HTMLInputElement;
+    const end=form.elements.namedItem('end') as HTMLInputElement;
+    const errors=competitionDateErrors(start.value,end.value);
+    start.setCustomValidity(errors.start || '');
+    end.setCustomValidity(errors.end || '');
+    setDateErrors(errors);
+    return form.reportValidity();
+  }
   return (
     <section className="card competition-create" id="competition-create">
       <h3>Crear competición</h3>
       <form
+        onInput={e=>{
+          const form=e.currentTarget;
+          const start=form.elements.namedItem('start') as HTMLInputElement;
+          const end=form.elements.namedItem('end') as HTMLInputElement;
+          const errors=competitionDateErrors(start.value,end.value);
+          start.setCustomValidity(errors.start || '');
+          end.setCustomValidity(errors.end || '');
+          setDateErrors(errors);
+        }}
         onSubmit={(e) => {
           e.preventDefault();
-          if(creating)return;
+          if(creating || !checkDates(e.currentTarget))return;
           const f = new FormData(e.currentTarget);
           const c: Competition = {
             planId: "",
@@ -1783,11 +1803,13 @@ function CompetitionForm({
         <div className="fields">
           <label>
             Fecha inicial
-            <input name="start" type="date" required />
+            <input name="start" aria-label="Fecha inicial" type="date" required aria-invalid={Boolean(dateErrors.start)} aria-describedby={dateErrors.start ? 'competition-start-error' : undefined} />
+            {dateErrors.start && <span className="field-error" id="competition-start-error">{dateErrors.start}</span>}
           </label>
           <label>
             Fecha del torneo
-            <input name="end" type="date" required />
+            <input name="end" aria-label="Fecha del torneo" type="date" required aria-invalid={Boolean(dateErrors.end)} aria-describedby={dateErrors.end ? 'competition-end-error' : undefined} />
+            {dateErrors.end && <span className="field-error" id="competition-end-error">{dateErrors.end}</span>}
           </label>
           <label>
             Ejercicios por sesión
@@ -1804,6 +1826,7 @@ function CompetitionForm({
             Trabajo por alumno (s)
             <input
               name="work"
+              max="3600"
               type="number"
               min="1"
               defaultValue={180}
@@ -1814,6 +1837,7 @@ function CompetitionForm({
             Cambio de roles (s)
             <input
               name="change"
+              max="3600"
               type="number"
               min="0"
               defaultValue={10}
@@ -1824,6 +1848,7 @@ function CompetitionForm({
             Entre técnicas (s)
             <input
               name="rest"
+              max="3600"
               type="number"
               min="0"
               defaultValue={20}

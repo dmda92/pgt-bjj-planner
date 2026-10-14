@@ -495,7 +495,20 @@ try {
     .click();
   await visible(page.getByRole("heading", { name: "Crear competición" }));
   await page.getByLabel("Fecha inicial", { exact: true }).fill("2026-10-13");
+  let createRequests=0;
+  page.on('request',request=>{if(new URL(request.url()).pathname==='/api/app/competition')createRequests++;});
+  const endDate=page.getByLabel('Fecha del torneo',{exact:true});
+  for(const invalidEnd of ['2026-10-13','2026-10-12','2030-10-23']) {
+    await endDate.fill(invalidEnd);
+    await page.locator('.competition-create').getByRole('button',{name:'Crear competición',exact:true}).click();
+    assert.equal(await endDate.getAttribute('aria-invalid'),'true');
+    assert.equal(await endDate.evaluate(el=>el.validity.valid),false);
+    assert.equal(createRequests,0);
+    await visible(page.locator('#competition-end-error'));
+  }
   await page.getByLabel("Fecha del torneo", { exact: true }).fill("2026-10-23");
+  assert.equal(await endDate.evaluate(el=>el.validity.valid),true);
+  assert.equal(await page.locator('#competition-end-error').count(),0);
   assert.equal(await page.locator("input[name=student]").count(), 2);
   await page
     .locator('input[name=student][value="browser-student@example.com"]')

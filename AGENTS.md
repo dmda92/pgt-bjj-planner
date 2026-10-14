@@ -55,3 +55,8 @@ Participantes: cambios locales inmediatos en CompetitionCard; persistir solo med
 ## Desasignación con borrado individual — corrección del propietario (14/10/2026)
 
 Sustituye todas las reglas anteriores que conservaban visible el plan desasignado. Al guardar la desasignación, borrar el JSON individual remoto del participante, sin borrar la competición ni planes de otros alumnos. El índice mantiene tombstones por alumno; sincronizar elimina la copia local limpia incluso tras trabajar offline. Reasignar elimina el tombstone y genera un plan nuevo. El borrado explícito incluye sesiones históricas de ese plan; no altera las reglas de protección ante recálculos automáticos. Persistir tombstone antes del borrado para recuperar fallos parciales.
+
+
+### Validación de fechas de competición (15/10/2026)
+
+El formulario señala el campo de fecha incorrecto, con mensaje asociado y validación nativa accesible. Torneo estrictamente posterior al inicio y máximo 730 días, conforme al dominio. Corregir el campo retira el error; no enviar solicitudes inválidas. Mantener validación backend. Pruebas de fechas imposibles/bisiestas, igualdad, anterioridad, rango y corrección/reintento.
