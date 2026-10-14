@@ -1,3 +1,4 @@
+import {catalogOf, deletedUUIDs, updateFutureDeletions} from "../domain/plan-continuity.ts";
 import {MAX_JSON_BYTES, MAX_APP_BODY_BYTES, jsonBytes, documentFile, sizeMessage} from "../domain/json-limits.ts";
 import type {
   Profile,
@@ -291,8 +292,9 @@ export class Client implements AuthenticationProvider, SyncService {
             (entry.data as TrainingPlan).mail !== identity.mail
           )
             continue;
+          const incoming = {...data as Techniques, deletionCatalog:(old.data as Techniques).deletionCatalog || catalogOf(old.data as Techniques), deletedIds:[...new Set([...(old.data as Techniques).deletedIds || [], ...deletedUUIDs(old.data as Techniques, data as Techniques)])]};
           const projected = projectFutureDescriptions(
-            entry.data as TrainingPlan,
+            updateFutureDeletions(entry.data as TrainingPlan, incoming, (await db.entries.get("comments"))!.data as import("../domain/models.ts").Comments, madridDate()),
             old.data as Techniques,
             data as Techniques,
             madridDate(),
@@ -433,7 +435,8 @@ export class Client implements AuthenticationProvider, SyncService {
       const remaining = (await repository.entries(identity.mail)).filter(
         (e) => e.dirty,
       );
-      this.status = remaining.length
+      const blocked = (await repository.entries(identity.mail)).filter(e=>e.key.startsWith("plan:") && (e.data as TrainingPlan).structuralUpdateError);
+      this.status = blocked.length ? `Sincronización incompleta: ${blocked.length} plan(es) con actualización bloqueada; revisa el aviso del plan` : remaining.length
         ? `${remaining.length} archivo(s) pendientes; revisa conflictos`
         : "Sincronizado";
     } catch (error) {

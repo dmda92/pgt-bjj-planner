@@ -50,3 +50,7 @@ La exportación adopta la misma paleta pizarra/azul y Barlow embebida. Resumen i
 ### PDF con sesiones largas
 
 Las sesiones que exceden una página usan ancho completo y continúan en páginas adicionales a 10 pt, con fecha, número de sesión y Parte/Continuación. Se conserva íntegro el contenido y el orden; las sesiones cortas mantienen las tarjetas habituales. Se elimina el bloqueo que pedía acortar descripciones.
+
+### Eliminaciones de catálogo y planes bloqueados
+
+Los diálogos de eliminación explican que se recalculan sesiones futuras y se conserva el histórico. PlanView muestra un aviso accesible con role=alert cuando la actualización está bloqueada; el estado de sincronización indica que queda incompleta. Conservar la presentación de solo lectura y el diseño actual.

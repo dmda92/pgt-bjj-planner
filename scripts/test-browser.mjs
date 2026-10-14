@@ -924,9 +924,57 @@ try {
   await visible(restoredPage.getByRole('heading',{name:'Tu repertorio'}));
   for(let i=0;i<9;i++)assert.equal(await restoredPage.getByLabel('Descripción de técnica o enlace de vídeo').nth(i).inputValue(),`${i}: ${longText}`);
   await restoredContext.close();await largeContext.close();
+  // Deletions recalculate locally while offline; reload and a second device retain the same suffix.
+  await page.getByRole('button',{name:'Mis técnicas',exact:true}).click();
+  const deletionBefore=structuredClone(files.get(planFile[0]).data);
+  const techBefore=structuredClone(files.get('PGT/users_data/browser-student@example.com/tecnics.json').data);
+  const deletedId=techBefore.positions[0].tecnicas[0].id;
+  await context.setOffline(true);
+  await page.getByRole('button',{name:'Borrar técnica',exact:true}).first().click();
+  await page.getByRole('status').filter({hasText:/Cambios guardados/}).waitFor();
+  const localPlan=await page.evaluate(async id=>{
+    const req=indexedDB.open('pgt-active-user-v1');const database=await new Promise((resolve,reject)=>{req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});
+    const read=database.transaction('entries','readonly').objectStore('entries').get('plan:'+id);
+    const value=await new Promise((resolve,reject)=>{read.onsuccess=()=>resolve(read.result);read.onerror=()=>reject(read.error);});database.close();return value.data;
+  },deletionBefore.planId);
+  assert.equal(localPlan.structuralUpdateError,undefined);
+  assert.deepEqual(localPlan.sessions.filter(s=>s.date<=todayMadrid),deletionBefore.sessions.filter(s=>s.date<=todayMadrid));
+  assert.ok(localPlan.sessions.filter(s=>s.date>todayMadrid).every(s=>s.exercises.length===deletionBefore.ejercicios_por_sesion&&s.exercises.every(e=>e.techniqueId!==deletedId)));
+  assert.deepEqual(files.get(planFile[0]).data,deletionBefore);
+  await page.reload();await visible(page.getByRole('heading',{name:'Tu repertorio'}));
+  await context.setOffline(false);await sync();
+  const deletedRemote=structuredClone(files.get(planFile[0]).data);
+  assert.deepEqual(deletedRemote.sessions,localPlan.sessions);
+  const deletionDevice=await browser.newContext();const deletionMirror=await deletionDevice.newPage();
+  await deletionMirror.goto(origin);
+  await deletionMirror.getByLabel('Correo',{exact:true}).fill('browser-student@example.com');
+  await deletionMirror.getByLabel('Contraseña',{exact:true}).fill('synthetic-new-browser-password');
+  await deletionMirror.getByRole('button',{name:'Entrar',exact:true}).click();await visible(deletionMirror.getByRole('heading',{name:'Tu repertorio'}));
+  assert.equal(await deletionMirror.getByRole('button',{name:'Borrar técnica',exact:true}).count(),techBefore.positions.flatMap(p=>p.tecnicas).length-1);
+  await sync(deletionMirror);assert.deepEqual(files.get(planFile[0]).data,deletedRemote);
+  const mirroredPlan=await deletionMirror.evaluate(async id=>{
+    const req=indexedDB.open('pgt-active-user-v1');const database=await new Promise((resolve,reject)=>{req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});
+    const read=database.transaction('entries','readonly').objectStore('entries').get('plan:'+id);
+    const value=await new Promise((resolve,reject)=>{read.onsuccess=()=>resolve(read.result);read.onerror=()=>reject(read.error);});database.close();return value.data;
+  },deletedRemote.planId);
+  assert.deepEqual(mirroredPlan.sessions,deletedRemote.sessions);
+  await deletionDevice.close();
+  // Empty catalogue: preserve the previous plan, show a recoverable warning, never report complete sync.
+  await page.getByRole('button',{name:'Mis técnicas',exact:true}).click();
+  for(let count=await page.getByRole('button',{name:'Eliminar posición',exact:true}).count();count>0;count--){
+    await page.getByRole('button',{name:'Eliminar posición',exact:true}).first().click();
+    await page.waitForFunction(expected=>document.querySelectorAll('.position').length===expected,count-1);
+    await page.getByRole('status').filter({hasText:/Cambios guardados/}).waitFor();
+  }
+  await page.getByRole('button',{name:'Sincronizar',exact:true}).click();
+  await page.getByRole('status').filter({hasText:/Sincronización incompleta:.*actualización bloqueada/}).waitFor();
+  await page.getByRole('button',{name:/Mis planes/}).click();
+  await visible(page.getByRole('alert').filter({hasText:/Actualización del plan bloqueada/}).first());
+  assert.match(files.get(planFile[0]).data.structuralUpdateError,/No quedan técnicas/);
+
   assert.deepEqual(errors, []);
   console.log(
-    "Chromium local: registro, IndexedDB, offline/reload, pendientes/cambio A→B, restauración, entrenador/asignación, textos futuros offline y sincronizados entre dispositivos, plan de solo lectura/PDF offline, contraseña, dos pestañas y responsive 390px OK. Sin conexiones externas ni datos reales.",
+    "Chromium local: registro, IndexedDB, offline/reload, pendientes/cambio A→B, restauración, entrenador/asignación, textos futuros y borrados offline sincronizados entre dispositivos, plan de solo lectura/PDF offline, contraseña, dos pestañas y responsive 390px OK. Sin conexiones externas ni datos reales.",
   );
 } finally {
   await context.close();

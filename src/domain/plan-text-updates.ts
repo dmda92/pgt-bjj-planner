@@ -53,7 +53,7 @@ export function updateFuturePlanText(
   comments: Comments,
   today: string,
 ): TrainingPlan {
-  if (plan.fecha_torneo <= today) return plan;
+  if (plan.fecha_torneo <= today || plan.structuralUpdateError) return plan;
   const text = new Map(
     techniques.positions
       .flatMap((p) => p.tecnicas)

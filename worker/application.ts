@@ -1,3 +1,4 @@
+import {catalogOf, deletedUUIDs, updateFutureDeletions} from "../src/domain/plan-continuity.ts";
 import {MAX_APP_BODY_BYTES, MAX_TEXT_LENGTH} from "../src/domain/json-limits.ts";
 import {
   ApiError,
@@ -151,7 +152,7 @@ export class AppApi {
     if (
       !techniques ||
       !comments ||
-      (!techniques.data.descriptionUpdates && !comments.data.commentUpdates)
+      (!techniques.data.descriptionUpdates && !comments.data.commentUpdates && !techniques.data.deletedIds?.length)
     )
       return;
     for (const file of planFiles) {
@@ -172,7 +173,7 @@ export class AppApi {
         );
         if (!latestTechniques || !latestComments) break;
         const next = updateFuturePlanText(
-          current.data,
+          updateFutureDeletions(current.data, latestTechniques.data, latestComments.data, madridDate(this.clock())),
           latestTechniques.data,
           latestComments.data,
           madridDate(this.clock()),
@@ -617,6 +618,13 @@ export class AppApi {
       const old = await this.checkSha(path, b.sha);
       const next = b.data as Techniques;
       validate(() => validateTechniques(next));
+      // Tombstones are server-owned and survive partial plan writes and subsequent retries.
+      const removed = deletedUUIDs(old!.data as unknown as Techniques, next);
+      next.deletionCatalog = (old!.data as unknown as Techniques).deletionCatalog || (removed.length ? catalogOf(old!.data as unknown as Techniques) : undefined);
+      if (!next.deletionCatalog) delete next.deletionCatalog;
+      next.deletedIds = [...new Set([...((old!.data as unknown as Techniques).deletedIds || []), ...removed])];
+      if (!next.deletedIds.length) delete next.deletedIds;
+
       const idsChanged = descriptionChanges(
         old!.data as unknown as Techniques,
         next,

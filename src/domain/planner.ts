@@ -1,10 +1,10 @@
+import {catalogOf, initialCursor, nextExercise, sessionSignature, cursorSignature} from "./plan-continuity.ts";
 import {
   initialVersion,
   type Competition,
   type TrainingPlan,
   type Techniques,
   type Comments,
-  type Exercise,
   validateCompetition,
   validateTechniques,
 } from "./models.ts";
@@ -62,42 +62,13 @@ export function generatePlan(
   validateTechniques(techniques);
   const positions = techniques.positions.filter((p) => p.tecnicas.length);
   if (!positions.length) throw Error("No hay técnicas entrenables");
-  const priorities = [...new Set(positions.map((p) => p.prioridad))].sort(
-    (a, b) => a - b,
-  );
-  const notes = new Map(
-    comments.comments.map((c) => [c.techniqueId, c.comment]),
-  );
-  const passes = new Map<number, number>();
-  function* stream(): Generator<Exercise> {
-    for (const priority of priorityCycle(priorities)) {
-      const pass = (passes.get(priority) || 0) + 1;
-      passes.set(priority, pass);
-      for (const p of positions.filter((p) => p.prioridad === priority))
-        for (let i = 0; i < p.tecnicas.length; i++) {
-          const t = p.tecnicas[i];
-          yield {
-            positionId: p.id,
-            techniqueId: t.id,
-            posicion: p.posicion,
-            prioridad: p.prioridad,
-            tipo: t.tipo,
-            descripcion_del_alumno: t.descripcion_del_alumno,
-            comment: notes.get(t.id) || "",
-            pass,
-            positionComplete: i === p.tecnicas.length - 1,
-          };
-        }
-    }
-  }
-  const flow = stream();
-  const sessions = trainingDates(c).map((date) => ({
-    date,
-    exercises: Array.from(
-      { length: c.ejercicios_por_sesion },
-      () => flow.next().value!,
-    ),
-  }));
+  const catalog = catalogOf(techniques), cursor = initialCursor(catalog);
+  const boundaries: import("./plan-continuity.ts").Continuity["boundaries"] = [];
+  const sessions = trainingDates(c).map((date) => {
+    const exercises = Array.from({length:c.ejercicios_por_sesion},()=>nextExercise(cursor,catalog,techniques,comments));
+    boundaries.push({date,signature:sessionSignature(exercises),stateSignature:cursorSignature(cursor),cursor:structuredClone(cursor)});
+    return {date,exercises};
+  });
   return {
     ...initialVersion(),
     updatedAt: generatedAt,
@@ -106,6 +77,8 @@ export function generatePlan(
     mail,
     generatedAt,
     sessions,
+    continuity: {version:1,catalog,boundaries},
+    appliedDeletions: [...(techniques.deletedIds || [])],
   };
 }
 export function coverage(plan: TrainingPlan, before?: string) {

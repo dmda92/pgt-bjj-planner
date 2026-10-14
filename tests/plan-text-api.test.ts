@@ -349,3 +349,45 @@ test("Future text sync persists to GitHub adapter, recovers partial failures, is
     ),
   );
 });
+
+test('Deletion fan-out updates every active student plan, recovers CAS/interrupted writes, ignores forged tombstones, and retains blocked plans', async()=>{
+  const f=fixture(),a='delete-a@example.com',b='delete-b@example.com';
+  const token=await f.register(a),otherToken=await f.register(b);
+  await f.register('delete-coach@example.com');f.files.get('PGT/users_data/delete-coach@example.com/user_data.json')!.data.perfil='entrenador';
+  const coach=(await (await f.call('/api/app/login','POST',{mail:'delete-coach@example.com',password:'synthetic-test-password'})).json() as any).token;
+  let sha:string|null=null;
+  for(const fecha_torneo of ['2026-12-13','2026-12-20','2026-10-14']) {
+    const r=await f.call('/api/app/competition','POST',{sha,competition:{fecha_comienzo:'2026-10-08',fecha_torneo,dias_de_entrenamiento:[2,4],ejercicios_por_sesion:5,tiempo_por_tecnica_segundos:180,descanso_entre_ciclos_segundos:5,descanso_entre_tecnicas_segundos:20,alumnos:[a,b]}},coach);
+    assert.equal(r.status,200);sha=f.files.get('PGT/master_data/plans.json')!.sha;
+  }
+  const path=`/api/app/users/${a}/`,snapshot=async()=>await (await f.call(path+'snapshot','GET',undefined,token)).json() as any;
+  let snap=await snapshot();await f.call(`/api/app/users/${b}/snapshot`,'GET',undefined,otherToken);
+  const originals=structuredClone(snap.plans),others=JSON.stringify([...f.files].filter(([p])=>p.includes(`/users_data/${b}/`)));
+  const next=structuredClone(snap.techniques.data),deleted=next.positions[0].tecnicas.pop().id;
+  next.deletedIds=['forged'];f.fail(409);
+  assert.equal((await f.call(path+'techniques','PUT',{data:next,sha:snap.techniques.sha},token)).status,200);
+  snap=await snapshot();assert.ok(snap.techniques.data.deletedIds.includes(deleted));assert.ok(!snap.techniques.data.deletedIds.includes('forged'));
+  for(const p of snap.plans) {
+    const original=originals.find((o:any)=>o.data.planId===p.data.planId);
+    if(p.data.fecha_torneo<='2026-10-14')assert.deepEqual(p,original);
+    else {
+      assert.deepEqual(p.data.sessions.filter((s:any)=>s.date<='2026-10-14'),original.data.sessions.filter((s:any)=>s.date<='2026-10-14'));
+      assert.ok(p.data.sessions.filter((s:any)=>s.date>'2026-10-14').every((s:any)=>s.exercises.length===5&&s.exercises.every((e:any)=>e.techniqueId!==deleted)));
+    }
+  }
+  const removedPosition=snap.techniques.data.positions[0].id,second=structuredClone(snap.techniques.data);second.positions.shift();second.deletedIds=[];
+  f.fail(503);assert.equal((await f.call(path+'techniques','PUT',{data:second,sha:snap.techniques.sha},token)).status,503);
+  assert.ok(f.files.get(`PGT/users_data/${a}/tecnics.json`)!.data.deletedIds.includes(removedPosition));
+  snap=await snapshot();
+  for(const p of snap.plans.filter((p:any)=>p.data.fecha_torneo>'2026-10-14')) assert.ok(p.data.sessions.filter((s:any)=>s.date>'2026-10-14').every((s:any)=>s.exercises.every((e:any)=>e.positionId!==removedPosition&&e.techniqueId!==deleted)));
+  const stable=JSON.stringify(snap.plans);assert.equal(JSON.stringify((await snapshot()).plans),stable);
+  assert.equal(JSON.stringify([...f.files].filter(([p])=>p.includes(`/users_data/${b}/`))),others);
+  const empty={...snap.techniques.data,positions:[]};
+  assert.equal((await f.call(path+'techniques','PUT',{data:empty,sha:snap.techniques.sha},token)).status,200);
+  const blocked=await snapshot();
+  for(const p of blocked.plans.filter((p:any)=>p.data.fecha_torneo>'2026-10-14')) {
+    assert.match(p.data.structuralUpdateError,/No quedan técnicas/);
+    assert.deepEqual(p.data.sessions,snap.plans.find((n:any)=>n.data.planId===p.data.planId).data.sessions);
+  }
+  assert.equal(JSON.stringify((await snapshot()).plans),JSON.stringify(blocked.plans));
+});

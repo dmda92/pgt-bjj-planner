@@ -488,7 +488,7 @@ function App() {
                                   onClick={() => {
                                     if (
                                       confirm(
-                                        "¿Eliminar esta técnica? Sus planes existentes se conservarán.",
+                                        "¿Eliminar esta técnica? Se recalcularán las sesiones futuras de tus planes activos; el histórico se conserva.",
                                       )
                                     )
                                       void saveTech({
@@ -559,7 +559,7 @@ function App() {
                               onClick={() => {
                                 if (
                                   confirm(
-                                    "¿Eliminar la posición y sus técnicas?",
+                                    "¿Eliminar la posición y sus técnicas? Se recalcularán las sesiones futuras de tus planes activos; el histórico se conserva.",
                                   )
                                 )
                                   void saveTech({
@@ -1278,6 +1278,7 @@ function PlanView({
         Plan de solo lectura. Se actualiza desde las técnicas del participante
         y los comentarios del entrenador.
       </p>
+      {plan.structuralUpdateError && <p role="alert">Actualización del plan bloqueada: {plan.structuralUpdateError} El plan anterior se conserva; corrige el catálogo y vuelve a sincronizar.</p>}
       <p className="timer">
         Trabajo {format(t.work)} · Cambio {format(t.rest)} · {t.cycles} ciclos ·{" "}
         {t.sets} sets · Entre técnicas {format(t.betweenSets)} · Total{" "}
