@@ -529,6 +529,17 @@ try {
   }
   await page.getByLabel('Cambio de roles (s)',{exact:true}).fill('10');
   await page.getByLabel('Entre técnicas (s)',{exact:true}).fill('20');
+  const workTimer=page.getByLabel('Trabajo por alumno (min:seg)',{exact:true});
+  assert.equal(await workTimer.inputValue(),'3:00');
+  for(const invalid of ['0:00','3:60','60:01','180']) {
+    await workTimer.fill(invalid);
+    await page.locator('.competition-create').getByRole('button',{name:'Crear competición',exact:true}).click();
+    assert.equal(await workTimer.evaluate(el=>el.validity.valid),false);
+    assert.equal(createRequests,0);
+  }
+  await workTimer.fill('2:35');
+  assert.equal(await workTimer.evaluate(el=>el.validity.valid),true);
+  await workTimer.fill('3:00');
   assert.equal(await page.locator("input[name=student]").count(), 2);
   await page
     .locator('input[name=student][value="browser-student@example.com"]')
@@ -551,6 +562,7 @@ try {
   await visible(page.getByRole("heading", { name: "Torneo · 2026-10-23" }));
   await page.getByRole('status',{name:'Creando competición'}).waitFor({state:'hidden'});
   await page.unroute(competitionRoute,delayedCompetition);
+  assert.equal(files.get("PGT/master_data/plans.json").data.plans[0].tiempo_por_tecnica_segundos,180);
 
   await sync(); // Download the trainer participant plan before removing its assignment.
   // Draft selections are immediate; remote changes occur only on explicit save.

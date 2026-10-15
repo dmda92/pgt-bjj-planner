@@ -1419,3 +1419,5 @@ input[aria-invalid="true"] { border-color:#a43e3e; }
 .password-toggle { position:absolute; right:3px; top:50%; transform:translateY(-50%); width:44px; height:40px; padding:10px; border:0; border-radius:5px; background:transparent; color:var(--muted); }
 .password-toggle:hover { background:#eaf0f4; color:var(--accent); }
 .password-toggle svg { display:block; width:22px; height:22px; }
+
+.duration-input { font-variant-numeric: tabular-nums; letter-spacing:.06em; }

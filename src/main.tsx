@@ -1,3 +1,4 @@
+import {durationSeconds,durationError} from './application/duration-input.ts';
 import {competitionDateErrors} from './application/competition-dates.ts';
 import {syncPresentation} from "./application/sync-presentation.ts";
 import type {TrainerView,TrainerSection} from "./application/trainer-cache.ts";
@@ -1800,7 +1801,7 @@ function CompetitionForm({
             alumnos: f.getAll("student").map(String),
             dias_de_entrenamiento: f.getAll("day").map(Number),
             ejercicios_por_sesion: Number(f.get("sets")),
-            tiempo_por_tecnica_segundos: Number(f.get("work")),
+            tiempo_por_tecnica_segundos: durationSeconds(String(f.get("work")))!,
             descanso_entre_ciclos_segundos: Number(f.get("change")),
             descanso_entre_tecnicas_segundos: Number(f.get("rest")),
           };
@@ -1836,13 +1837,17 @@ function CompetitionForm({
             />
           </label>
           <label>
-            Trabajo por alumno (s)
+            Trabajo por alumno (min:seg)
             <input
+              className="duration-input"
               name="work"
-              max="3600"
-              type="number"
-              min="1"
-              defaultValue={180}
+              type="text"
+              defaultValue="3:00"
+              placeholder="3:00"
+              maxLength={5}
+              pattern="[0-9]{1,2}:[0-5][0-9]"
+              title="Minutos y segundos, de 0:01 a 60:00"
+              onInput={e=>e.currentTarget.setCustomValidity(durationSeconds(e.currentTarget.value)===null ? durationError : '')}
               required
             />
           </label>
