@@ -11,7 +11,7 @@ const browser=await chromium.launch({headless:true,executablePath:process.env.PG
 const positions=page.locator('details.repertoire-position'),first=positions.first();
 try{
  await page.goto(origin);await page.getByLabel('Correo',{exact:true}).fill(mail);await page.getByLabel('Contraseña',{exact:true}).fill(password);await page.getByRole('button',{name:'Entrar',exact:true}).click();await page.getByRole('heading',{name:'Tu repertorio'}).waitFor();
- assert.equal(await positions.count(),4);assert.equal(await page.locator('.repertoire-position[open]').count(),0);assert.equal(await first.getByLabel('Descripción de técnica o enlace de vídeo').first().isVisible(),false);
+ assert.equal(await positions.count(),4);assert.equal(await first.locator('summary .pill').count(),0);assert.equal(await first.locator('summary .priority-caption').innerText(),'Prioridad 1');assert.equal(await page.locator('.repertoire-position[open]').count(),0);assert.equal(await first.getByLabel('Descripción de técnica o enlace de vídeo').first().isVisible(),false);
  assert.match(await first.locator('summary').innerText(),/3 técnicas/);assert.match(await first.locator('summary').innerText(),/2 sin descripción/);assert.equal(await first.getByRole('progressbar').getAttribute('aria-valuenow'),'1');assert.equal(await positions.nth(1).getAttribute('class'),'position repertoire-position is-complete');assert.match(await positions.last().locator('summary').innerText(),/Sin técnicas/);
  assert.equal(await first.locator('.technique-marks .is-described').count(),1);assert.equal(await first.locator('.technique-marks .is-missing').count(),2);
  await fs.mkdir('.browser-artifacts/repertoire',{recursive:true});

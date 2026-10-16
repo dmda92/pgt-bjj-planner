@@ -23,7 +23,7 @@ const day=page.getByRole('region',{name:'Mis entrenamientos del día',exact:true
 try{
  await page.goto(origin);await login(pupil);await page.getByRole('button',{name:/^Mis planes/}).click();
  assert.equal(await page.getByLabel('Fecha de mis entrenamientos').inputValue(),'2026-10-19');assert.equal(await day.locator('.own-session-card').count(),2);
- assert.deepEqual(await day.locator('.own-session-card h3').allTextContents(),['Torneo · 2026-10-30','Torneo · 2026-11-05']);assert.equal(await day.locator('.exercise').count(),5);
+ assert.deepEqual(await day.locator('.own-session-card h3').allTextContents(),['Torneo · 2026-10-30','Torneo · 2026-11-05']);assert.equal(await day.locator('.exercise').count(),5);assert.equal(await day.locator('.priority-caption').count(),5);assert.doesNotMatch(await day.innerText(),/\bP\d+\b/);
  assert.equal(await complete.locator('.plan-card').count(),0);
  const boxes=await Promise.all([day.boundingBox(),complete.boundingBox()]);assert.ok(boxes[0].y<boxes[1].y);
  await page.getByLabel('Mi plan',{exact:true}).selectOption({index:1});assert.equal(await complete.locator('.plan-card').count(),1);assert.ok(await complete.locator('.session').count()>1);assert.equal(await day.locator('.own-session-card').count(),2);

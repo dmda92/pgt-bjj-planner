@@ -655,3 +655,10 @@ Mantener guía visual pizarra/azul, foco, teclado, 44 px y movimiento reducido. 
 ### Control de prioridad discreto (16/10/2026)
 
 El propietario pide compactar el control y permite sustituir +/− si es necesario. Se conservan ambos dentro de una sola cápsula neutra, sin botones azules independientes, con etiqueta en línea y número centrado. Mantener áreas táctiles 44 px, foco, mínimo 1 y pasos enteros. Retirar el distintivo P duplicado de la cabecera editable; conservarlo en el resumen. Solo CSS, sin cambiar guardado ni comportamiento.
+
+
+### Prioridad como subtítulo discreto (16/10/2026)
+
+Petición del propietario: retirar abreviaturas P1/P2 de posiciones/técnicas en toda la app y PDF. Mostrar «Prioridad N» debajo del nombre, en letra menor y tono secundario: resumen de Mis técnicas, sesiones completas/día y planes del entrenador, ficha de técnicas del alumno y detalle de cobertura. Control editable conserva su cápsula, situada debajo del nombre. En la tabla agregada Cobertura por prioridad, la columna Prioridad muestra solo el número; no hay nombre al que asociar un subtítulo.
+
+PDF: nombre de posición y pasada, seguido de Prioridad N en 7,5 pt frente a 10 pt del nombre. Medir, paginar y dibujar cada fila con su tamaño real; mantener nombre/prioridad/técnica juntos cuando caben y conservar continuación para sesiones largas. No modificar prioridades guardadas, orden, distribución ni textos de las instantáneas.

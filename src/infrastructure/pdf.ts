@@ -12,7 +12,7 @@ const duration = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart
 const date = (value: string, options: Intl.DateTimeFormatOptions) => new Date(value + "T12:00:00Z").toLocaleDateString("es-ES", { ...options, timeZone: "UTC" });
 const shortDate = (value: string) => date(value, { day: "2-digit", month: "2-digit", year: "numeric" });
 type Session = TrainingPlan["sessions"][number];
-type TextRow = { text: string[]; kind: "position" | "type" | "description" | "comment"; height: number };
+type TextRow = { text: string[]; kind: "position" | "priority" | "type" | "description" | "comment"; size: number; height: number };
 function font(pdf: jsPDF, size: number, bold = false, color = ink) {
   pdf.setFont("Barlow", bold ? "bold" : "normal"); pdf.setFontSize(size); pdf.setTextColor(color);
 }
@@ -22,12 +22,16 @@ function measure(pdf: jsPDF, session: Session, width: number, size: number) {
   for (const [i, ex] of session.exercises.entries()) {
     const position = JSON.stringify([ex.positionId, ex.posicion, ex.prioridad, ex.pass]);
     const add = (value: string, kind: TextRow["kind"], bold = false) => {
-      font(pdf, size, bold);
+      const rowSize = kind === "priority" ? size * .75 : size;
+      font(pdf, rowSize, bold);
       const text = pdf.splitTextToSize(value, width - 14) as string[];
-      const spacing = size * 0.43;
-      rows.push({text, kind, height: text.length * spacing + (kind === "position" ? 4 : kind === "type" ? 1.5 : 3)});
+      const spacing = rowSize * 0.43;
+      rows.push({text, kind, size:rowSize, height: text.length * spacing + (kind === "position" || kind === "type" ? 1.5 : 3)});
     };
-    if (position !== previous) add(`P${ex.prioridad} · ${ex.posicion} · Pasada ${ex.pass}`, "position", true);
+    if (position !== previous) {
+      add(`${ex.posicion} · Pasada ${ex.pass}`, "position", true);
+      add(`Prioridad ${ex.prioridad}`, "priority");
+    }
     add(`${i + 1}. ${ex.tipo}`, "type", true);
     add(ex.descripcion_del_alumno || "Descripción pendiente", "description");
     if (ex.comment) add(`Entrenador: ${ex.comment}`, "comment");
@@ -68,10 +72,10 @@ export async function buildPlanPdf(plan: TrainingPlan, assets: PdfAssets) {
     let rows: TextRow[] = [], used = 0;
     const flush = () => { if (rows.length) chunks.push(rows); rows = []; used = 0; };
     for (const [index, row] of layout.rows.entries()) {
-      const padding = row.kind === "position" ? 4 : row.kind === "type" ? 1.5 : 3;
-      const lineHeight = layout.size * 0.43;
+      const padding = row.kind === "position" || row.kind === "type" ? 1.5 : 3;
+      const lineHeight = row.size * 0.43;
       // Keep a position heading with its technique, and a technique with the first text line.
-      const keep = row.kind === "position" ? (layout.rows[index + 1]?.height || 0) + lineHeight : row.kind === "type" ? lineHeight + 3 : 0;
+      const keep = row.kind === "position" ? (layout.rows[index+1]?.height || 0) + (layout.rows[index+2]?.height || 0) + layout.size*.43 : row.kind === "priority" ? (layout.rows[index+1]?.height || 0) + layout.size*.43 : row.kind === "type" ? lineHeight + 3 : 0;
       if (used && row.height + keep > capacity - used && row.height <= capacity) flush();
       let offset = 0;
       while (offset < row.text.length) {
@@ -146,7 +150,7 @@ export async function buildPlanPdf(plan: TrainingPlan, assets: PdfAssets) {
     pdf.setDrawColor(line);pdf.line(x+5,cursor+22,x+card.width-5,cursor+22);
     let textY=cursor+28;
     for(const row of card.rows){
-      font(pdf,card.size,row.kind==="position"||row.kind==="type",row.kind==="comment"?blue:row.kind==="position"?blue:ink);
+      font(pdf,row.size,row.kind==="position"||row.kind==="type",row.kind==="comment"?blue:row.kind==="position"?blue:row.kind==="priority"?muted:ink);
       pdf.text(row.text,x+7,textY,{lineHeightFactor:1.22});textY+=row.height;
     }
     pdf.setDrawColor(line);pdf.line(x+5,cursor+card.height-11,x+card.width-5,cursor+card.height-11);

@@ -200,3 +200,6 @@ Mis técnicas compactas (16/10/2026): Chromium verifica tarjetas cerradas, progr
 
 
 Control de prioridad compacto (16/10/2026): cambio CSS, conserva +/−, áreas táctiles, mínimo 1 y guardado. Regresión de prioridad en test-browser; revisión visual de tarjetas abiertas 390/1440 mediante test-repertoire-cards.
+
+
+Prioridad como subtítulo (16/10/2026): búsqueda exhaustiva de prefijos P en src sin restos generados. Mis técnicas y sesiones del día tienen aserciones de subtítulo y ausencia de prefijo. PDF de QA sintético renderizado con Poppler (páginas compacta y continuación), revisado sin cortes/solapamientos y extracción sin P1/P2. Unitarias de PDF preservan snapshots, orden, límites y no solapamiento; fixture denso ajusta longitud de descripción de 12 a 10 repeticiones para seguir verificando el caso de una tarjeta entera con la nueva línea adicional. Sesiones extensas continúan en varias páginas. Artefactos de QA internos; no se modifican archivos de usuarios.

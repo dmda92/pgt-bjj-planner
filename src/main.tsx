@@ -412,7 +412,7 @@ function App() {
                           setExpandedPositions(previous=>{if(previous.has(p.id)===open)return previous;const next=new Set(previous);if(open)next.add(p.id);else next.delete(p.id);return next;});
                         }}>
                           <summary className="position-summary">
-                            <span className="position-summary-heading"><span className="pill">P{p.prioridad}</span><strong>{p.posicion || "Sin nombre"}</strong><span className="position-chevron" aria-hidden="true">⌄</span></span>
+                            <span className="position-summary-heading"><span className="position-name-block"><strong>{p.posicion || "Sin nombre"}</strong><small className="priority-caption">Prioridad {p.prioridad}</small></span><span className="position-chevron" aria-hidden="true">⌄</span></span>
                             <span className="position-summary-meta"><span>{p.tecnicas.length} {p.tecnicas.length===1?"técnica":"técnicas"}</span><span className="position-status">{!p.tecnicas.length ? "Sin técnicas" : p.tecnicas.every(t=>t.descripcion_del_alumno.trim()) ? "✓ Completa" : `${p.tecnicas.filter(t=>!t.descripcion_del_alumno.trim()).length} sin descripción`}</span></span>
                             <span className="position-progress" role="progressbar" aria-label={`Descripciones de ${p.posicion}`} aria-valuemin={0} aria-valuemax={Math.max(1,p.tecnicas.length)} aria-valuenow={p.tecnicas.filter(t=>t.descripcion_del_alumno.trim()).length} aria-valuetext={`${p.tecnicas.filter(t=>t.descripcion_del_alumno.trim()).length} de ${p.tecnicas.length} técnicas con descripción`}><span style={{width:`${p.tecnicas.length ? p.tecnicas.filter(t=>t.descripcion_del_alumno.trim()).length/p.tecnicas.length*100 : 0}%`}} /></span>
                             <span className="technique-marks" aria-label="Estado de cada técnica">{p.tecnicas.map((t,i)=><span key={t.id} className={t.descripcion_del_alumno.trim()?"is-described":"is-missing"} title={`${t.tipo}: ${t.descripcion_del_alumno.trim()?"con descripción":"sin descripción"}`} aria-label={`${t.tipo}: ${t.descripcion_del_alumno.trim()?"con descripción":"sin descripción"}`}><span className="technique-mark-name" aria-hidden="true">{i+1}. {t.tipo || "Sin nombre"}</span><span aria-hidden="true">{t.descripcion_del_alumno.trim()?"✓":"○"}</span></span>)}</span>
@@ -421,7 +421,6 @@ function App() {
                           <div className="position-editor">
                           <div className="position-title">
                             <div>
-                              <span className="pill">P{p.prioridad}</span>
                               <input
                                 aria-label="Nombre de posición"
                                 value={p.posicion}
@@ -1311,7 +1310,8 @@ function PasswordForm({
 }
 function SessionExercises({session}:{session:TrainingPlan["sessions"][number]}) {
   return <>{session.exercises.map((ex,ei)=><div className="exercise" key={ei}>
-    <strong>{ei+1}. P{ex.prioridad} · {ex.posicion}</strong>
+    <strong>{ei+1}. {ex.posicion}</strong>
+    <small className="priority-caption">Prioridad {ex.prioridad}</small>
     <p><strong>{ex.tipo}</strong></p>
     <p className="plan-description">{ex.descripcion_del_alumno}</p>
     {ex.comment && <p className="note">Entrenador: {ex.comment}</p>}
@@ -1462,7 +1462,7 @@ function TrainerStudent({
         .map((p) => (
           <details key={p.id}>
             <summary>
-              P{p.prioridad} · {p.posicion}
+              <span>{p.posicion}<small className="priority-caption">Prioridad {p.prioridad}</small></span>
             </summary>
             {p.tecnicas.map((tech) => (
               <div key={tech.id} className="exercise">

@@ -22,7 +22,7 @@ test('PDF preserves snapshot and chronology, keeps entire sessions inside non-ov
 });
 test('Dense sessions use full width; very long sessions continue without rejecting or changing texts',async()=>{
  const source=plan();source.sessions=source.sessions.slice(0,1);
- for(const ex of source.sessions[0].exercises){ex.descripcion_del_alumno='Descripción larga con acentos y ángulo. '.repeat(12);ex.comment='Comentario del entrenador para practicar.';}
+ for(const ex of source.sessions[0].exercises){ex.descripcion_del_alumno='Descripción larga con acentos y ángulo. '.repeat(10);ex.comment='Comentario del entrenador para practicar.';}
  const {placements}=await buildPlanPdf(source,assets);
  assert.equal(placements.length,1);assert.equal(placements[0].width,178);
  for(const ex of source.sessions[0].exercises)ex.descripcion_del_alumno='Texto imposible de encajar. '.repeat(1000);
