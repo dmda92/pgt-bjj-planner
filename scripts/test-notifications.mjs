@@ -26,9 +26,9 @@ try {
  await page.getByLabel('Buscar posiciones').fill('ninguna posición coincide');await page.getByRole('button',{name:/^Mis planes/}).click();await bell(2).click();
  assert.equal(await page.locator('.notification-panel li').count(),2);
  await page.getByRole('button').filter({hasText:'Controla primero la cadera'}).click();await bell(1).waitFor();
- const target=page.locator(`[id="technique-${last.id}"]`);await target.waitFor();await target.evaluate(el=>{if(document.activeElement!==el)throw Error('Notification target not focused');});
+ const target=page.locator(`[id="technique-${last.id}"]`);await target.waitFor();assert.equal(await target.evaluate(el=>el.closest('details').open),true);await target.evaluate(el=>{if(document.activeElement!==el)throw Error('Notification target not focused');});
  assert.equal(await page.getByLabel('Buscar posiciones').inputValue(),'');assert.match(await target.innerText(),/notification-trainer Fixture: Controla primero la cadera/);
- await context.setOffline(true);await page.reload();await bell(1).waitFor();assert.match(await page.locator(`[id="technique-${last.id}"]`).innerText(),/notification-trainer Fixture: Controla primero la cadera/);await bell(1).click();await page.getByRole('button').filter({hasText:'Ajusta el agarre superior'}).click();await bell(0).waitFor();
+ await context.setOffline(true);await page.reload();await bell(1).waitFor();assert.match(await page.locator(`[id="technique-${last.id}"]`).textContent(),/notification-trainer Fixture: Controla primero la cadera/);await bell(1).click();await page.getByRole('button').filter({hasText:'Ajusta el agarre superior'}).click();await bell(0).waitFor();
  await context.setOffline(false);await sync();await bell(0).waitFor();
  await comments([{techniqueId:first.id,comment:'Ajusta el agarre superior'},{techniqueId:last.id,comment:'Nuevo detalle de cadera'}]);await sync();await bell(1).waitFor();await bell(1).click();assert.equal(await page.locator('.notification-panel li').count(),1);
  await fs.mkdir('.browser-artifacts/notifications',{recursive:true});

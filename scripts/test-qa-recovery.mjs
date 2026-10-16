@@ -1,3 +1,4 @@
+import {openAllPositions} from './repertoire-helpers.mjs';
 import {files,api,server,origin} from './qa-recovery-fixture.mjs';
 import {chromium,devices} from 'playwright';
 import fs from 'node:fs/promises';import assert from 'node:assert/strict';
@@ -10,7 +11,7 @@ async function call(path,method='GET',body,token='') {
  try {const r=await api.handle(req,new URL(req.url));return {status:r.status,body:await r.json()};}catch(e){return {status:e.status,body:{error:e.message,size:e.size}};}
 }
 async function register(email,role=false){const r=await call('/api/app/register','POST',{mail:email,password,confirm:password,nombre:'PGT_TEST',apellidos:'Recovery'});assert.equal(r.status,201);if(role)files.get('PGT/users_data/'+email+'/user_data.json').data.perfil='entrenador';return r.body.token;}
-async function login(p,email){await p.goto(origin);await p.getByLabel('Correo',{exact:true}).fill(email);await p.getByLabel('Contraseña',{exact:true}).fill(password);await p.getByRole('button',{name:'Entrar',exact:true}).click();await p.getByRole('heading',{name:'Tu repertorio'}).waitFor();}
+async function login(p,email){await p.goto(origin);await p.getByLabel('Correo',{exact:true}).fill(email);await p.getByLabel('Contraseña',{exact:true}).fill(password);await p.getByRole('button',{name:'Entrar',exact:true}).click();await p.getByRole('heading',{name:'Tu repertorio'}).waitFor();await openAllPositions(p);}
 async function entries(p){return p.evaluate(()=>new Promise(resolve=>{const request=indexedDB.open('pgt-active-user-v1');request.onsuccess=()=>{const db=request.result,r=db.transaction('entries').objectStore('entries').getAll();r.onsuccess=()=>{resolve(r.result);db.close();};};}));}
 async function poll(fn){for(let i=0;i<300;i++){if(await fn())return;await new Promise(r=>setTimeout(r,50));}throw Error('Condition not reached');}
 async function sync(p,success=true){await p.getByRole('button',{name:'Sincronizar',exact:true}).click();await poll(async()=>{const status=await p.locator('.sync [role=status]').innerText();return success?status==='Sincronizado':status.includes('Sincronización incompleta:');});}

@@ -194,3 +194,6 @@ Nombre del entrenador en técnicas (16/10/2026): autor por comentario asignado p
 
 
 Mis planes por día (16/10/2026): consulta pura de planes locales del propietario, próxima fecha activa estrictamente futura Madrid y selección libre. Pruebas de aislamiento, histórico, vacío, múltiples sesiones/competiciones, orden estable e inmutabilidad. Chromium con dos competiciones de un alumno: fecha inicial, 2 sesiones y 5 ejercicios, cambio de calendario, vacío, selector inferior independiente, reload offline y cambio de cuenta. Capturas de escritorio/móvil en .browser-artifacts/own-day. Sin datos remotos reales ni aceptación Safari/iOS.
+
+
+Mis técnicas compactas (16/10/2026): Chromium verifica tarjetas cerradas, progreso por texto no vacío, indicadores individuales, recompensa completa y regreso a pendiente al vaciar, teclado, abrir/cerrar sin perder borradores, búsqueda, persistencia offline y posición vacía. Capturas compactas/abiertas 360/390/768/1440 en .browser-artifacts/repertoire. Regresión de notificaciones comprueba apertura de posición antes de foco. Pruebas generales de edición abren explícitamente las posiciones antes de usar campos antes visibles; conservación de pruebas de prioridad, guardado, conflictos, borrado y perfiles. Sin cuentas remotas ni validación Safari/iOS físico.

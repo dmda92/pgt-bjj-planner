@@ -85,6 +85,7 @@ function App() {
     } | null>(null),
     [update, setUpdate] = useState<ServiceWorkerRegistration | null>(null);
   const [notificationTarget,setNotificationTarget]=useState("");
+  const [expandedPositions,setExpandedPositions]=useState<Set<string>>(()=>new Set());
   const active = client.identity && !client.locked;
   const profile = entries.find((e) => e.key === "profile")?.data as
     Profile | undefined;
@@ -114,6 +115,7 @@ function App() {
         })
         .catch((e) => setError(e.message));
     } else {
+      setExpandedPositions(new Set());
       setNotificationTarget("");
       setEntries([]);
       studentSequence.current++;
@@ -132,8 +134,11 @@ function App() {
   useEffect(()=>{
     if(!active || tab!=="techniques" || !notificationTarget)return;
     const target=document.getElementById(`technique-${notificationTarget}`);
-    if(target){target.scrollIntoView({block:"center"});target.focus({preventScroll:true});setNotificationTarget("");}
-  },[notificationTarget,tab,search,techniques,Boolean(active)]);
+    if(target){
+      const position=target.closest<HTMLDetailsElement>("details.position");
+      if(position && !position.open){setExpandedPositions(previous=>new Set([...previous,position.dataset.positionId!]));return;}
+      target.scrollIntoView({block:"center"});target.focus({preventScroll:true});setNotificationTarget("");}
+  },[notificationTarget,tab,search,techniques,Boolean(active),expandedPositions]);
   useEffect(() => {
     if ("serviceWorker" in navigator)
       navigator.serviceWorker
@@ -402,7 +407,18 @@ function App() {
                         p.posicion.toLowerCase().includes(search.toLowerCase()),
                       )
                       .map((p) => (
-                        <article className="position" key={p.id}>
+                        <details className={`position repertoire-position ${p.tecnicas.length>0 && p.tecnicas.every(t=>t.descripcion_del_alumno.trim()) ? "is-complete" : "is-incomplete"}`} data-position-id={p.id} key={p.id} open={expandedPositions.has(p.id)} onToggle={e=>{
+                          const open=e.currentTarget.open;
+                          setExpandedPositions(previous=>{if(previous.has(p.id)===open)return previous;const next=new Set(previous);if(open)next.add(p.id);else next.delete(p.id);return next;});
+                        }}>
+                          <summary className="position-summary">
+                            <span className="position-summary-heading"><span className="pill">P{p.prioridad}</span><strong>{p.posicion || "Sin nombre"}</strong><span className="position-chevron" aria-hidden="true">⌄</span></span>
+                            <span className="position-summary-meta"><span>{p.tecnicas.length} {p.tecnicas.length===1?"técnica":"técnicas"}</span><span className="position-status">{!p.tecnicas.length ? "Sin técnicas" : p.tecnicas.every(t=>t.descripcion_del_alumno.trim()) ? "✓ Completa" : `${p.tecnicas.filter(t=>!t.descripcion_del_alumno.trim()).length} sin descripción`}</span></span>
+                            <span className="position-progress" role="progressbar" aria-label={`Descripciones de ${p.posicion}`} aria-valuemin={0} aria-valuemax={Math.max(1,p.tecnicas.length)} aria-valuenow={p.tecnicas.filter(t=>t.descripcion_del_alumno.trim()).length} aria-valuetext={`${p.tecnicas.filter(t=>t.descripcion_del_alumno.trim()).length} de ${p.tecnicas.length} técnicas con descripción`}><span style={{width:`${p.tecnicas.length ? p.tecnicas.filter(t=>t.descripcion_del_alumno.trim()).length/p.tecnicas.length*100 : 0}%`}} /></span>
+                            <span className="technique-marks" aria-label="Estado de cada técnica">{p.tecnicas.map((t,i)=><span key={t.id} className={t.descripcion_del_alumno.trim()?"is-described":"is-missing"} title={`${t.tipo}: ${t.descripcion_del_alumno.trim()?"con descripción":"sin descripción"}`} aria-label={`${t.tipo}: ${t.descripcion_del_alumno.trim()?"con descripción":"sin descripción"}`}><span className="technique-mark-name" aria-hidden="true">{i+1}. {t.tipo || "Sin nombre"}</span><span aria-hidden="true">{t.descripcion_del_alumno.trim()?"✓":"○"}</span></span>)}</span>
+                            <span className="position-open-hint">{expandedPositions.has(p.id)?"Cerrar posición":p.tecnicas.length>0 && p.tecnicas.every(t=>t.descripcion_del_alumno.trim())?"Ver técnicas":"Abrir y completar"}</span>
+                          </summary>
+                          <div className="position-editor">
                           <div className="position-title">
                             <div>
                               <span className="pill">P{p.prioridad}</span>
@@ -447,10 +463,12 @@ function App() {
                             </div>
                           </div>
                           {p.tecnicas.map((t, i) => (
-                            <div className="technique" id={`technique-${t.id}`} tabIndex={-1} key={t.id}>
+                            <div className={`technique ${t.descripcion_del_alumno.trim()?"technique-ready":"technique-pending"}`} id={`technique-${t.id}`} tabIndex={-1} key={t.id}>
                               <span className="number">{i + 1}</span>
                               <div>
-                                <input
+                                <div className="technique-state">{t.descripcion_del_alumno.trim()?"✓ Con descripción":"○ Descripción pendiente"}</div>
+                                <label className="technique-label" htmlFor={`type-${t.id}`}>Técnica</label>
+                                <input id={`type-${t.id}`}
                                   aria-label="Tipo de técnica"
                                   value={t.tipo}
                                   onChange={(e) =>
@@ -475,7 +493,8 @@ function App() {
                                     })
                                   }
                                 />
-                                <textarea
+                                <label className="technique-label" htmlFor={`description-${t.id}`}>Tu descripción o enlace de vídeo</label>
+                                <textarea id={`description-${t.id}`}
                                   aria-label="Descripción de técnica o enlace de vídeo"
                                   placeholder="La técnica que te funciona en combate, o su vídeo…"
                                   value={t.descripcion_del_alumno}
@@ -630,25 +649,15 @@ function App() {
                               Eliminar posición
                             </button>
                           </div>
-                        </article>
+                          </div>
+                        </details>
                       ))}
                   </div>
-                  <button
-                    onClick={() =>
-                      void saveTech({
-                        ...techniques,
-                        positions: [
-                          ...techniques.positions,
-                          {
-                            id: crypto.randomUUID(),
-                            posicion: "Nueva posición",
-                            prioridad: 1,
-                            tecnicas: [],
-                          },
-                        ],
-                      })
-                    }
-                  >
+                  <button onClick={()=>{
+                    const id=crypto.randomUUID();
+                    setExpandedPositions(previous=>new Set([...previous,id]));
+                    void saveTech({...techniques,positions:[...techniques.positions,{id,posicion:"Nueva posición",prioridad:1,tecnicas:[]}]});
+                  }}>
                     Añadir posición
                   </button>
                 </>

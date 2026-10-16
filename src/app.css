@@ -1454,3 +1454,63 @@ input[aria-invalid="true"] { border-color:#a43e3e; }
 .own-session-card h3 { margin-top: 0; }
 .own-complete-plans { border-top: 2px solid var(--line); margin-top: 48px; padding-top: 32px; }
 @media(max-width:850px) { .own-day-sessions { grid-template-columns: 1fr; } }
+
+/* Repertoire: compact preparation cards and a spacious, inline editor. */
+.positions-grid { align-items: start; }
+.repertoire-position.position { padding: 0; margin: 0; overflow: visible; border-radius: 12px; border-top: 3px solid #d6a15c; }
+.repertoire-position.is-complete { border-top-color: #43836c; }
+.position-summary { display: block; cursor: pointer; list-style: none; padding: 22px; border-radius: 10px; }
+.position-summary::-webkit-details-marker { display: none; }
+.position-summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
+.position-summary:hover { background: #f8fafc; }
+.position-summary-heading { display: flex; gap: 12px; align-items: start; color: var(--ink); }
+.position-summary-heading > strong { font-size: 21px; line-height: 1.25; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.position-summary .pill { margin-top: 1px; flex-shrink: 0; }
+.position-chevron { font-size: 23px; color: var(--muted); line-height: 1; }
+.repertoire-position[open] .position-chevron { transform: rotate(180deg); }
+.position-summary-meta { display: flex; justify-content: space-between; gap: 12px; margin-top: 20px; font-size: 14px; color: var(--muted); }
+.position-status { color: #926027; font-weight: 600; text-align: right; }
+.is-complete .position-status { color: #28664e; }
+.position-progress { display: block; height: 6px; background: #edf0f3; border-radius: 6px; overflow: hidden; margin: 12px 0 16px; }
+.position-progress > span { display: block; height: 100%; background: #698ba5; border-radius: inherit; transition: width 140ms; }
+.is-complete .position-progress > span { background: #43836c; }
+.technique-marks { display: flex; flex-wrap: wrap; gap: 6px; }
+.technique-marks > span { min-width: 36px; padding: 4px 8px; font-size: 12px; border-radius: 5px; font-weight: 600; }
+.is-described { background: #e8f3ed; color: #28664e; }
+.is-missing { background: #fbf0e1; color: #926027; }
+.position-open-hint { display: block; margin-top: 18px; color: var(--accent); font-size: 13px; font-weight: 600; }
+.repertoire-position[open] { grid-column: 1 / -1; }
+.repertoire-position[open] .position-summary { border-bottom: 1px solid var(--line); border-radius: 10px 10px 0 0; background: #f8fafc; }
+.position-editor { padding: 24px; }
+.repertoire-position .position-title { padding: 0 0 24px; }
+.repertoire-position .position-title input { background: white; border: 1px solid var(--line); padding: 12px; }
+.repertoire-position .technique { border: 1px solid #e4e9ed; border-left: 3px solid #d6a15c; border-radius: 8px; padding: 20px; margin: 20px 0; gap: 16px; background: #fff; }
+.repertoire-position .technique-ready { border-left-color: #43836c; }
+.repertoire-position .technique .number { margin-top: 0; width: 32px; height: 32px; border-radius: 50%; }
+.repertoire-position .technique-ready .number { color: #28664e; background: #e8f3ed; }
+.technique-state { color: #926027; font-size: 13px; font-weight: 600; margin: 2px 0 18px; }
+.technique-ready .technique-state { color: #28664e; }
+.repertoire-position .technique-label { margin: 14px 0 6px; font-size: 13px; }
+.repertoire-position .technique input { border: 1px solid var(--line); padding: 10px 12px; font-size: 17px; }
+.repertoire-position .technique textarea { min-height: 140px; background: #f9fbfd; line-height: 1.6; }
+.repertoire-position .technique textarea:focus { background: white; }
+.repertoire-position .technique .note { border-radius: 0 7px 7px 0; padding: 16px; margin-bottom: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.repertoire-position .mini-actions { flex-direction: column; gap: 4px; }
+.repertoire-position .mini-actions button { min-width: 44px; min-height: 44px; border: 1px solid var(--line); border-radius: 6px; }
+.repertoire-position .position-footer { padding-top: 24px; gap: 10px; }
+@media(max-width:640px) {
+ .position-summary { padding: 18px; }
+ .position-summary-heading > strong { font-size: 19px; }
+ .position-editor { padding: 16px; }
+ .repertoire-position .position-title { flex-direction: column; align-items: stretch; gap: 16px; }
+ .repertoire-position .position-title > div { width: 100%; }
+ .positions-grid .repertoire-position .position-title .priority { display: flex; align-items: center; flex: 0 0 auto; width: 100%; justify-content: space-between; }
+ .repertoire-position .technique { flex-wrap: wrap; padding: 16px; gap: 10px; }
+ .repertoire-position .technique > div:first-of-type { flex-basis: calc(100% - 42px); }
+ .repertoire-position .mini-actions { flex-direction: row; margin-left: 42px; }
+ .repertoire-position .position-footer button { flex: 1 1 auto; }
+}
+@media(prefers-reduced-motion:reduce) { .position-progress > span { transition: none; } }
+
+.technique-marks > span { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; }
+.technique-mark-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px; }

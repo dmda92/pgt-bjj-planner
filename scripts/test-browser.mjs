@@ -1,3 +1,4 @@
+import {openAllPositions} from './repertoire-helpers.mjs';
 import { madridDate } from "../src/domain/plan-text-updates.ts";
 import { template } from "../tests/template-fixture.ts";
 import assert from "node:assert/strict";
@@ -162,7 +163,7 @@ async function register(mail, name) {
   await page
     .getByRole("button", { name: "Crear cuenta de alumno", exact: true })
     .click();
-  await visible(page.getByRole("heading", { name: "Tu repertorio" }));
+  await visible(page.getByRole("heading", { name: "Tu repertorio" }));await openAllPositions(page);
 }
 async function sync(p = page) {
   await p.getByRole("button", { name: "Sincronizar", exact: true }).click();
@@ -222,7 +223,7 @@ try {
     .getByLabel("Contraseña", { exact: true })
     .fill("synthetic-browser-password");
   await other.getByRole("button", { name: "Entrar", exact: true }).click();
-  await visible(other.getByRole("heading", { name: "Tu repertorio" }));
+  await visible(other.getByRole("heading", { name: "Tu repertorio" }));await openAllPositions(other);
   assert.equal(await page.locator('.sync-success').count(),1);
   await context.setOffline(true);
   await page
@@ -275,7 +276,7 @@ try {
     await navigator.serviceWorker.ready;
   });
   await page.reload();
-  await visible(page.getByRole("heading", { name: "Tu repertorio" }));
+  await visible(page.getByRole("heading", { name: "Tu repertorio" }));await openAllPositions(page);
   await context.setOffline(true);
   await page
     .getByLabel("Descripción de técnica o enlace de vídeo")
@@ -303,7 +304,7 @@ try {
   assert.equal(await page.locator('.sync-success').count(),0);
   assert.match(await page.locator('.sync [role="status"]').innerText(),/pendientes|Sin conexión/);
   await page.reload();
-  await visible(page.getByRole("heading", { name: "Tu repertorio" }));
+  await visible(page.getByRole("heading", { name: "Tu repertorio" }));await openAllPositions(page);
   assert.equal(
     await page
       .getByLabel("Descripción de técnica o enlace de vídeo")
@@ -320,7 +321,7 @@ try {
   assert.equal(await page.locator(".position").count(), 0);
   failSnapshots = false;
   await login("browser-student@example.com");
-  await visible(page.getByRole("heading", { name: "Tu repertorio" }));
+  await visible(page.getByRole("heading", { name: "Tu repertorio" }));await openAllPositions(page);
   await sync();
   await page.getByRole("button", { name: "Salir", exact: true }).click();
   await visible(page.getByRole("button", { name: "Entrar", exact: true }));
@@ -338,7 +339,7 @@ try {
   );
   failSnapshots = false;
   await login("browser-trainer@example.com");
-  await visible(page.getByRole("heading", { name: "Tu repertorio" }));
+  await visible(page.getByRole("heading", { name: "Tu repertorio" }));await openAllPositions(page);
   assert.equal(
     await page
       .getByLabel("Descripción de técnica o enlace de vídeo")
@@ -672,7 +673,7 @@ try {
     .getByLabel("Contraseña", { exact: true })
     .fill("synthetic-browser-password");
   await pupil.getByRole("button", { name: "Entrar", exact: true }).click();
-  await visible(pupil.getByRole("heading", { name: "Tu repertorio" }));
+  await visible(pupil.getByRole("heading", { name: "Tu repertorio" }));await openAllPositions(pupil);
   await pupilDevice.close();
   await page.getByLabel("Alumno para cobertura").selectOption("");
   await page
@@ -702,7 +703,7 @@ try {
   await page.getByRole("button", { name: "Salir", exact: true }).click();
   await visible(page.getByRole("button", { name: "Entrar", exact: true }));
   await login("browser-student@example.com");
-  await visible(page.getByRole("heading", { name: "Tu repertorio" }));
+  await visible(page.getByRole("heading", { name: "Tu repertorio" }));await openAllPositions(page);
   assert.equal(
     await page
       .getByRole("button", { name: "Cobertura por alumno", exact: true })
@@ -841,7 +842,7 @@ try {
     .getByLabel("Contraseña", { exact: true })
     .fill("synthetic-browser-password");
   await mirror.getByRole("button", { name: "Entrar", exact: true }).click();
-  await visible(mirror.getByRole("heading", { name: "Tu repertorio" }));
+  await visible(mirror.getByRole("heading", { name: "Tu repertorio" }));await openAllPositions(mirror);
   // Future text projections are visible offline and converge on both devices after sync.
   const todayMadrid = madridDate();
   const savedPlan = structuredClone(planFile[1].data);
@@ -856,7 +857,7 @@ try {
     .data.positions.flatMap((p) => p.tecnicas)
     .findIndex((t) => t.id === futureId);
   await context.setOffline(true);
-  await page.getByRole("button", { name: "Mis técnicas", exact: true }).click();
+  await page.getByRole("button", { name: "Mis técnicas", exact: true }).click();await openAllPositions(page);
   await page
     .getByLabel("Descripción de técnica o enlace de vídeo")
     .nth(sourceIndex)
@@ -1025,13 +1026,13 @@ try {
   await profileDevice.close();
   const second = await context.newPage();
   await second.goto(origin);
-  await visible(second.getByRole("heading", { name: "Tu repertorio" }));
+  await visible(second.getByRole("heading", { name: "Tu repertorio" }));await openAllPositions(second);
   await page.getByRole("button", { name: "Salir", exact: true }).click();
   await visible(second.getByRole("button", { name: "Entrar", exact: true }));
   assert.equal(await second.locator(".position").count(), 0);
   await second.close();
   await login("browser-student@example.com");
-  await visible(page.getByRole("heading", { name: "Tu repertorio" }));
+  await visible(page.getByRole("heading", { name: "Tu repertorio" }));await openAllPositions(page);
   await page.getByRole("button", { name: "Perfil", exact: true }).click();
   await page
     .getByLabel("Contraseña nueva", { exact: true })
@@ -1049,7 +1050,7 @@ try {
     .getByLabel("Contraseña", { exact: true })
     .fill("synthetic-new-browser-password");
   await page.getByRole("button", { name: "Entrar", exact: true }).click();
-  await visible(page.getByRole("heading", { name: "Tu repertorio" }));
+  await visible(page.getByRole("heading", { name: "Tu repertorio" }));await openAllPositions(page);
   assert.equal(
     await page
       .getByLabel("Descripción de técnica o enlace de vídeo")
@@ -1079,7 +1080,7 @@ try {
   await largePage.getByLabel('Contraseña',{exact:true}).fill('synthetic-browser-password');
   await largePage.getByLabel('Repetir contraseña',{exact:true}).fill('synthetic-browser-password');
   await largePage.getByRole('button',{name:'Crear cuenta de alumno',exact:true}).click();
-  await visible(largePage.getByRole('heading',{name:'Tu repertorio'}));
+  await visible(largePage.getByRole('heading',{name:'Tu repertorio'}));await openAllPositions(largePage);
   const longText=('Ángulo 日本語 🙂 https://video.example/watch?v=é&x=1\n').repeat(400);
   for(let i=0;i<9;i++) await largePage.getByLabel('Descripción de técnica o enlace de vídeo').nth(i).fill(`${i}: ${longText}`);
   let rejected=false;
@@ -1098,18 +1099,18 @@ try {
   await largePage.getByRole('button',{name:'Sincronizar',exact:true}).click();
   await largePage.getByRole('status').filter({hasText:/^Sincronizado$/}).waitFor();
   await largePage.reload();
-  await visible(largePage.getByRole('heading',{name:'Tu repertorio'}));
+  await visible(largePage.getByRole('heading',{name:'Tu repertorio'}));await openAllPositions(largePage);
   for(let i=0;i<9;i++)assert.equal(await largePage.getByLabel('Descripción de técnica o enlace de vídeo').nth(i).inputValue(),`${i}: ${longText}`);
   const restoredContext=await browser.newContext();const restoredPage=await restoredContext.newPage();
   await restoredPage.goto(origin);
   await restoredPage.getByLabel('Correo',{exact:true}).fill('browser-large@example.com');
   await restoredPage.getByLabel('Contraseña',{exact:true}).fill('synthetic-browser-password');
   await restoredPage.getByRole('button',{name:'Entrar',exact:true}).click();
-  await visible(restoredPage.getByRole('heading',{name:'Tu repertorio'}));
+  await visible(restoredPage.getByRole('heading',{name:'Tu repertorio'}));await openAllPositions(restoredPage);
   for(let i=0;i<9;i++)assert.equal(await restoredPage.getByLabel('Descripción de técnica o enlace de vídeo').nth(i).inputValue(),`${i}: ${longText}`);
   await restoredContext.close();await largeContext.close();
   // Deletions recalculate locally while offline; reload and a second device retain the same suffix.
-  await page.getByRole('button',{name:'Mis técnicas',exact:true}).click();
+  await page.getByRole('button',{name:'Mis técnicas',exact:true}).click();await openAllPositions(page);
   const deletionBefore=structuredClone(files.get(planFile[0]).data);
   const techBefore=structuredClone(files.get('PGT/users_data/browser-student@example.com/tecnics.json').data);
   const deletedId=techBefore.positions[0].tecnicas[0].id;
@@ -1125,7 +1126,7 @@ try {
   assert.deepEqual(localPlan.sessions.filter(s=>s.date<=todayMadrid),deletionBefore.sessions.filter(s=>s.date<=todayMadrid));
   assert.ok(localPlan.sessions.filter(s=>s.date>todayMadrid).every(s=>s.exercises.length===deletionBefore.ejercicios_por_sesion&&s.exercises.every(e=>e.techniqueId!==deletedId)));
   assert.deepEqual(files.get(planFile[0]).data,deletionBefore);
-  await page.reload();await visible(page.getByRole('heading',{name:'Tu repertorio'}));
+  await page.reload();await visible(page.getByRole('heading',{name:'Tu repertorio'}));await openAllPositions(page);
   await context.setOffline(false);await sync();
   const deletedRemote=structuredClone(files.get(planFile[0]).data);
   assert.deepEqual(deletedRemote.sessions,localPlan.sessions);
@@ -1133,7 +1134,7 @@ try {
   await deletionMirror.goto(origin);
   await deletionMirror.getByLabel('Correo',{exact:true}).fill('browser-student@example.com');
   await deletionMirror.getByLabel('Contraseña',{exact:true}).fill('synthetic-new-browser-password');
-  await deletionMirror.getByRole('button',{name:'Entrar',exact:true}).click();await visible(deletionMirror.getByRole('heading',{name:'Tu repertorio'}));
+  await deletionMirror.getByRole('button',{name:'Entrar',exact:true}).click();await visible(deletionMirror.getByRole('heading',{name:'Tu repertorio'}));await openAllPositions(deletionMirror);
   assert.equal(await deletionMirror.getByRole('button',{name:'Borrar técnica',exact:true}).count(),techBefore.positions.flatMap(p=>p.tecnicas).length-1);
   await sync(deletionMirror);assert.deepEqual(files.get(planFile[0]).data,deletedRemote);
   const mirroredPlan=await deletionMirror.evaluate(async id=>{
@@ -1144,7 +1145,7 @@ try {
   assert.deepEqual(mirroredPlan.sessions,deletedRemote.sessions);
   await deletionDevice.close();
   // Empty catalogue: preserve the previous plan, show a recoverable warning, never report complete sync.
-  await page.getByRole('button',{name:'Mis técnicas',exact:true}).click();
+  await page.getByRole('button',{name:'Mis técnicas',exact:true}).click();await openAllPositions(page);
   for(let count=await page.getByRole('button',{name:'Eliminar posición',exact:true}).count();count>0;count--){
     await page.getByRole('button',{name:'Eliminar posición',exact:true}).first().click();
     await page.waitForFunction(expected=>document.querySelectorAll('.position').length===expected,count-1);

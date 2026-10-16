@@ -119,3 +119,10 @@ Petición del propietario: en Mis técnicas sustituir «Entrenador:» por el nom
 Petición del propietario: situar primero Mi entrenamiento del día con calendario y todas las sesiones propias para esa fecha, incluso varias competiciones el mismo día. Fecha automática: primera sesión estrictamente posterior a hoy Madrid entre planes activos (torneo >= hoy), igual que Entrenamiento del día del entrenador. Consulta explícita permite cualquier fecha e incluye planes históricos; mostrar estado vacío si no hay sesiones. No agrupar ni deduplicar sesiones de distintos planes; identificar el torneo y conservar ejercicios, textos y tiempos guardados. Mostrar sesiones abiertas.
 
 Debajo, separación visual clara y sección Planes completos con el selector Mi plan existente y todas las sesiones del plan elegido, PDF sin cambios. Ambas selecciones son independientes. Calcular exclusivamente desde planes sincronizados del usuario de sesión; uso offline, sin nuevas peticiones, tablas ni modificaciones al generador o snapshots. Reset de fecha automática al volver a entrar en la pestaña/cambiar de cuenta.
+
+
+### Tarjetas compactas de Mis técnicas (16/10/2026)
+
+Petición del propietario: posiciones cerradas inicialmente, con nombre, prioridad, cantidad de técnicas, progreso de descripciones y marca con número/nombre por técnica. Descripción no vacía tras trim define completada. Ámbar, círculo y texto para pendientes; verde, check y texto para completadas. Una posición sin técnicas no se considera completa. Abrir por resumen nativo accesible; editor inline a ancho completo con campos etiquetados, bloques por técnica, estado individual y comentarios con su autor. Conservar orden, prioridad, altas, borrado y guardado existentes. Nueva posición se abre para editar.
+
+Mantener guía visual pizarra/azul, foco, teclado, 44 px y movimiento reducido. Estado de apertura por UUID solo en sesión UI, conservado entre búsquedas y pestañas, reiniciado al cerrar sesión/recargar. Notificación abre la posición cerrada antes de desplazar y enfocar su técnica. Sin cambios en API, persistencia, permisos, generador, planes ni PDF.
