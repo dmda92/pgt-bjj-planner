@@ -502,6 +502,7 @@ try {
   await page
     .getByRole("button", { name: "Competiciones", exact: true })
     .click();
+  await page.getByRole("button",{name:"Nueva competición",exact:true}).click();
   await visible(page.getByRole("heading", { name: "Crear competición" }));
   await page.getByLabel("Fecha inicial", { exact: true }).fill("2026-10-13");
   let createRequests=0;
@@ -608,6 +609,9 @@ try {
   await page.waitForFunction(() => [...document.querySelectorAll('.dashboard-overview dd')].at(-1)?.textContent === '2');
   assert.equal(assignmentRequests,2);
   // A second competition lets us verify deletion feedback without affecting later fixtures.
+  await page.getByRole('button',{name:'Nueva competición',exact:true}).click();
+  await page.getByLabel('Fecha inicial',{exact:true}).fill('2026-10-13');
+  await page.getByLabel('Fecha del torneo',{exact:true}).fill('2026-10-24');
   await page.locator('.competition-create').getByRole('button',{name:'Crear competición',exact:true}).click();
   await page.waitForFunction(()=>document.querySelectorAll('.competition-card').length===2);
   let releaseDelete;
@@ -651,7 +655,7 @@ try {
   await visible(page.locator('.student-detail .plan-card'));
   assert.equal(await page.locator('.student-detail .plan-card').count(),1);
   await page
-    .getByRole("button", { name: "Cobertura por fecha", exact: true })
+    .getByRole("button", { name: "Preparación del plan", exact: true })
     .click();
   await page
     .getByLabel("Alumno para cobertura")
@@ -675,17 +679,9 @@ try {
     .getByLabel("Alumno para cobertura")
     .selectOption("browser-student@example.com");
   await visible(page.locator(".coverage-overview"));
-  await page.getByLabel("Fecha de referencia").fill("2026-10-13");
-  assert.equal(
-    await page.locator(".coverage-overview dd").nth(1).innerText(),
-    "1",
-  );
-  await page.getByLabel("Incluir entrenamientos de ese día").uncheck();
-  assert.equal(
-    await page.locator(".coverage-overview dd").nth(1).innerText(),
-    "0",
-  );
-  await page.getByLabel("Incluir entrenamientos de ese día").check();
+  assert.equal(await page.getByLabel("Fecha de referencia").count(),0);
+  assert.equal(await page.getByLabel("Incluir entrenamientos de ese día").count(),0);
+  assert.ok(Number(await page.locator(".coverage-overview dd").nth(2).innerText())>0);
   for (const width of [360, 390, 768, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     assert.equal(
@@ -709,7 +705,7 @@ try {
   await visible(page.getByRole("heading", { name: "Tu repertorio" }));
   assert.equal(
     await page
-      .getByRole("button", { name: "Cobertura por fecha", exact: true })
+      .getByRole("button", { name: "Preparación del plan", exact: true })
       .count(),
     0,
   );

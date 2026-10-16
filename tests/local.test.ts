@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import "fake-indexeddb/auto";
+import Dexie from "dexie";
 import {
   db,
   repository,
@@ -57,4 +58,12 @@ test("IndexedDB: guardas de propietario y sustitución atómica con rollback", a
     "b@example.com",
   );
   await db.delete();
+});
+
+test("IndexedDB v2 → v3 preserves offline pending edits, ownership and trainer views",async()=>{
+ await db.delete();
+ const legacy=new Dexie("pgt-active-user-v1");legacy.version(2).stores({entries:"key,mail,dirty",meta:"key",trainerViews:"key,owner,mail"});await legacy.open();
+ const entry={key:"techniques",mail:"offline@example.com",dirty:true,data:{positions:[{id:"retained",descripcion:"sin sincronizar"}]},base:{positions:[]},sha:null,conflicts:["pendiente"]};
+ await legacy.table("entries").put(entry);await legacy.table("meta").put({key:"owner",value:entry.mail});await legacy.table("trainerViews").put({key:"cached",owner:"trainer@example.com",mail:entry.mail,data:{retained:true}});legacy.close();
+ await db.open();assert.deepEqual(await db.entries.get("techniques"),entry);assert.equal((await db.meta.get("owner"))?.value,entry.mail);assert.equal(await db.trainerViews.count(),1);assert.equal(await db.trainerDays.count(),0);await db.delete();
 });

@@ -19,10 +19,12 @@ export class LocalDb extends Dexie {
   entries!: Table<LocalEntry, string>;
   meta!: Table<Meta, string>;
   trainerViews!: Table<import("../application/trainer-cache.ts").TrainerCacheEntry,string>;
+  trainerDays!: Table<{key:string;owner:string;data:import("../domain/trainer-reports.ts").TrainingDay},string>;
   constructor() {
     super("pgt-active-user-v1");
     this.version(1).stores({ entries: "key,mail,dirty", meta: "key" });
     this.version(2).stores({entries:"key,mail,dirty",meta:"key",trainerViews:"key,owner,mail"});
+    this.version(3).stores({entries:"key,mail,dirty",meta:"key",trainerViews:"key,owner,mail",trainerDays:"key,owner"});
   }
 }
 export const db = new LocalDb();

@@ -91,3 +91,7 @@ PNG 192/512 derivados sin recorte del logo oficial; manifest y apple-touch-icon 
 Petición del propietario: Mis planes usa el mismo comportamiento que Planes en la ficha del alumno del entrenador: desplegable con torneos, opción inicial «Selecciona un plan» y solo el plan elegido visible. Mantener lectura, exportación PDF, offline y estado sin planes. Al desaparecer el plan o cerrar sesión se limpia la selección; no modificar datos, sincronización ni permisos.
 
 Validación: 105/105 unitarias, typecheck, build, check:worker, test:runtime, test:browser y test:performance correctos. Chromium verifica estado inicial sin ficha, selección, volver al placeholder, cambio entre dos torneos con una sola ficha visible y exportación PDF offline; capturas 1440/390 revisadas sin desbordamiento. Fixtures locales, sin cambios remotos de usuarios ni aceptación en Safari/iOS físico.
+
+### Panel del entrenador — 16/10/2026
+
+Se conserva Barlow y paleta pizarra/azul. Competiciones presenta Listado/Nueva competición, filtro de pasadas y tarjetas por fecha. Preparación del plan retira fecha de referencia y usa tres resúmenes, tabla por prioridad, técnicas pendientes más frecuentes y detalle completo. Entrenamiento del día usa calendario y tarjetas agrupadas, contador de alumnos destacado arriba a la derecha y nombres. Spinners en operaciones/carga/actualización; móvil con tarjetas apiladas y tablas dentro de región desplazable. Semántica y caché según apartado 21 de requisitos.

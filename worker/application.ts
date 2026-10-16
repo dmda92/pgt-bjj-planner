@@ -1,3 +1,4 @@
+import {readTrainingDay} from "./training-day.ts";
 import type {PlanIssue} from "../src/domain/plan-issues.ts";
 import {catalogOf, deletedUUIDs, updateFutureDeletions} from "../src/domain/plan-continuity.ts";
 import {MAX_APP_BODY_BYTES, MAX_TEXT_LENGTH} from "../src/domain/json-limits.ts";
@@ -211,6 +212,7 @@ export class AppApi {
         ...(current?.data.planIds || []).filter(id => !ids.includes(id)),
         ...storedPlans.filter(file => file.type === 'file' && /^plan_[0-9a-f-]{36}\.json$/.test(file.name))
           .map(file => file.name.slice(5,-5)).filter(id => !ids.includes(id)),
+        ...storedPlans.filter(file=>file.type==='file' && /^structure_[0-9a-f-]{36}\.json$/.test(file.name)).map(file=>file.name.slice(10,-5)).filter(id=>!ids.includes(id)),
         ...catalog.data.deletedPlanIds,
       ])].filter(id => !ids.includes(id));
       if (JSON.stringify(current?.data.planIds || []) !== JSON.stringify(ids) ||
@@ -225,6 +227,11 @@ export class AppApi {
         const planPath = `${root(mail)}/training_plans/plan_${id}.json`;
         const old = await this.cloud.read(planPath);
         if (old) await this.cloud.remove(planPath, old.sha);
+        if(storedPlans.some(f=>f.name===`structure_${id}.json`)) {
+          const derivedPath=`${root(mail)}/training_plans/structure_${id}.json`;
+          const derived=await this.cloud.read(derivedPath);
+          if(derived)await this.cloud.remove(derivedPath,derived.sha);
+        }
       }
     }
   }
@@ -439,6 +446,10 @@ export class AppApi {
       await this.cloud.write("PGT/master_data/plans.json", c, old?.sha || null);
       await this.reconcile();
       return respond({ status: "COMPETITION_OPERATION_CONFIRMED" });
+    }
+    if(route === "GET /api/app/training-day") {
+      await this.trainer(request);
+      return respond(await readTrainingDay(this.cloud,url.searchParams.get("date")||"",madridDate(this.clock())));
     }
     const match = url.pathname.match(
       /^\/api\/app\/users\/([^/]+)\/(snapshot|view|profile|techniques|comments|plan)$/,

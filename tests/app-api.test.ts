@@ -630,3 +630,23 @@ test('Large tecnics request persists and restores identical descriptions across 
  assert.deepEqual(restored.techniques.data.positions,techniques.positions);
  console.log(`Fixture tecnics.json: ${bytes} bytes UTF-8 antes de metadatos servidor`);
 });
+
+test('Training day authorizes trainers, reuses SHA indexes, rebuilds changed sources and removes derived files with assignment',async()=>{
+ const f=fixture(),mail='day-pupil@example.com',trainer='day-trainer@example.com';
+ const register=async(mail:string)=>(await(await f.call('/api/app/register','POST',{mail,password:'synthetic-test-password',confirm:'synthetic-test-password',nombre:mail,apellidos:''})).json()) as any;
+ const pupil=await register(mail),teacher=await register(trainer);f.promote(trainer);
+ assert.equal((await f.call('/api/app/training-day','GET')).status,401);
+ assert.equal((await f.call('/api/app/training-day','GET',undefined,pupil.token)).status,403);
+ assert.equal((await f.call('/api/app/training-day?date=2026-02-30','GET',undefined,teacher.token)).status,400);
+ const id=crypto.randomUUID(),path=`PGT/users_data/${mail}/training_plans/plan_${id}.json`,derived=`PGT/users_data/${mail}/training_plans/structure_${id}.json`,catalog='PGT/master_data/plans.json';
+ const source={schemaVersion:1,revision:1,updatedAt:new Date().toISOString(),planId:id,mail,fecha_comienzo:'2099-01-01',fecha_torneo:'2099-02-01',alumnos:[mail],dias_de_entrenamiento:[1],ejercicios_por_sesion:1,tiempo_por_tecnica_segundos:180,descanso_entre_ciclos_segundos:10,descanso_entre_tecnicas_segundos:20,generatedAt:new Date().toISOString(),sessions:[{date:'2099-01-05',exercises:[{positionId:crypto.randomUUID(),techniqueId:crypto.randomUUID(),posicion:'Cerrada',prioridad:1,tipo:'Sumisión',descripcion_del_alumno:'privado'.repeat(10000),comment:'privado',pass:1,positionComplete:true}]}]};
+ f.files.set(path,{data:source,sha:'a'.repeat(40)});f.files.set(catalog,{data:{schemaVersion:1,revision:1,updatedAt:new Date().toISOString(),deletedPlanIds:[],plans:[source]},sha:'b'.repeat(40)});
+ const before=JSON.stringify(f.files.get(path));let r=await f.call('/api/app/training-day','GET',undefined,teacher.token);assert.equal(r.status,200);const report=await r.json() as any;
+ assert.equal(report.date,'2099-01-05');assert.equal(report.groups[0].students.length,1);assert.equal(JSON.stringify(report).includes('privado'),false);assert.ok(f.files.has(derived));assert.ok(JSON.stringify(f.files.get(derived)).length<JSON.stringify(source).length/20);console.log('Training-day synthetic bytes:',{source:JSON.stringify(source).length,index:JSON.stringify(f.files.get(derived)).length});assert.equal(JSON.stringify(f.files.get(path)),before);
+ f.reads.clear();r=await f.call('/api/app/training-day?date=2099-01-05','GET',undefined,teacher.token);assert.equal(r.status,200);assert.equal(f.reads.get(path)||0,0,'warm date must not read full plan');
+ const changed=structuredClone(source);changed.sessions[0].exercises[0].tipo='Raspada';f.files.set(path,{data:changed,sha:'c'.repeat(40)});
+ r=await f.call('/api/app/training-day?date=2099-01-05','GET',undefined,teacher.token);assert.equal((await r.json() as any).groups[0].exercises[0][1],'Raspada');assert.equal((f.files.get(derived)!.data as any).sourceSha,'c'.repeat(40));
+ f.files.set(catalog,{data:{schemaVersion:1,revision:2,updatedAt:new Date().toISOString(),deletedPlanIds:[],plans:[{...source,alumnos:[]}]},sha:'d'.repeat(40)});
+ r=await f.call('/api/app/training-day?date=2099-01-05','GET',undefined,teacher.token);assert.deepEqual((await r.json() as any).groups,[]);
+ assert.equal((await f.call(`/api/app/users/${mail}/snapshot`,'GET',undefined,pupil.token)).status,200);assert.equal(f.files.has(path),false);assert.equal(f.files.has(derived),false);
+});

@@ -1,3 +1,6 @@
+import {TrainerPreparation,TrainerDay,Loading} from "./ui-trainer-reports.tsx";
+import {listedCompetitions} from "./domain/trainer-reports.ts";
+import {madridDate} from "./domain/plan-text-updates.ts";
 import {weightValue,weightError} from "./application/weight-input.ts";
 import {planIssueMessage,type PlanIssue} from "./domain/plan-issues.ts";
 import {durationSeconds,durationError} from './application/duration-input.ts';
@@ -20,7 +23,6 @@ import {
   type Catalog,
 } from "./domain/models.ts";
 import { tabata } from "./domain/planner.ts";
-import { planCoverage } from "./domain/coverage.ts";
 import { exportPlan } from "./infrastructure/pdf.ts";
 import {
   profileDraft,
@@ -64,6 +66,8 @@ function App() {
     [profileUnsaved,setProfileUnsaved]=useState(false),
     [search, setSearch] = useState(""),
     [trainerSection, setTrainerSection] = useState("team"),
+    [competitionSection,setCompetitionSection]=useState("list"),
+    [includePast,setIncludePast]=useState(false),
     [studentSearch, setStudentSearch] = useState(""),
     [students, setStudents] = useState<any[]>([]),
     [student, setStudent] = useState<TrainerView | null>(null),
@@ -240,6 +244,7 @@ function App() {
           )}
         </div>
       </header>
+      {busy && <Loading>Procesando solicitud…</Loading>}
       {error && (
         <div role="alert" className="alert">
           {error}
@@ -314,7 +319,7 @@ function App() {
                   </p>
                 </div>
                 <div className="sync">
-                  <span role="status" className={syncState.success ? "sync-success" : undefined}>{syncState.text}</span>
+                  <span role="status" className={syncState.success ? "sync-success" : undefined}>{client.status === "Sincronizando…" && <span className="loading-spinner" aria-hidden="true" />}{syncState.text}</span>
                   <button
                     disabled={busy}
                     onClick={() => void run(() => client.sync())}
@@ -690,7 +695,7 @@ function App() {
                           ? "Tu equipo"
                           : trainerSection === "competitions"
                             ? "Competiciones"
-                            : "Cobertura por fecha"}
+                            : trainerSection === "coverage" ? "Preparación del plan" : "Entrenamiento del día"}
                       </h2>
                       <p>
                         Consulta el repertorio de cada alumno y organiza sus
@@ -700,7 +705,7 @@ function App() {
                     <a
                       className="action-link"
                       href="#competition-create"
-                      onClick={() => setTrainerSection("competitions")}
+                      onClick={() => {setTrainerSection("competitions");setCompetitionSection("create");}}
                     >
                       Crear competición
                     </a>
@@ -713,7 +718,8 @@ function App() {
                     {[
                       ["team", "Equipo"],
                       ["competitions", "Competiciones"],
-                      ["coverage", "Cobertura por fecha"],
+                      ["coverage", "Preparación del plan"],
+                      ["day", "Entrenamiento del día"],
                     ].map(([key, title]) => (
                       <button
                         key={key}
@@ -727,7 +733,7 @@ function App() {
                       </button>
                     ))}
                   </div>
-                  {trainerSection !== "coverage" && (
+                  {["team","competitions"].includes(trainerSection) && (
                     <dl
                       className="dashboard-overview"
                       aria-label="Resumen del equipo"
@@ -898,35 +904,36 @@ function App() {
                     </div>
                   )}
                   {trainerSection === "coverage" && (
-                    <TrainerCoverage
-                      students={students}
-                      run={run}
-                      busy={busy}
-                    />
+                    <TrainerPreparation students={students} run={run} />
                   )}
+                  {trainerSection === "day" && <TrainerDay run={run} />}
                   {catalog && trainerSection === "competitions" && (
-                    <div className="competition-workspace">
-                      <CompetitionForm
+                    <div>
+                      <div className="trainer-sections" role="group" aria-label="Gestión de competiciones">
+                        <button className={competitionSection === "list" ? "selected" : "secondary"} aria-pressed={competitionSection === "list"} onClick={()=>setCompetitionSection("list")}>Listado</button>
+                        <button className={competitionSection === "create" ? "selected" : "secondary"} aria-pressed={competitionSection === "create"} onClick={()=>setCompetitionSection("create")}>Nueva competición</button>
+                      </div>
+                      {competitionSection === "create" && <CompetitionForm
                         students={students}
                         run={run}
                         sha={catalog.sha}
-                        reload={trainers}
-                      />
-                      <section
+                        reload={async()=>{await trainers();setCompetitionSection("list");}}
+                      />}
+                      {competitionSection === "list" && <section
                         className="competition-list"
                         aria-label="Competiciones creadas"
                       >
                         <h3>Competiciones del equipo</h3>
-                        {!catalog.data.plans.length && (
+                        <label className="check"><input type="checkbox" checked={includePast} onChange={e=>setIncludePast(e.target.checked)}/>Incluir competiciones pasadas</label>
+                        {!listedCompetitions(catalog.data.plans,madridDate(),includePast).length && (
                           <p className="competition-empty">
-                            Aún no hay competiciones. Define las fechas y asigna
-                            alumnos en el formulario.
+                            No hay competiciones para este filtro.
                           </p>
                         )}
-                        {catalog.data.plans.map((c) => (
+                        {listedCompetitions(catalog.data.plans,madridDate(),includePast).map((c) => (
                           <CompetitionCard key={c.planId} competition={c} students={students} sha={catalog.sha} run={run} reload={trainers} />
                         ))}
-                      </section>
+                      </section>}
                     </div>
                   )}
                 </section>
@@ -1386,7 +1393,7 @@ function TrainerStudent({
           <button key={key} className={section === key ? "selected" : "secondary"} aria-pressed={section === key} onClick={() => changeSection(key as TrainerSection)}>{label}</button>
         ))}
       </div>
-      {refreshing && <p className="muted" role="status" aria-label="Actualizando ficha">Actualizando en segundo plano…</p>}
+      {refreshing && <p className="muted" role="status" aria-label="Actualizando ficha"><span className="loading-spinner" aria-hidden="true" />Actualizando en segundo plano…</p>}
       {section === "techniques" && t && notes && <>
       <div className="repertoire-progress">
         <div>
@@ -1497,230 +1504,6 @@ function TrainerStudent({
           <PlanView key={r.data.planId} plan={r.data} run={run} />
         )) : <p className="muted">{snapshot.planSummaries?.length ? "Selecciona un plan para consultar sus sesiones." : "Este alumno todavía no tiene planes asignados."}</p>}
       </>}
-    </section>
-  );
-}
-function TrainerCoverage({
-  students,
-  run,
-  busy,
-}: {
-  students: any[];
-  run: (a: () => Promise<unknown>) => Promise<void>;
-  busy: boolean;
-}) {
-  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
-  const [mail, setMail] = useState("");
-  const [planId, setPlanId] = useState("");
-  const [date, setDate] = useState(
-    new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
-      .toISOString()
-      .slice(0, 10),
-  );
-  const [inclusive, setInclusive] = useState(true);
-  const [filter, setFilter] = useState("all");
-  const plan = snapshot?.plans.find((r) => r.data.planId === planId)?.data;
-  const report = plan ? planCoverage(plan, date, inclusive) : null;
-  return (
-    <section
-      className="coverage-area"
-      aria-label="Cobertura del plan por fecha"
-    >
-      <p>
-        Trabajo previsto en la instantánea del plan. No registra asistencia ni
-        cambia la planificación.
-      </p>
-      <div className="card coverage-controls">
-        <label>
-          Alumno para cobertura
-          <select
-            disabled={busy}
-            value={mail}
-            onChange={(e) => {
-              const selected = e.target.value;
-              setMail(selected);
-              setSnapshot(null);
-              setPlanId("");
-              if (selected)
-                void run(async () => {
-                  const data = (await client.request(
-                    `/api/app/users/${encodeURIComponent(selected)}/snapshot`,
-                  )) as Snapshot;
-                  setSnapshot(data);
-                  setPlanId(data.plans[0]?.data.planId || "");
-                });
-            }}
-          >
-            <option value="">Selecciona un alumno</option>
-            {students.map((s) => (
-              <option key={s.profile.mail} value={s.profile.mail}>
-                {s.profile.nombre || s.profile.mail}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Plan para cobertura
-          <select
-            value={planId}
-            disabled={!snapshot?.plans.length}
-            onChange={(e) => setPlanId(e.target.value)}
-          >
-            <option value="">Selecciona un plan</option>
-            {snapshot?.plans.map((r) => (
-              <option key={r.data.planId} value={r.data.planId}>
-                Torneo {r.data.fecha_torneo} · Desde {r.data.fecha_comienzo}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Fecha de referencia
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
-        </label>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={inclusive}
-            onChange={(e) => setInclusive(e.target.checked)}
-          />
-          Incluir entrenamientos de ese día
-        </label>
-      </div>
-      {snapshot && !snapshot.plans.length && (
-        <p className="empty">
-          Este alumno no tiene planes generados. Si ya tiene una competición
-          asignada, debe sincronizar su cuenta para recibir el plan.
-        </p>
-      )}
-      {!mail && (
-        <p className="empty">
-          Selecciona un alumno y su plan para revisar la preparación hasta una
-          fecha.
-        </p>
-      )}
-      {plan && report && (
-        <>
-          <dl className="coverage-overview">
-            <div>
-              <dt>Técnicas diferentes</dt>
-              <dd>
-                {report.unique} <small>/ {report.total}</small>
-              </dd>
-              <p>Del contenido programado en este plan</p>
-            </div>
-            <div>
-              <dt>Sesiones incluidas</dt>
-              <dd>{report.sessions}</dd>
-              <p>{report.exercises} ejercicios con repeticiones</p>
-            </div>
-            <div>
-              <dt>Posiciones completas</dt>
-              <dd>
-                {report.positions.filter((p) => p.complete > 0).length}{" "}
-                <small>/ {report.positions.length}</small>
-              </dd>
-              <p>Al menos una pasada completa</p>
-            </div>
-            <div>
-              <dt>Posiciones sin empezar</dt>
-              <dd>{report.positions.filter((p) => !p.touched).length}</dd>
-              <p>
-                {report.positions.filter((p) => p.partial).length} con alguna
-                pasada parcial
-              </p>
-            </div>
-          </dl>
-          <div className="section-head">
-            <h3>Detalle por posición y técnica</h3>
-            <label>
-              Filtrar cobertura
-              <select
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-              >
-                <option value="all">Todo el plan</option>
-                <option value="pending">Con técnicas pendientes</option>
-                <option value="partial">Con pasadas parciales</option>
-                <option value="untouched">Sin empezar</option>
-              </select>
-            </label>
-          </div>
-          <p className="coverage-scope">
-            La instantánea conserva las técnicas programadas, no el catálogo
-            completo de la fecha de creación. Las técnicas que nunca aparecen en
-            este plan no se incluyen en el denominador. Una pasada se cuenta
-            completa solo cuando todas sus técnicas programadas han aparecido y
-            el plan conserva su marca de finalización.
-          </p>
-          <div
-            className="coverage-table"
-            role="region"
-            aria-label="Detalle de cobertura"
-            tabIndex={0}
-          >
-            <table>
-              <thead>
-                <tr>
-                  <th>Posición</th>
-                  <th>Técnicas · primera fecha · apariciones</th>
-                  <th>Pasadas completas</th>
-                  <th>Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {report.positions
-                  .filter(
-                    (p) =>
-                      filter === "all" ||
-                      (filter === "pending" &&
-                        p.techniques.some((t) => !t.count)) ||
-                      (filter === "partial" && p.partial) ||
-                      (filter === "untouched" && !p.touched),
-                  )
-                  .map((p) => (
-                    <tr key={p.id}>
-                      <th scope="row">
-                        <span className="pill">P{p.priority}</span>
-                        <strong>{p.name}</strong>
-                        <small>
-                          {p.techniques.filter((t) => t.count).length} /{" "}
-                          {p.techniques.length} técnicas diferentes
-                        </small>
-                      </th>
-                      <td>
-                        {p.techniques.map((t) => (
-                          <div className="coverage-technique" key={t.id}>
-                            <span>{t.type}</span>
-                            <small>
-                              {t.first || "Pendiente"} · {t.count} veces
-                            </small>
-                          </div>
-                        ))}
-                      </td>
-                      <td>{p.complete}</td>
-                      <td>
-                        {!p.touched
-                          ? "Sin empezar"
-                          : p.techniques.some((t) => !t.count)
-                            ? "Técnicas pendientes"
-                            : "Todas alcanzadas"}
-                        {p.partial && <small>Pasada parcial</small>}
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-          {!report.positions.length && (
-            <p className="empty">Este plan no contiene sesiones.</p>
-          )}
-        </>
-      )}
     </section>
   );
 }

@@ -92,3 +92,7 @@ El propietario solicita el logo oficial del equipo como icono del acceso directo
 ### Selector en Mis planes (16/10/2026)
 
 Petición del propietario: Mis planes usa el mismo comportamiento que Planes en la ficha del alumno del entrenador: desplegable con torneos, opción inicial «Selecciona un plan» y solo el plan elegido visible. Mantener lectura, exportación PDF, offline y estado sin planes. Al desaparecer el plan o cerrar sesión se limpia la selección; no modificar datos, sincronización ni permisos.
+
+### Panel de competiciones, preparación y día (16/10/2026)
+
+Aplicar apartado 21 de requisitos. Competiciones separa listado/crear y filtra pasado con día Madrid. Preparación usa repertorio actual y un plan completo seleccionado, sin referencia temporal. Entrenamiento del día agrupa multiconjuntos posición/tipo, con orden mayoritario y alumnos únicos. Índices privados structure_<planId>.json ligados a SHA, creados bajo demanda y retirados con el plan; no datos de negocio en DO ni reconstrucciones en sync. IndexedDB v3 añade trainerDays aislada y con invalidación de permisos/sesión. Validación y límites en docs/VALIDACION_PANEL_ENTRENADOR_2026-10-16.md.

@@ -25,5 +25,5 @@ export function validateTrainerView(data:TrainerView,mail:string,section:Trainer
 }
 export const trainerCache={
   get:(owner:string,mail:string,section:TrainerSection,planId="")=>db.trainerViews.get(trainerKey(owner,mail,section,planId)),
-  clear:(owner:string)=>db.trainerViews.where('owner').equals(owner).delete(),
+  clear:(owner:string)=>db.transaction("rw",db.trainerViews,db.trainerDays,async()=>{await db.trainerViews.where('owner').equals(owner).delete();await db.trainerDays.where('owner').equals(owner).delete();}),
 };
