@@ -11,7 +11,7 @@ export async function readTrainingDay(cloud:CloudStorageProvider,date:string,tod
  const values:{index:StructureIndex;name:string}[]=[];let missing=0,cursor=0;
  await Promise.all(Array.from({length:Math.min(4,mails.length)},async()=>{for(;;){const mail=mails[cursor++];if(!mail)return;
   const root=`PGT/users_data/${mail}`;const [profile,files]=await Promise.all([cloud.read<Profile>(root+'/user_data.json'),cloud.list?.(root+'/training_plans')]);
-  if(!profile||profile.data.probeOnly)continue;
+  if(!profile||profile.data.probeOnly){missing+=active.filter(c=>c.alumnos.includes(mail)).length;continue;}
   for(const c of active.filter(c=>c.alumnos.includes(mail))){
    const file=files?.find(f=>f.type==='file'&&f.name===`plan_${c.planId}.json`);if(!file){missing++;continue;}
    const path=`${root}/training_plans/structure_${c.planId}.json`;const stored=await cloud.read<StructureIndex>(path);let index=stored?.data;

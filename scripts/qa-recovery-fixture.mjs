@@ -54,7 +54,7 @@ const cloud = {
 const validateStorage = new GithubContentsStorage('synthetic','main',async()=>Response.json({content:{sha:'1'.repeat(40)}}));
 const write=cloud.write;
 cloud.write=async(path,data,sha)=>{await validateStorage.write(path,data,sha);return write(path,data,sha);};
-const api = new AppApi(store, cloud);
+const api = new AppApi(store, cloud, () => new Date("2026-10-16T10:00:00Z"));
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://127.0.0.1");

@@ -649,4 +649,6 @@ test('Training day authorizes trainers, reuses SHA indexes, rebuilds changed sou
  f.files.set(catalog,{data:{schemaVersion:1,revision:2,updatedAt:new Date().toISOString(),deletedPlanIds:[],plans:[{...source,alumnos:[]}]},sha:'d'.repeat(40)});
  r=await f.call('/api/app/training-day?date=2099-01-05','GET',undefined,teacher.token);assert.deepEqual((await r.json() as any).groups,[]);
  assert.equal((await f.call(`/api/app/users/${mail}/snapshot`,'GET',undefined,pupil.token)).status,200);assert.equal(f.files.has(path),false);assert.equal(f.files.has(derived),false);
+ f.files.set(catalog,{data:{schemaVersion:1,revision:3,updatedAt:new Date().toISOString(),deletedPlanIds:[],plans:[source]},sha:'e'.repeat(40)});f.files.delete(`PGT/users_data/${mail}/user_data.json`);
+ const missing=await f.call('/api/app/training-day?date=2099-01-05','GET',undefined,teacher.token);assert.equal((await missing.json() as any).missing,1);
 });
