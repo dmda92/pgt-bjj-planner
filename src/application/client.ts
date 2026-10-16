@@ -1,9 +1,11 @@
+import {receiveComments} from "./comment-notifications.ts";
 import {planIssueMessage,type PlanIssue} from "../domain/plan-issues.ts";
 import {trainerCache,trainerKey,validateTrainerView,type TrainerView,type TrainerSection} from "./trainer-cache.ts";
 import {catalogOf, deletedUUIDs, updateFutureDeletions} from "../domain/plan-continuity.ts";
 import {MAX_JSON_BYTES, MAX_APP_BODY_BYTES, jsonBytes, documentFile, sizeMessage} from "../domain/json-limits.ts";
 import type {
   Profile,
+  Comments,
   Document,
   RemoteRecord,
   TrainingPlan,
@@ -202,7 +204,9 @@ export class Client implements AuthenticationProvider, SyncService {
       throw Error("Restauración de otro usuario");
     const entries = this.snapshotEntries(snapshot, identity.mail);
     if (!reopening)
-      await db.transaction("rw", db.entries, db.meta, async () => {
+      await db.transaction("rw", db.entries, db.meta, db.commentNotices, async () => {
+        const previous = owner === identity.mail ? (await db.entries.get("comments"))?.data as Comments | undefined : undefined;
+        await receiveComments(identity.mail,snapshot.comments.data as Comments,snapshot.techniques.data as Techniques,previous);
         await db.entries.clear();
         await db.entries.bulkPut(entries);
         await db.meta.clear();
@@ -402,7 +406,7 @@ export class Client implements AuthenticationProvider, SyncService {
             continue;
           const incoming = {...data as Techniques, deletionRevision:((old.data as Techniques).deletionRevision || 0) + Number(deletedUUIDs(old.data as Techniques, data as Techniques).length > 0), deletionCatalog:(old.data as Techniques).deletionCatalog || catalogOf(old.data as Techniques), deletedIds:[...new Set([...(old.data as Techniques).deletedIds || [], ...deletedUUIDs(old.data as Techniques, data as Techniques)])]};
           const projected = projectFutureDescriptions(
-            updateFutureDeletions(entry.data as TrainingPlan, incoming, (await db.entries.get("comments"))!.data as import("../domain/models.ts").Comments, madridDate()),
+            updateFutureDeletions(entry.data as TrainingPlan, incoming, (await db.entries.get("comments"))!.data as Comments, madridDate()),
             old.data as Techniques,
             data as Techniques,
             madridDate(),
@@ -527,9 +531,14 @@ export class Client implements AuthenticationProvider, SyncService {
       this.validate(snapshot);
       for (const fresh of this.snapshotEntries(snapshot, identity.mail)) {
         this.requireIdentity();
-        await db.transaction("rw", db.entries, db.meta, async () => {
+        await db.transaction("rw", db.entries, db.meta, db.commentNotices, async () => {
+          this.requireIdentity();
+          if ((await repository.owner()) !== identity.mail) throw Error("Sesión local incompatible");
           const local = await db.entries.get(fresh.key);
-          if (!local?.dirty) await repository.save(fresh, identity.mail);
+          if (!local?.dirty) {
+            if (fresh.key === "comments") await receiveComments(identity.mail,snapshot.comments.data as Comments,snapshot.techniques.data as Techniques,local?.data as Comments | undefined);
+            await repository.save(fresh, identity.mail);
+          }
         });
       }
       for (const id of snapshot.deletedPlanIds) {

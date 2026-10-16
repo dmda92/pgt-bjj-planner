@@ -1426,3 +1426,24 @@ input[aria-invalid="true"] { border-color:#a43e3e; }
 .day-group { min-width:0; }
 .day-group li { margin-bottom:10px; overflow-wrap:anywhere; }
 .student-count { flex-shrink:0; padding:8px 12px; background:var(--pale,#eaf0f4); color:var(--ink,#20313f); border-radius:6px; }
+
+/* Local comment inbox; contained on narrow screens and keyboard accessible. */
+.notifications { position: relative; flex: 0 0 auto; }
+.identity .notification-bell { position: relative; display: grid; place-items: center; width: 44px; height: 44px; padding: 10px; }
+.notification-bell svg { width: 24px; height: 24px; }
+.notification-count { position: absolute; top: -4px; right: -5px; min-width: 21px; height: 21px; padding: 0 4px; border-radius: 12px; background: #b63240; color: white; font-size: 12px; font-weight: 600; line-height: 21px; text-align: center; }
+.notification-panel { position: absolute; z-index: 20; top: 52px; right: -64px; width: min(370px,calc(100vw - 32px)); max-height: min(520px,70vh); overflow: auto; background: white; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px #20313f20; color: var(--ink); text-align: left; }
+.notification-heading { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.notification-heading h2 { margin: 0; font-size: 20px; }
+.notification-panel > p { padding: 0 16px 12px; }
+.notification-panel ul { list-style: none; margin: 0; padding: 0; }
+.notification-panel li + li { border-top: 1px solid var(--line); }
+.identity .notification-panel li button { display: flex; flex-direction: column; align-items: stretch; gap: 5px; width: 100%; padding: 16px; border: 0; border-radius: 0; background: white; color: var(--ink); text-align: left; overflow-wrap: anywhere; }
+.identity .notification-panel li button:hover { background: #eef4f8; }
+.notification-preview { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--muted); }
+.technique[id] { scroll-margin-block: 24px; }
+.technique[id]:focus { outline: 3px solid var(--accent,#365e7d); outline-offset: 5px; }
+@media(max-width:640px) { .identity .notification-bell { width: 40px; height: 40px; } .notification-panel { position: fixed; top: 86px; left: 16px; right: 16px; width: auto; } }
+
+.notification-heading button { min-width: 44px; min-height: 44px; }
+.notification-panel .loading-spinner { width: 18px; height: 18px; vertical-align: middle; }

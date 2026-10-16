@@ -1,3 +1,4 @@
+import {Notifications} from "./ui-notifications.tsx";
 import {TrainerPreparation,TrainerDay,Loading} from "./ui-trainer-reports.tsx";
 import {listedCompetitions} from "./domain/trainer-reports.ts";
 import {madridDate} from "./domain/plan-text-updates.ts";
@@ -82,6 +83,7 @@ function App() {
       sha: string | null;
     } | null>(null),
     [update, setUpdate] = useState<ServiceWorkerRegistration | null>(null);
+  const [notificationTarget,setNotificationTarget]=useState("");
   const active = client.identity && !client.locked;
   const profile = entries.find((e) => e.key === "profile")?.data as
     Profile | undefined;
@@ -111,6 +113,7 @@ function App() {
         })
         .catch((e) => setError(e.message));
     } else {
+      setNotificationTarget("");
       setEntries([]);
       studentSequence.current++;
       setStudent(null);
@@ -125,6 +128,11 @@ function App() {
       setTrainerSection("team");
     }
   }, [version, Boolean(active)]);
+  useEffect(()=>{
+    if(!active || tab!=="techniques" || !notificationTarget)return;
+    const target=document.getElementById(`technique-${notificationTarget}`);
+    if(target){target.scrollIntoView({block:"center"});target.focus({preventScroll:true});setNotificationTarget("");}
+  },[notificationTarget,tab,search,techniques,Boolean(active)]);
   useEffect(() => {
     if ("serviceWorker" in navigator)
       navigator.serviceWorker
@@ -232,6 +240,7 @@ function App() {
                 {profile?.nombre || client.identity?.mail}
                 <small>{trainer ? "Entrenador" : "Alumno"}</small>
               </span>
+              <Notifications key={client.identity!.mail} owner={client.identity!.mail} techniques={techniques} comments={comments} onError={setError} onOpen={id=>{setSearch("");setTab("techniques");setNotificationTarget(id);}} />
               <button
                 className="subtle"
                 onClick={() => void run(() => client.logout())}
@@ -437,7 +446,7 @@ function App() {
                             </div>
                           </div>
                           {p.tecnicas.map((t, i) => (
-                            <div className="technique" key={t.id}>
+                            <div className="technique" id={`technique-${t.id}`} tabIndex={-1} key={t.id}>
                               <span className="number">{i + 1}</span>
                               <div>
                                 <input

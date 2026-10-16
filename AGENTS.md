@@ -100,3 +100,10 @@ Aplicar apartado 21 de requisitos. Competiciones separa listado/crear y filtra p
 ### Nombre y ratio de cobertura (16/10/2026)
 
 Corrección del propietario: «Preparación del plan» pasa a «Cobertura por alumno». La tabla por prioridad sustituye «Repeticiones adicionales» por «Veces por prioridad»: Apariciones / Repertorio actual de esa prioridad, con dos decimales y formato español. Denominador cero muestra «—». No cambiar otros cálculos ni datos del plan.
+
+
+## Notificaciones de comentarios — petición del propietario (16/10/2026)
+
+Campana en cabecera superior derecha de la sesión, con contador destacado de pendientes. Solo avisos internos recibidos al restaurar/sincronizar comentarios, sin push ni nuevas peticiones. Cada técnica con comentario nuevo o modificado tiene un aviso independiente; versiones servidor por UUID evitan duplicados, con huella del contenido para comentarios legados. Un comentario eliminado/vacío o una técnica retirada deja de generar avisos. Mostrar posición, técnica y vista previa; al abrir, marcar leído, abrir Mis técnicas, limpiar búsqueda y enfocar/desplazar a su técnica. Abrir la campana no marca leídos los demás.
+
+Persistencia IndexedDB v4 por usuario/dispositivo, separada de datos pendientes; recepción de versiones/avisos y aceptación de comentarios en una transacción. Actualizar conserva cambios offline y usa los comentarios locales como referencia para no notificar antiguos ya descargados. Una instalación nueva muestra los comentarios existentes recibidos en la primera restauración. Leídos se conservan en ese dispositivo entre sesiones; no se sincronizan entre dispositivos y se pierden al borrar los datos del navegador. Sin cambios en API, permisos, planes, generador ni PDF.
