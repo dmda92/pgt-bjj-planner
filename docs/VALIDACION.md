@@ -197,3 +197,6 @@ Mis planes por día (16/10/2026): consulta pura de planes locales del propietari
 
 
 Mis técnicas compactas (16/10/2026): Chromium verifica tarjetas cerradas, progreso por texto no vacío, indicadores individuales, recompensa completa y regreso a pendiente al vaciar, teclado, abrir/cerrar sin perder borradores, búsqueda, persistencia offline y posición vacía. Capturas compactas/abiertas 360/390/768/1440 en .browser-artifacts/repertoire. Regresión de notificaciones comprueba apertura de posición antes de foco. Pruebas generales de edición abren explícitamente las posiciones antes de usar campos antes visibles; conservación de pruebas de prioridad, guardado, conflictos, borrado y perfiles. Sin cuentas remotas ni validación Safari/iOS físico.
+
+
+Control de prioridad compacto (16/10/2026): cambio CSS, conserva +/−, áreas táctiles, mínimo 1 y guardado. Regresión de prioridad en test-browser; revisión visual de tarjetas abiertas 390/1440 mediante test-repertoire-cards.

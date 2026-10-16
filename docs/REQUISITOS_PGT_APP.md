@@ -650,3 +650,8 @@ Debajo, separación visual clara y sección Planes completos con el selector Mi 
 Petición del propietario: posiciones cerradas inicialmente, con nombre, prioridad, cantidad de técnicas, progreso de descripciones y marca con número/nombre por técnica. Descripción no vacía tras trim define completada. Ámbar, círculo y texto para pendientes; verde, check y texto para completadas. Una posición sin técnicas no se considera completa. Abrir por resumen nativo accesible; editor inline a ancho completo con campos etiquetados, bloques por técnica, estado individual y comentarios con su autor. Conservar orden, prioridad, altas, borrado y guardado existentes. Nueva posición se abre para editar.
 
 Mantener guía visual pizarra/azul, foco, teclado, 44 px y movimiento reducido. Estado de apertura por UUID solo en sesión UI, conservado entre búsquedas y pestañas, reiniciado al cerrar sesión/recargar. Notificación abre la posición cerrada antes de desplazar y enfocar su técnica. Sin cambios en API, persistencia, permisos, generador, planes ni PDF.
+
+
+### Control de prioridad discreto (16/10/2026)
+
+El propietario pide compactar el control y permite sustituir +/− si es necesario. Se conservan ambos dentro de una sola cápsula neutra, sin botones azules independientes, con etiqueta en línea y número centrado. Mantener áreas táctiles 44 px, foco, mínimo 1 y pasos enteros. Retirar el distintivo P duplicado de la cabecera editable; conservarlo en el resumen. Solo CSS, sin cambiar guardado ni comportamiento.

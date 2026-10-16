@@ -1514,3 +1514,31 @@ input[aria-invalid="true"] { border-color:#a43e3e; }
 
 .technique-marks > span { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; }
 .technique-mark-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px; }
+
+/* A single quiet priority control instead of two prominent action buttons. */
+.positions-grid .repertoire-position .position-title .priority {
+  display: inline-flex; flex: 0 0 auto; width: auto; align-items: center;
+  justify-content: flex-end; gap: 10px; font-size: 13px; color: var(--muted);
+}
+.repertoire-position .priority-stepper {
+  display: inline-flex; align-items: center; flex: 0 0 auto; gap: 0;
+  margin: 0; padding: 0; min-height: 44px; border: 1px solid var(--line);
+  border-radius: 24px; background: #f8fafc;
+}
+.repertoire-position .priority-stepper button {
+  display: grid; place-items: center; flex: 0 0 44px; width: 44px;
+  min-width: 44px; min-height: 44px; padding: 0; border: 0;
+  border-radius: 50%; background: transparent; color: var(--accent);
+  font-size: 18px; font-weight: 400; line-height: 1;
+}
+.repertoire-position .priority-stepper button:hover:not(:disabled) { background: #e7eef4; }
+.repertoire-position .priority-stepper button:disabled { opacity: .3; cursor: default; }
+.repertoire-position .priority-stepper output {
+  min-width: 24px; padding: 0 2px; color: var(--ink);
+  font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.repertoire-position .position-title > div:first-child > .pill { display: none; }
+@media(max-width:640px) {
+ .positions-grid .repertoire-position .position-title .priority { align-self: flex-end; }
+ .repertoire-position .position-title { gap: 10px; padding-bottom: 16px; }
+}
