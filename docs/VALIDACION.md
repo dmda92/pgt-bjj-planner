@@ -203,3 +203,6 @@ Control de prioridad compacto (16/10/2026): cambio CSS, conserva +/−, áreas t
 
 
 Prioridad como subtítulo (16/10/2026): búsqueda exhaustiva de prefijos P en src sin restos generados. Mis técnicas y sesiones del día tienen aserciones de subtítulo y ausencia de prefijo. PDF de QA sintético renderizado con Poppler (páginas compacta y continuación), revisado sin cortes/solapamientos y extracción sin P1/P2. Unitarias de PDF preservan snapshots, orden, límites y no solapamiento; fixture denso ajusta longitud de descripción de 12 a 10 repeticiones para seguir verificando el caso de una tarjeta entera con la nueva línea adicional. Sesiones extensas continúan en varias páginas. Artefactos de QA internos; no se modifican archivos de usuarios.
+
+
+Nuevos participantes en día (16/10/2026): regresión API crea competición y asigna otro alumno sin snapshots/logins de alumnos; ambos aparecen. GET señala pendientes sin crear; POST autorizado los recupera, preservando literalmente el snapshot existente y siendo idempotente. Alumno recibe 403; catálogo vacío sigue pendiente sin plan ficticio. Chromium guarda participantes desde tarjeta, verifica aparición del alumno nuevo, elimina solo snapshot sintético para reproducir legado y pulsa Actualizar; los otros planes permanecen iguales. Sin datos remotos reales.

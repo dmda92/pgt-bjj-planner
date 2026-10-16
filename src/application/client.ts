@@ -140,6 +140,10 @@ export class Client implements AuthenticationProvider, SyncService {
       }
       throw new ApiFailure(response.status, value.size ? sizeMessage(value.size) : value.error || "Error de API");
     }
+    if(method==="POST" && ["/api/app/assignment","/api/app/competition","/api/app/delete-competition"].includes(path) && this.identity?.token===token && !this.locked){
+      this.dayEpoch++;
+      await db.trainerDays.where("owner").equals(this.identity.mail).delete();
+    }
     return value as T;
   }
   async login(mail: string, password: string) {
@@ -326,6 +330,7 @@ export class Client implements AuthenticationProvider, SyncService {
       plans:view.plans?.map(p=>{const e=entries.find(e=>e.key==="plan:"+p.data.planId);return e && (e.dirty || local.has("techniques") || local.has("comments") || e.data.revision>p.data.revision) ? {data:e.data as TrainingPlan,sha:e.sha!}:p;}),
     };
   }
+  private dayEpoch=0;
   private dayLoads = new Map<string,Promise<import("../domain/trainer-reports.ts").TrainingDay>>();
   async cachedTrainingDay(date:string) {
     const identity=await this.trainerIdentity();
@@ -335,16 +340,20 @@ export class Client implements AuthenticationProvider, SyncService {
     return entry?.data;
   }
   async trainingDay(date:string):Promise<import("../domain/trainer-reports.ts").TrainingDay> {
-    const identity=await this.trainerIdentity(),key=JSON.stringify([identity.mail,date||"next:"+madridDate()]),requestKey=key+identity.token;
+    const identity=await this.trainerIdentity(),epoch=this.dayEpoch,key=JSON.stringify([identity.mail,date||"next:"+madridDate()]),requestKey=key+identity.token+":"+epoch;
     const pending=this.dayLoads.get(requestKey);if(pending)return pending;
     const load=(async()=>{
       if(!navigator.onLine){const cached=await this.cachedTrainingDay(date);if(cached)return cached;throw Error("Sin conexión y sin copia de los entrenamientos de esta fecha");}
       try {
-        const data=await this.request<import("../domain/trainer-reports.ts").TrainingDay>("/api/app/training-day?date="+encodeURIComponent(date));
+        const path="/api/app/training-day?date="+encodeURIComponent(date);
+        let data=await this.request<import("../domain/trainer-reports.ts").TrainingDay>(path);
+        if(data.missing>0)data=await this.request<import("../domain/trainer-reports.ts").TrainingDay>(path,"POST",{});
         if(this.requireIdentity().token!==identity.token)throw Error("Sesión cambiada");
+        if(epoch!==this.dayEpoch)throw Error("Las competiciones han cambiado. Actualiza el entrenamiento del día.");
         if(!data||!Array.isArray(data.groups)||!Array.isArray(data.dates)||typeof data.date!=="string")throw Error("Respuesta de entrenamientos no válida");
         await db.transaction("rw",db.trainerDays,async()=>{
           if(this.requireIdentity().token!==identity.token)throw Error("Sesión cambiada");
+          if(epoch!==this.dayEpoch)throw Error("Las competiciones han cambiado. Actualiza el entrenamiento del día.");
           await db.trainerDays.put({key,owner:identity.mail,data});
         });
         return data;

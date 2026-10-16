@@ -682,3 +682,28 @@ test("Comment author comes from authenticated trainer; unchanged comments retain
  assert.equal(result.data.comments[0].trainerName,"Bea Pérez");
  const own=await f.call(base+"comments","PUT",{sha:result.sha,data:result.data},tokens.get("author-pupil@example.com"));assert.equal(own.status,403);
 });
+
+
+test("New participants appear in daily training without pupil login; repair missing plans preserves existing snapshots",async()=>{
+ const f=fixture(),password="synthetic-assignment-password";const tokens=new Map<string,string>();
+ for(const mail of ["daily-trainer@example.com","daily-a@example.com","daily-b@example.com"]){const r=await f.call("/api/app/register","POST",{mail,password,confirm:password,nombre:mail,apellidos:""});assert.equal(r.status,201);tokens.set(mail,((await r.json()) as any).token);}
+ f.promote("daily-trainer@example.com");const trainer=tokens.get("daily-trainer@example.com");
+ const c={fecha_comienzo:"2099-01-01",fecha_torneo:"2099-01-30",alumnos:["daily-a@example.com"],dias_de_entrenamiento:[1,2,3,4,5,6,7],ejercicios_por_sesion:2,tiempo_por_tecnica_segundos:180,descanso_entre_ciclos_segundos:10,descanso_entre_tecnicas_segundos:20};
+ assert.equal((await f.call("/api/app/competition","POST",{competition:c,sha:null},trainer)).status,200);
+ let catalog=await (await f.call("/api/app/catalog","GET",undefined,trainer)).json() as any;const id=catalog.data.plans[0].planId;
+ const path=(mail:string)=>`PGT/users_data/${mail}/training_plans/plan_${id}.json`;
+ assert.ok(f.files.has(path("daily-a@example.com")));
+ const original=structuredClone(f.files.get(path("daily-a@example.com")));
+ assert.equal((await f.call("/api/app/assignment","POST",{planId:id,alumnos:[...c.alumnos,"daily-b@example.com"],sha:catalog.sha},trainer)).status,200);
+ assert.ok(f.files.has(path("daily-b@example.com")));assert.deepEqual(f.files.get(path("daily-a@example.com")),original);
+ const endpoint="/api/app/training-day?date=2099-01-05";
+ let report=await (await f.call(endpoint,"POST",{},trainer)).json() as any;assert.equal(new Set(report.groups.flatMap((g:any)=>g.students.map((s:any)=>s.mail))).size,2);
+ f.files.delete(path("daily-b@example.com"));
+ assert.equal((await f.call(endpoint,"POST",{},tokens.get("daily-a@example.com"))).status,403);
+ assert.equal((await (await f.call(endpoint,"GET",undefined,trainer)).json() as any).missing,1,"GET stays read-only");
+ report=await (await f.call(endpoint,"POST",{},trainer)).json() as any;assert.equal(report.missing,0);assert.ok(f.files.has(path("daily-b@example.com")));assert.deepEqual(f.files.get(path("daily-a@example.com")),original);
+ const stable=JSON.stringify([...f.files]);await f.call(endpoint,"POST",{},trainer);assert.equal(JSON.stringify([...f.files]),stable);
+ // Empty catalogue is recoverable and never becomes a fake empty plan.
+ f.files.delete(path("daily-b@example.com"));(f.files.get("PGT/users_data/daily-b@example.com/tecnics.json")!.data as any).positions=[];
+ report=await (await f.call(endpoint,"POST",{},trainer)).json() as any;assert.equal(report.missing,1);assert.equal(f.files.has(path("daily-b@example.com")),false);
+});

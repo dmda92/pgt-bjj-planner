@@ -661,8 +661,9 @@ try {
   await page
     .getByLabel("Alumno para cobertura")
     .selectOption("browser-student@example.com");
-  await visible(page.getByText(/Este alumno no tiene planes generados/));
-  // Individual snapshots are created by the pupil's first sync, not by a trainer read.
+  await visible(page.locator('.coverage-overview'));
+  assert.equal(await page.getByText(/Este alumno no tiene planes generados/).count(),0);
+  // Assignment now prepares the initial snapshot before the pupil's first sync.
   const pupilDevice = await browser.newContext();
   const pupil = await pupilDevice.newPage();
   await pupil.goto(origin);

@@ -10,6 +10,7 @@ const pupils=[];
 for(const [name,reversed,spider] of [['Ana',false,false],['Bea',true,false],['Carla',true,false],['David',false,true]]){
  const mail=name.toLowerCase()+'@example.com',token=await register(mail,name);pupils.push({mail,token});const t=files.get(`PGT/users_data/${mail}/tecnics.json`);const p=t.data.positions[0];p.posicion=spider?'Guardia araña':'Guardia cerrada';p.prioridad=1;p.tecnicas=p.tecnicas.slice(0,2);p.tecnicas[0].tipo='Sumisión 1';p.tecnicas[1].tipo='Raspada 1';p.tecnicas[0].descripcion_del_alumno=name==='Ana'?'Lista para competir':'';p.tecnicas[1].descripcion_del_alumno='';if(reversed)p.tecnicas.reverse();t.data.positions=[p];
 }
+const newcomer='elena@example.com';await register(newcomer,'Elena');
 const competition={fecha_comienzo:'2026-10-16',fecha_torneo:'2026-10-24',alumnos:pupils.map(p=>p.mail),dias_de_entrenamiento:[1,2,3,4,5,6,7],ejercicios_por_sesion:2,tiempo_por_tecnica_segundos:180,descanso_entre_ciclos_segundos:10,descanso_entre_tecnicas_segundos:20};
 let response=await call('/api/app/competition','POST',{competition,sha:null},teacherToken);assert.equal(response.status,200);
 for(const p of pupils)assert.equal((await call(`/api/app/users/${p.mail}/snapshot`,'GET',undefined,p.token)).status,200);
@@ -27,6 +28,21 @@ try{
  await context.setOffline(true);await page.getByRole('button',{name:'Equipo',exact:true}).click();await page.getByRole('button',{name:'Entrenamiento del día',exact:true}).click();await page.getByLabel('Fecha del entrenamiento').fill('2026-10-18');await poll(async()=>await page.locator('.day-group').count()===2);
  for(const width of [390,768,1440]){await page.setViewportSize({width,height:950});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.screenshot({path:`.browser-artifacts/reports/day-${width}.png`,fullPage:true});}
  await context.setOffline(false);
+ // Add a pupil through the real trainer form, without any pupil snapshot/login.
+ await page.getByRole('button',{name:'Competiciones',exact:true}).click();await page.getByRole('button',{name:'Listado',exact:true}).click();
+ const card=page.locator('.competition-card').filter({has:page.getByRole('heading',{name:'Torneo · 2026-10-24',exact:true})});
+ await card.getByLabel('Elena',{exact:true}).check();await card.getByRole('button',{name:'Guardar datos',exact:true}).click();
+ const catalog=()=>files.get('PGT/master_data/plans.json').data.plans.find(c=>c.fecha_torneo==='2026-10-24');
+ await poll(async()=>catalog().alumnos.includes(newcomer));await poll(async()=>!(await card.getByRole('button',{name:'Guardar datos',exact:true}).isEnabled()));
+ const planPath=`PGT/users_data/${newcomer}/training_plans/plan_${catalog().planId}.json`;
+ await poll(async()=>files.has(planPath));
+ await card.getByRole('status').filter({hasText:'Guardando participantes…'}).waitFor({state:'hidden'});
+ const afterAssignment=await page.evaluate(()=>new Promise(resolve=>{const r=indexedDB.open('pgt-active-user-v1');r.onsuccess=()=>{const db=r.result,q=db.transaction('trainerDays').objectStore('trainerDays').count();q.onsuccess=()=>{resolve(q.result);db.close();};};}));assert.equal(afterAssignment,0,'assignment must invalidate the prior daily report');
+ await page.getByRole('button',{name:'Entrenamiento del día',exact:true}).click();await poll(async()=>await page.locator('.day-groups').innerText().then(t=>t.includes('Elena Fixture')));
+ const existing=JSON.stringify(files.get(`PGT/users_data/ana@example.com/training_plans/plan_${catalog().planId}.json`));
+ files.delete(planPath);await page.getByRole('button',{name:'Actualizar entrenamientos',exact:true}).click();await poll(async()=>files.has(planPath));
+ await poll(async()=>page.getByRole('button',{name:'Actualizar entrenamientos',exact:true}).isEnabled());
+ assert.equal(JSON.stringify(files.get(`PGT/users_data/ana@example.com/training_plans/plan_${catalog().planId}.json`)),existing);
  files.get(`PGT/users_data/${teacher}/user_data.json`).data.perfil='alumno';
  await page.getByRole('button',{name:'Equipo',exact:true}).click();await page.getByRole('button',{name:'Entrenamiento del día',exact:true}).click();
  await page.getByRole('alert').filter({hasText:'TRAINER_REQUIRED'}).waitFor();await poll(async()=>await page.locator('.day-group').count()===0);

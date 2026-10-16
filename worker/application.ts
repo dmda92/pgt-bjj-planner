@@ -235,6 +235,31 @@ export class AppApi {
       }
     }
   }
+  private async createMissingPlan(mail:string, competition:Competition, issues:PlanIssue[]):Promise<CloudRecord<TrainingPlan>|undefined> {
+    const id=competition.planId,path=`${root(mail)}/training_plans/plan_${id}.json`;
+    const existing=await this.cloud.read<TrainingPlan>(path);
+    if(existing)return existing;
+    const catalog=await this.cloud.read<Catalog>("PGT/master_data/plans.json");
+    const assigned=catalog?.data.plans.find(c=>c.planId===id && c.alumnos.includes(mail) && !catalog.data.deletedPlanIds.includes(id));
+    if(!assigned)return;
+    const t=await this.cloud.read<Techniques>(`${root(mail)}/tecnics.json`),notes=await this.cloud.read<Comments>(`${root(mail)}/trainer_comments.json`);
+    if(!t||!notes)return reject(409,"REGISTRATION_INCOMPLETE");
+    if(!t.data.positions.some(p=>p.tecnicas.length)){issues.push({planId:id,code:"NO_TRAINABLE_TECHNIQUES"});return;}
+    const plan=generatePlan(assigned,mail,t.data,notes.data,now());
+    plan.appliedDescriptionUpdates={...t.data.descriptionUpdates};plan.appliedCommentUpdates={...notes.data.commentUpdates};
+    try {
+      const sha=await this.cloud.write(path,plan,null);
+      const current=await this.cloud.read<Catalog>("PGT/master_data/plans.json");
+      if(!current?.data.plans.some(c=>c.planId===id&&c.alumnos.includes(mail)) || current.data.deletedPlanIds.includes(id)) {
+        const saved=await this.cloud.read<TrainingPlan>(path);if(saved?.sha===sha)await this.cloud.remove(path,sha);return;
+      }
+      return {data:plan,sha};
+    } catch(error) {
+      if(error instanceof ApiError && error.status===413 && error.message==="JSON_TOO_LARGE" && error.size?.file===`plan_${id}.json`){issues.push({planId:id,code:"PLAN_TOO_LARGE",size:error.size});return;}
+      if(error instanceof ApiError && error.status===409){const winner=await this.cloud.read<TrainingPlan>(path);if(winner)return winner;}
+      throw error;
+    }
+  }
   async handle(request: Request, url: URL): Promise<Response> {
     const route = `${request.method} ${url.pathname}`;
     if (url.pathname === "/api/app/bootstrap") return reject(404, "ENDPOINT_NOT_FOUND");
@@ -445,11 +470,17 @@ export class AppApi {
       c.updatedAt = now();
       await this.cloud.write("PGT/master_data/plans.json", c, old?.sha || null);
       await this.reconcile();
-      return respond({ status: "COMPETITION_OPERATION_CONFIRMED" });
+      const planIssues:PlanIssue[]=[];
+      const changed=route.endsWith("/competition") ? c.plans.at(-1) : c.plans.find(p=>p.planId===b.planId);
+      const previous=new Set(old?.data.plans.find(p=>p.planId===changed?.planId)?.alumnos || []);
+      const added=(changed?.alumnos || []).filter(mail=>!previous.has(mail));
+      let cursor=0;
+      await Promise.all(Array.from({length:Math.min(4,added.length)},async()=>{for(;;){const mail=added[cursor++];if(!mail)return;await this.createMissingPlan(mail,changed!,planIssues);}}));
+      return respond({ status: "COMPETITION_OPERATION_CONFIRMED",planIssues });
     }
-    if(route === "GET /api/app/training-day") {
+    if(route === "GET /api/app/training-day" || route === "POST /api/app/training-day") {
       await this.trainer(request);
-      return respond(await readTrainingDay(this.cloud,url.searchParams.get("date")||"",madridDate(this.clock())));
+      return respond(await readTrainingDay(this.cloud,url.searchParams.get("date")||"",madridDate(this.clock()),request.method==="POST" ? (mail,c)=>this.createMissingPlan(mail,c,[]) : undefined));
     }
     const match = url.pathname.match(
       /^\/api\/app\/users\/([^/]+)\/(snapshot|view|profile|techniques|comments|plan)$/,
@@ -579,49 +610,8 @@ export class AppApi {
         ) || []) {
           const id = competition.planId;
           if (received.has(id)) continue;
-          const t =
-            "data" in techniques
-              ? techniques.data
-              : (
-                  await this.cloud.read<Techniques>(
-                    `${root(mail)}/tecnics.json`,
-                  )
-                )?.data;
-          const notes =
-            "data" in comments
-              ? comments.data
-              : (
-                  await this.cloud.read<Comments>(
-                    `${root(mail)}/trainer_comments.json`,
-                  )
-                )?.data;
-          if (!t || !notes) return reject(409, "REGISTRATION_INCOMPLETE");
-          if(!(t as Techniques).positions.some(position=>position.tecnicas.length)) {
-            planIssues.push({planId:id,code:"NO_TRAINABLE_TECHNIQUES"});
-            continue;
-          }
-          const plan = generatePlan(
-            competition,
-            mail,
-            t as unknown as Techniques,
-            notes as unknown as Comments,
-            now(),
-          );
-          plan.appliedDescriptionUpdates = {
-            ...(t as Techniques).descriptionUpdates,
-          };
-          plan.appliedCommentUpdates = {
-            ...(notes as Comments).commentUpdates,
-          };
-          const path = `${root(mail)}/training_plans/plan_${id}.json`;
-          const existing = await this.cloud.read<TrainingPlan>(path);
-          try {
-            plans.push(existing || {data:plan,sha:await this.cloud.write(path,plan,null)});
-          } catch(error) {
-            if(error instanceof ApiError && error.status===413 && error.message==="JSON_TOO_LARGE" && error.size?.file===`plan_${id}.json`)
-              planIssues.push({planId:id,code:"PLAN_TOO_LARGE",size:error.size});
-            else throw error;
-          }
+          const created=await this.createMissingPlan(mail,competition,planIssues);
+          if(created)plans.push(created);
         }
       return respond({
         profile: record("profile", {
