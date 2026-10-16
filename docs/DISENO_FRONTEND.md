@@ -2,7 +2,7 @@
 
 ## Dirección aprobada por el propietario
 
-El 14/10/2026 el propietario rechazó la paleta del logo PGT y eligió como referencia cuatro capturas: navegación lateral oscura, fondo claro, superficies blancas, títulos legibles, espacios generosos y detalle por posición. Esta petición prevalece sobre la dirección verde/dorada anterior. Se adopta una paleta pizarra con acento azul suave; el logo original se conserva para el PDF, no define la interfaz ni el icono PWA.
+El 14/10/2026 el propietario rechazó la paleta del logo PGT y eligió como referencia cuatro capturas: navegación lateral oscura, fondo claro, superficies blancas, títulos legibles, espacios generosos y detalle por posición. Esta petición prevalece sobre la dirección verde/dorada anterior. Se adopta una paleta pizarra con acento azul suave; el logo original se conserva para el PDF y, por decisión del propietario el 16/10/2026, para el icono de instalación PWA. No define la paleta de la interfaz.
 
 La app es un espacio de preparación de competición: repertorio personal editable, sesiones, perfiles y trabajo del entrenador. No añadir actividad, tendencias, asistencia ni gráficos ficticios. Los datos existentes determinan el contenido; las capturas son referencia de composición, no una nueva especificación funcional.
 
@@ -81,3 +81,7 @@ Botón de ojo integrado en el campo, accesible Mostrar/Ocultar contraseña, type
 ### Trabajo por alumno en minutos y segundos (16/10/2026)
 
 Crear competición presenta Trabajo por alumno (min:seg), con valor inicial 3:00 y formato m:ss/mm:ss, entre 0:01 y 60:00. Convertir a segundos al enviar; conservar modelo, API, Tábata y planes existentes. Rechazar cero, segundos >=60 y duraciones superiores al máximo sin petición. Pruebas de conversión exacta y formulario, persistencia de 3:00 como 180 segundos.
+
+### Validación del icono de instalación (16/10/2026)
+
+PNG 192/512 derivados sin recorte del logo oficial; manifest y apple-touch-icon usan rutas nuevas. SHA256 de public/logo-pgt.jpg conservado: c95889f631ca4183ae8108679aed72b4e1a8ead5969108b5e98ae0c518675dd3. Sin cambios en src/, estilos ni PDF. 105/105 unitarias, typecheck, build, check:worker, test:runtime y test:browser correctos; tamaños/referencias de iconos y precaché verificados. La actualización de un icono ya instalado depende del sistema; una instalación nueva usa los recursos nuevos.
