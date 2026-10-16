@@ -58,6 +58,7 @@ function App() {
   const [entries, setEntries] = useState<LocalEntry[]>([]),
     [version, setVersion] = useState(0),
     [tab, setTab] = useState("techniques"),
+    [ownPlanId, setOwnPlanId] = useState(""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [profileUnsaved,setProfileUnsaved]=useState(false),
@@ -176,6 +177,10 @@ function App() {
   const plans = entries
     .filter((e) => e.key.startsWith("plan:"))
     .map((e) => e.data as TrainingPlan);
+  const selectedOwnPlan = plans.find(plan => plan.planId === ownPlanId);
+  useEffect(() => {
+    if (!active || (ownPlanId && !selectedOwnPlan)) setOwnPlanId("");
+  }, [active, ownPlanId, selectedOwnPlan]);
   function selectStudent(mail:string,section:TrainerSection="techniques",force=false,planId="") {
     const sequence=++studentSequence.current,owner=client.identity?.mail;
     setSelectedStudent(mail);setStudentSection(section);setStudentPlanId(planId);
@@ -651,9 +656,17 @@ function App() {
                       para recibirla.
                     </div>
                   )}
-                  {plans.map((plan) => (
-                    <PlanView key={plan.planId} plan={plan} run={run} />
-                  ))}
+                  {plans.length > 0 && <>
+                    <label>Mi plan
+                      <select aria-label="Mi plan" value={selectedOwnPlan ? ownPlanId : ""} onChange={e => setOwnPlanId(e.target.value)}>
+                        <option value="">Selecciona un plan</option>
+                        {plans.map(plan => <option key={plan.planId} value={plan.planId}>Torneo · {plan.fecha_torneo}</option>)}
+                      </select>
+                    </label>
+                    {selectedOwnPlan
+                      ? <PlanView key={selectedOwnPlan.planId} plan={selectedOwnPlan} run={run} />
+                      : <p className="muted">Selecciona un plan para consultar sus sesiones.</p>}
+                  </>}
                 </section>
               )}
               {tab === "profile" && profile && (

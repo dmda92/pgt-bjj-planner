@@ -88,3 +88,7 @@ BUG-004 (alcance simplificado aprobado por el propietario el 16/10/2026): conser
 ### Icono de instalación PGT (16/10/2026)
 
 El propietario solicita el logo oficial del equipo como icono del acceso directo/PWA y apple-touch-icon. Usar el original `logo PGT.jpg`, convertido proporcionalmente a PNG 192/512, con rutas nuevas para evitar el icono genérico cacheado. No cambiar logo interior, PDF, paleta ni interfaz.
+
+### Selector en Mis planes (16/10/2026)
+
+Petición del propietario: Mis planes usa el mismo comportamiento que Planes en la ficha del alumno del entrenador: desplegable con torneos, opción inicial «Selecciona un plan» y solo el plan elegido visible. Mantener lectura, exportación PDF, offline y estado sin planes. Al desaparecer el plan o cerrar sesión se limpia la selección; no modificar datos, sincronización ni permisos.

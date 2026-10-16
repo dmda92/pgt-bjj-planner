@@ -636,6 +636,7 @@ try {
   });
   await sync(); // trainer receives their own snapshot just like any competitor.
   await page.getByRole("button", { name: /Mis planes/ }).click();
+  await page.getByLabel("Mi plan",{exact:true}).selectOption({index:1});
   await visible(page.getByRole("heading", { name: "Torneo · 2026-10-23" }));
   assert.match(await page.locator(".timer").innerText(), /32:10/);
   await page.getByRole("button", { name: "Entrenador", exact: true }).click();
@@ -713,6 +714,7 @@ try {
     0,
   );
   await page.getByRole("button", { name: /Mis planes/ }).click();
+  await page.getByLabel("Mi plan",{exact:true}).selectOption({index:1});
   await visible(page.getByRole("heading", { name: "Torneo · 2026-10-23" }));
   assert.match(await page.locator(".timer").innerText(), /32:10/);
   await context.setOffline(true);
@@ -868,6 +870,7 @@ try {
     .filter({ hasText: /Cambios guardados/ })
     .waitFor();
   await page.getByRole("button", { name: /Mis planes/ }).click();
+  await page.getByLabel("Mi plan",{exact:true}).selectOption({index:1});
   await page.locator(".session summary").nth(futureSessionIndex).click();
   assert.equal(
     await page
@@ -893,6 +896,7 @@ try {
         if (e.techniqueId === futureId)
           assert.equal(e.descripcion_del_alumno, "Texto futuro offline");
   await mirror.getByRole("button", { name: /Mis planes/ }).click();
+  await mirror.getByLabel("Mi plan",{exact:true}).selectOption({index:1});
   await mirror.locator(".session summary").nth(futureSessionIndex).click();
   assert.equal(
     await mirror
@@ -1153,6 +1157,7 @@ try {
   await page.getByRole('button',{name:'Sincronizar',exact:true}).click();
   await page.getByRole('status').filter({hasText:/Sincronización incompleta:.*actualización bloqueada/}).waitFor();
   await page.getByRole('button',{name:/Mis planes/}).click();
+  await page.getByLabel("Mi plan",{exact:true}).selectOption({index:1});
   await visible(page.getByRole('alert').filter({hasText:/Actualización del plan bloqueada/}).first());
   assert.match(files.get(planFile[0]).data.structuralUpdateError,/No quedan técnicas/);
 

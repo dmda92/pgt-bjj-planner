@@ -606,3 +606,7 @@ BUG-005/001: snapshot autorizado completo con `planIssues` por plan (`PLAN_TOO_L
 BUG-002: peso opcional, finito, estrictamente mayor que 0 y menor que 500, sin discretización ni redondeo; formulario admite coma decimal y señala el campo. BUG-003: cero días impide enviar competición, muestra error asociado al grupo y enfoca la primera casilla; cualquier selección no vacía es válida y Worker mantiene su validación.
 
 BUG-004 (alcance simplificado aprobado por el propietario el 16/10/2026): conservar Barlow local y sus caracteres españoles, puntuación y enlaces. No añadir fuentes CJK, cirílicas ni emoji. Validar cobertura común de Barlow Regular/SemiBold antes de generar: si un carácter no está soportado, mostrar error explícito sin descargar un PDF incompleto ni modificar datos. Mantener textos largos, paginación y exportación offline. Sustituye el fallback Unicode ampliado anterior.
+
+### Selector en Mis planes (16/10/2026)
+
+Petición del propietario: Mis planes usa el mismo comportamiento que Planes en la ficha del alumno del entrenador: desplegable con torneos, opción inicial «Selecciona un plan» y solo el plan elegido visible. Mantener lectura, exportación PDF, offline y estado sin planes. Al desaparecer el plan o cerrar sesión se limpia la selección; no modificar datos, sincronización ni permisos.

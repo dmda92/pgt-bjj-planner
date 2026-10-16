@@ -85,3 +85,9 @@ Crear competición presenta Trabajo por alumno (min:seg), con valor inicial 3:00
 ### Validación del icono de instalación (16/10/2026)
 
 PNG 192/512 derivados sin recorte del logo oficial; manifest y apple-touch-icon usan rutas nuevas. SHA256 de public/logo-pgt.jpg conservado: c95889f631ca4183ae8108679aed72b4e1a8ead5969108b5e98ae0c518675dd3. Sin cambios en src/, estilos ni PDF. 105/105 unitarias, typecheck, build, check:worker, test:runtime y test:browser correctos; tamaños/referencias de iconos y precaché verificados. La actualización de un icono ya instalado depende del sistema; una instalación nueva usa los recursos nuevos.
+
+### Selector en Mis planes (16/10/2026)
+
+Petición del propietario: Mis planes usa el mismo comportamiento que Planes en la ficha del alumno del entrenador: desplegable con torneos, opción inicial «Selecciona un plan» y solo el plan elegido visible. Mantener lectura, exportación PDF, offline y estado sin planes. Al desaparecer el plan o cerrar sesión se limpia la selección; no modificar datos, sincronización ni permisos.
+
+Validación: 105/105 unitarias, typecheck, build, check:worker, test:runtime, test:browser y test:performance correctos. Chromium verifica estado inicial sin ficha, selección, volver al placeholder, cambio entre dos torneos con una sola ficha visible y exportación PDF offline; capturas 1440/390 revisadas sin desbordamiento. Fixtures locales, sin cambios remotos de usuarios ni aceptación en Safari/iOS físico.
