@@ -1,3 +1,5 @@
+import {weightValue,weightError} from "./application/weight-input.ts";
+import {planIssueMessage,type PlanIssue} from "./domain/plan-issues.ts";
 import {durationSeconds,durationError} from './application/duration-input.ts';
 import {competitionDateErrors} from './application/competition-dates.ts';
 import {syncPresentation} from "./application/sync-presentation.ts";
@@ -1122,6 +1124,7 @@ function ProfileView({
   run: (a: () => Promise<unknown>) => Promise<void>;
 }) {
   const [draft, setDraft] = useState(() => profileDraft(profile));
+  const [weightInvalid,setWeightInvalid]=useState("");
   const previous = useRef(profileDraft(profile));
   useEffect(() => {
     const incoming = profileDraft(profile);
@@ -1131,7 +1134,7 @@ function ProfileView({
   }, [profile]);
   useEffect(()=>{
     const saved=profileDraft(profile);
-    onDirty((Object.keys(saved) as (keyof typeof draft)[]).some(key=>draft[key]!==saved[key]&&!(key==="peso"&&draft[key]!==""&&saved[key]!==""&&Number(draft[key])===Number(saved[key]))));
+    onDirty((Object.keys(saved) as (keyof typeof draft)[]).some(key=>draft[key]!==saved[key]&&!(key==="peso"&&draft[key]!==""&&saved[key]!==""&&weightValue(draft[key])===weightValue(saved[key]))));
   },[draft,profile,onDirty]);
   useEffect(()=>()=>onDirty(false),[onDirty]);
   const field = (name: keyof typeof draft) => ({
@@ -1150,13 +1153,16 @@ function ProfileView({
         onSubmit={(e) => {
           e.preventDefault();
           const f = new FormData(e.currentTarget);
+          const error=weightError(String(f.get("peso")));
+          setWeightInvalid(error);
+          if(error){(e.currentTarget.elements.namedItem("peso") as HTMLInputElement).focus();return;}
           void run(() =>
             client.edit("profile", {
               ...profile,
               nombre: String(f.get("nombre")),
               apellidos: String(f.get("apellidos")),
               fecha_nacimiento: String(f.get("fecha")) || null,
-              peso: f.get("peso") ? Number(f.get("peso")) : null,
+              peso: weightValue(String(f.get("peso"))),
               cinturon: String(f.get("cinturon")) as Profile["cinturon"],
             }),
           );
@@ -1177,7 +1183,10 @@ function ProfileView({
           </label>
           <label>
             Peso (kg)
-            <input name="peso" type="number" min="0.1" max="499.9" step="0.1" {...field("peso")} />
+            <input name="peso" type="text" inputMode="decimal" {...field("peso")}
+              aria-invalid={Boolean(weightInvalid)} aria-describedby={weightInvalid ? "profile-weight-error" : undefined}
+              onInput={e=>{const error=weightError(e.currentTarget.value);e.currentTarget.setCustomValidity(error);setWeightInvalid(error);}} />
+            {weightInvalid && <span className="field-error" role="alert" id="profile-weight-error">{weightInvalid}</span>}
           </label>
           <label>
             Cinturón
@@ -1333,6 +1342,8 @@ function TrainerStudent({
   run: (a: () => Promise<unknown>) => Promise<void>;
   reload: () => Promise<void>;
 }) {
+  const [commentIssues,setCommentIssues]=useState<PlanIssue[]>([]);
+  useEffect(()=>setCommentIssues([]),[snapshot.profile.data.mail]);
   const p = snapshot.profile.data,
     t = snapshot.techniques?.data as Techniques | undefined,
     [search, setSearch] = useState(""),
@@ -1348,6 +1359,7 @@ function TrainerStudent({
   const percent = Math.round((described / Math.max(1, total)) * 100);
   return (
     <section className="card student-detail">
+      {commentIssues.length>0 && <p role="alert" className="field-error">{planIssueMessage(commentIssues)}</p>}
       <div className="student-detail-heading">
         <div>
           <p className="muted">Ficha del alumno</p>
@@ -1407,7 +1419,7 @@ function TrainerStudent({
                           comment: String(f.get("comment")),
                         },
                       ];
-                      await client.request(
+                      const saved=await client.request<{planIssues?:PlanIssue[]}>(
                         `/api/app/users/${encodeURIComponent(snapshot.profile.data.mail)}/comments`,
                         "PUT",
                         {
@@ -1415,6 +1427,8 @@ function TrainerStudent({
                           sha: snapshot.comments!.sha,
                         },
                       );
+                      setCommentIssues(saved.planIssues || []);
+                      if(saved.planIssues?.length)client.status=planIssueMessage(saved.planIssues);
                       await reload();
                     });
                   }}
@@ -1767,6 +1781,7 @@ function CompetitionForm({
   reload: () => Promise<void>;
 }) {
   const [creating,setCreating]=useState(false);
+  const [daysError,setDaysError]=useState(false);
   const [dateErrors,setDateErrors]=useState<{start?:string;end?:string}>({});
   function checkDates(form:HTMLFormElement) {
     const start=form.elements.namedItem('start') as HTMLInputElement;
@@ -1792,7 +1807,11 @@ function CompetitionForm({
         }}
         onSubmit={(e) => {
           e.preventDefault();
-          if(creating || !checkDates(e.currentTarget))return;
+          if(creating)return;
+          const days=e.currentTarget.querySelectorAll<HTMLInputElement>('input[name="day"]:checked');
+          setDaysError(!days.length);
+          if(!checkDates(e.currentTarget))return;
+          if(!days.length){e.currentTarget.querySelector<HTMLInputElement>('input[name="day"]')?.focus();return;}
           const f = new FormData(e.currentTarget);
           const c: Competition = {
             planId: "",
@@ -1874,8 +1893,10 @@ function CompetitionForm({
             />
           </label>
         </div>
-        <fieldset>
+        <fieldset aria-invalid={daysError} aria-describedby={daysError ? "competition-days-error" : undefined}
+          onChange={e=>{if(e.currentTarget.querySelector('input:checked'))setDaysError(false);}}>
           <legend>Días de entrenamiento</legend>
+          {daysError && <p role="alert" className="field-error" id="competition-days-error">Selecciona al menos un día de entrenamiento.</p>}
           {[
             "Lunes",
             "Martes",

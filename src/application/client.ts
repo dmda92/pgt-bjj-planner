@@ -1,3 +1,4 @@
+import {planIssueMessage,type PlanIssue} from "../domain/plan-issues.ts";
 import {trainerCache,trainerKey,validateTrainerView,type TrainerView,type TrainerSection} from "./trainer-cache.ts";
 import {catalogOf, deletedUUIDs, updateFutureDeletions} from "../domain/plan-continuity.ts";
 import {MAX_JSON_BYTES, MAX_APP_BODY_BYTES, jsonBytes, documentFile, sizeMessage} from "../domain/json-limits.ts";
@@ -34,6 +35,7 @@ export interface Snapshot {
   index: RemoteRecord;
   plans: RemoteRecord<TrainingPlan>[];
   deletedPlanIds: string[];
+  planIssues?: PlanIssue[];
 }
 export interface AuthenticationProvider {
   login(mail: string, password: string): Promise<void>;
@@ -57,6 +59,12 @@ export class Client implements AuthenticationProvider, SyncService {
   locked = false;
   status = "Sin sesión";
   private running: Promise<void> | null = null;
+  private async rememberPlanIssues(mail:string, issues:PlanIssue[] = []) {
+    await db.transaction("rw",db.meta,async()=>{
+      if(await repository.owner()!==mail)throw Error("Sesión local incompatible");
+      await db.meta.put({key:"plan-issues:"+mail,value:JSON.stringify(issues)});
+    });
+  }
   private channel = new BroadcastChannel("pgt-session");
   onChange: () => void = () => {};
   constructor() {
@@ -67,6 +75,14 @@ export class Client implements AuthenticationProvider, SyncService {
       } catch {
         localStorage.removeItem("pgt-session");
       }
+    }
+    if(this.identity) {
+      const mail=this.identity.mail;
+      void db.meta.get("plan-issues:"+mail).then(entry=>{
+        if(this.identity?.mail!==mail || this.locked || !entry)return;
+        const issues=JSON.parse(entry.value) as PlanIssue[];
+        if(issues.length){this.status=planIssueMessage(issues);this.onChange();}
+      });
     }
     this.channel.onmessage = () => {
       this.identity = null;
@@ -189,13 +205,15 @@ export class Client implements AuthenticationProvider, SyncService {
       await db.transaction("rw", db.entries, db.meta, async () => {
         await db.entries.clear();
         await db.entries.bulkPut(entries);
+        await db.meta.clear();
         await db.meta.put({ key: "owner", value: identity.mail });
       });
+    await this.rememberPlanIssues(identity.mail,snapshot.planIssues);
     this.identity = identity;
     this.locked = false;
     localStorage.setItem("pgt-session", JSON.stringify(identity));
     this.channel.postMessage("session-changed");
-    this.status =
+    this.status = snapshot.planIssues?.length ? planIssueMessage(snapshot.planIssues) :
       owner && owner !== identity.mail
         ? "Usuario restaurado"
         : "Sesión iniciada";
@@ -211,6 +229,12 @@ export class Client implements AuthenticationProvider, SyncService {
       !Array.isArray(s.plans)
     )
       throw Error("Restauración incompleta");
+    if(s.planIssues!==undefined && (!Array.isArray(s.planIssues) || s.planIssues.some(issue=>
+      !issue || !/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(issue.planId) ||
+      !["PLAN_TOO_LARGE","NO_TRAINABLE_TECHNIQUES"].includes(issue.code) ||
+      (issue.code==="PLAN_TOO_LARGE" && (!issue.size || issue.size.file!==`plan_${issue.planId}.json` ||
+       !Number.isSafeInteger(issue.size.bytes) || issue.size.bytes<=MAX_JSON_BYTES || issue.size.limitBytes!==MAX_JSON_BYTES)))))
+      throw Error("Estado de planes inválido");
     validateProfile(s.profile.data);
     if ("pwd" in s.profile.data || "probeOnly" in s.profile.data)
       throw Error("Perfil remoto contiene campos privados");
@@ -439,11 +463,12 @@ export class Client implements AuthenticationProvider, SyncService {
           });
           continue;
         }
-        const saved = await this.request<RemoteRecord>(entry.endpoint, "PUT", {
+        const saved = await this.request<RemoteRecord & {planIssues?:PlanIssue[]}>(entry.endpoint, "PUT", {
           data: merged.value,
           sha: current.sha,
         });
         this.requireIdentity();
+        if(saved.planIssues)await this.rememberPlanIssues(identity.mail,saved.planIssues);
         await db.transaction("rw", db.entries, db.meta, async () => {
           const latest = await db.entries.get(entry.key);
           if (!latest || latest.mail !== identity.mail)
@@ -495,7 +520,8 @@ export class Client implements AuthenticationProvider, SyncService {
         (e) => e.dirty,
       );
       const blocked = (await repository.entries(identity.mail)).filter(e=>e.key.startsWith("plan:") && (e.data as TrainingPlan).structuralUpdateError);
-      this.status = blocked.length ? `Sincronización incompleta: ${blocked.length} plan(es) con actualización bloqueada; revisa el aviso del plan` : remaining.length
+      await this.rememberPlanIssues(identity.mail,snapshot.planIssues);
+      this.status = snapshot.planIssues?.length ? planIssueMessage(snapshot.planIssues) : blocked.length ? `Sincronización incompleta: ${blocked.length} plan(es) con actualización bloqueada; revisa el aviso del plan` : remaining.length
         ? `${remaining.length} archivo(s) pendientes; revisa conflictos`
         : "Sincronizado";
     } catch (error) {

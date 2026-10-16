@@ -38,3 +38,20 @@ test('PDF accepts variable Tabata, zero rests, empty plans and long names',async
  const result=await buildPlanPdf(source,assets);assert.equal(result.placements.length,19);
  source.sessions=[];const empty=await buildPlanPdf(source,assets);assert.equal(empty.pdf.getNumberOfPages(),1);assert.deepEqual(empty.placements,[]);
 });
+
+test('BUG-004 preserves Spanish punctuation, links, long text and snapshot',async()=>{
+ const source=plan();source.sessions=source.sessions.slice(0,1);
+ const original='ÁÉÍÓÚ áéíóú ñÑ üÜ ¿¡ «» “comillas” – — … • º ª € https://video.example/watch?v=é&x=1';
+ for(const ex of source.sessions[0].exercises){ex.descripcion_del_alumno=original.repeat(20);ex.comment=original;}
+ const before=JSON.stringify(source),{placements}=await buildPlanPdf(source,assets);
+ assert.equal(JSON.stringify(source),before);
+ assert.ok(placements.length>1);assert.ok(placements.every(p=>p.y+p.height<=276));
+});
+test('BUG-004 rejects unsupported characters before exporting without changing data',async()=>{
+ for(const text of ['日本語','漢字','🙂','АБВ']){
+  const source=plan();source.sessions[0].exercises[0].descripcion_del_alumno=text;
+  const before=JSON.stringify(source);
+  await assert.rejects(buildPlanPdf(source,assets),/caracteres no compatibles/);
+  assert.equal(JSON.stringify(source),before);
+ }
+});

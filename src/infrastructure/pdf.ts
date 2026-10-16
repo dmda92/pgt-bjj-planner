@@ -1,3 +1,4 @@
+import supportedCodepoints from "./pdf-font-coverage.json" with {type:"json"};
 import { tabata } from "../domain/planner.ts";
 import type { TrainingPlan } from "../domain/models.ts";
 import type { jsPDF } from "jspdf";
@@ -36,6 +37,16 @@ function measure(pdf: jsPDF, session: Session, width: number, size: number) {
 }
 /** Builds only from the saved snapshot; never reads current techniques or changes the plan. */
 export async function buildPlanPdf(plan: TrainingPlan, assets: PdfAssets) {
+  // Validate before generating/downloading: never silently discard unsupported text.
+  const supported = new Set(supportedCodepoints);
+  const values = [plan.mail, ...plan.sessions.flatMap(s => s.exercises.flatMap(e =>
+    [e.posicion, e.tipo, e.descripcion_del_alumno, e.comment || ""]))];
+  const missing = new Set<string>();
+  for (const value of values) for (const char of value) {
+    const cp = char.codePointAt(0)!;
+    if (char !== "\n" && char !== "\r" && !supported.has(cp)) missing.add(`U+${cp.toString(16).toUpperCase()}`);
+  }
+  if (missing.size) throw Error(`No se puede exportar el PDF: contiene caracteres no compatibles con la fuente (${[...missing].slice(0,8).join(", ")}). Revisa el texto; tus datos no se han modificado.`);
   const {jsPDF} = await import("jspdf");
   const pdf = new jsPDF({unit:"mm", format:"a4", compress:true});
   pdf.addFileToVFS("Barlow-Regular.ttf", assets.regular);

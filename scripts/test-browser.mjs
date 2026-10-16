@@ -540,6 +540,14 @@ try {
   await workTimer.fill('2:35');
   assert.equal(await workTimer.evaluate(el=>el.validity.valid),true);
   await workTimer.fill('3:00');
+  for(const box of await page.locator('input[name=day]').all())await box.uncheck();
+  await page.locator('.competition-create').getByRole('button',{name:'Crear competición',exact:true}).click();
+  await visible(page.getByText('Selecciona al menos un día de entrenamiento.',{exact:true}));
+  assert.equal(createRequests,0);
+  assert.equal(await page.locator('input[name=day]').first().evaluate(el=>el===document.activeElement),true);
+  await page.locator('input[name=day][value="2"]').check();
+  await page.locator('input[name=day][value="4"]').check();
+  assert.equal(await page.getByText('Selecciona al menos un día de entrenamiento.',{exact:true}).count(),0);
   assert.equal(await page.locator("input[name=student]").count(), 2);
   await page
     .locator('input[name=student][value="browser-student@example.com"]')
@@ -939,7 +947,7 @@ try {
   await page.getByRole("button", { name: "Perfil", exact: true }).click();
   const weight = page.getByLabel("Peso (kg)");
   await weight.fill("-5");
-  assert.equal(await weight.evaluate(el => el.validity.rangeUnderflow), true);
+  assert.equal(await weight.evaluate(el => el.validity.customError), true);
   await page.getByRole("button", {name: "Guardar en este dispositivo"}).click();
   assert.equal(await weight.evaluate(el => el.validity.valid), false);
   await weight.fill("");

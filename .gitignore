@@ -14,3 +14,5 @@ coverage/
 
 # Business template remains private; local audit inputs are not published.
 data/
+
+.performance-artifacts/

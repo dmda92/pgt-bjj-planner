@@ -75,3 +75,12 @@ Borrado de competición con estado inmediato y spinner accesible en su tarjeta; 
 ### Trabajo por alumno en minutos y segundos (16/10/2026)
 
 Crear competición presenta Trabajo por alumno (min:seg), con valor inicial 3:00 y formato m:ss/mm:ss, entre 0:01 y 60:00. Convertir a segundos al enviar; conservar modelo, API, Tábata y planes existentes. Rechazar cero, segundos >=60 y duraciones superiores al máximo sin petición. Pruebas de conversión exacta y formulario, persistencia de 3:00 como 180 segundos.
+
+
+### Correcciones QA de recuperación, validación y PDF (16/10/2026)
+
+BUG-005/001: snapshot autorizado completo con `planIssues` por plan (`PLAN_TOO_LARGE` con bytes/archivo o `NO_TRAINABLE_TECHNIQUES`). Entregar las fuentes y último plan válido aunque una proyección no sea viable; permitir corregir el catálogo/comentario. Confirmar fuentes solo después de CAS; conservar pendiente de plan hasta proyección/generación válida. Nunca capturar autenticación, permisos, transporte o conflictos agotados como recuperación de negocio. Mantener límites, checkpoints, algoritmo y sesiones protegidas. Sin técnicas no crear planes vacíos. Cliente persiste los avisos por propietario y nunca comunica sincronización completa con pendientes.
+
+BUG-002: peso opcional, finito, estrictamente mayor que 0 y menor que 500, sin discretización ni redondeo; formulario admite coma decimal y señala el campo. BUG-003: cero días impide enviar competición, muestra error asociado al grupo y enfoca la primera casilla; cualquier selección no vacía es válida y Worker mantiene su validación.
+
+BUG-004 (alcance simplificado aprobado por el propietario el 16/10/2026): conservar Barlow local y sus caracteres españoles, puntuación y enlaces. No añadir fuentes CJK, cirílicas ni emoji. Validar cobertura común de Barlow Regular/SemiBold antes de generar: si un carácter no está soportado, mostrar error explícito sin descargar un PDF incompleto ni modificar datos. Mantener textos largos, paginación y exportación offline. Sustituye el fallback Unicode ampliado anterior.

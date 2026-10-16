@@ -1,3 +1,4 @@
+import type {PlanIssue} from "../src/domain/plan-issues.ts";
 import {catalogOf, deletedUUIDs, updateFutureDeletions} from "../src/domain/plan-continuity.ts";
 import {MAX_APP_BODY_BYTES, MAX_TEXT_LENGTH} from "../src/domain/json-limits.ts";
 import {
@@ -141,7 +142,7 @@ export class AppApi {
     }))
       if (s.mail === mail) await this.store.delete(key);
   }
-  private async updatePlanTexts(mail: string,onlyPlanId?:string) {
+  private async updatePlanTexts(mail: string,onlyPlanId?:string, issues?:PlanIssue[]) {
     const loaded=new Map<string,CloudRecord<TrainingPlan>>();
     const [metadata,files]=await Promise.all([this.cloud.list?.(root(mail)),this.cloud.list?.(`${root(mail)}/training_plans`)]);
     const planFiles=(files||[]).filter(f=>(!onlyPlanId||f.name===`plan_${onlyPlanId}.json`)&&f.type==="file"&&/^plan_[0-9a-f-]{36}\.json$/.test(f.name));
@@ -169,7 +170,12 @@ export class AppApi {
         const next=updateFuturePlanText(updateFutureDeletions(current.data,t.data,c.data,today),t.data,c.data,today);
         if(next===current.data){await mark(current.sha,t,c);return;}
         try {const data={...next,revision:current.data.revision+1,updatedAt:now()};const sha=await this.cloud.write(path,data,current.sha);loaded.set(file.name,{data,sha});await mark(sha,t,c);return;}
-        catch(error){if(!(error instanceof ApiError)||![409,422].includes(error.status)||attempt===2)throw error;}
+        catch(error){
+          if(issues && error instanceof ApiError && error.status===413 && error.message==="JSON_TOO_LARGE" && error.size?.file===file.name){
+            issues.push({planId:file.name.slice(5,-5),code:"PLAN_TOO_LARGE",size:error.size});return;
+          }
+          if(!(error instanceof ApiError)||![409,422].includes(error.status)||attempt===2)throw error;
+        }
       }
     });
     return loaded;
@@ -510,7 +516,8 @@ export class AppApi {
         }
       }
       await this.reconcile(mail);
-      await this.updatePlanTexts(mail);
+      const planIssues:PlanIssue[]=[];
+      await this.updatePlanTexts(mail,undefined,planIssues);
       const profile = own ? actor.profile : await this.profile(mail),
         catalog = await this.cloud.read<Catalog>("PGT/master_data/plans.json");
       const record = (key: string, r: CloudRecord<unknown>) =>
@@ -578,6 +585,10 @@ export class AppApi {
                   )
                 )?.data;
           if (!t || !notes) return reject(409, "REGISTRATION_INCOMPLETE");
+          if(!(t as Techniques).positions.some(position=>position.tecnicas.length)) {
+            planIssues.push({planId:id,code:"NO_TRAINABLE_TECHNIQUES"});
+            continue;
+          }
           const plan = generatePlan(
             competition,
             mail,
@@ -593,12 +604,13 @@ export class AppApi {
           };
           const path = `${root(mail)}/training_plans/plan_${id}.json`;
           const existing = await this.cloud.read<TrainingPlan>(path);
-          plans.push(
-            existing || {
-              data: plan,
-              sha: await this.cloud.write(path, plan, null),
-            },
-          );
+          try {
+            plans.push(existing || {data:plan,sha:await this.cloud.write(path,plan,null)});
+          } catch(error) {
+            if(error instanceof ApiError && error.status===413 && error.message==="JSON_TOO_LARGE" && error.size?.file===`plan_${id}.json`)
+              planIssues.push({planId:id,code:"PLAN_TOO_LARGE",size:error.size});
+            else throw error;
+          }
         }
       return respond({
         profile: record("profile", {
@@ -609,6 +621,7 @@ export class AppApi {
         comments,
         index,
         plans,
+        planIssues,
         deletedPlanIds: [...new Set([...(catalog?.data.deletedPlanIds || []), ...((await this.cloud.read<Index>(`${root(mail)}/plans_index.json`))?.data.deletedPlanIds || [])])],
       });
     }
@@ -700,8 +713,10 @@ export class AppApi {
             notes.sha,
           );
       }
-      await this.updatePlanTexts(mail);
+      const planIssues:PlanIssue[]=[];
+      await this.updatePlanTexts(mail,undefined,planIssues);
       return respond({
+        planIssues,
         data: same ? old.data : next,
         sha,
         status: same ? "UNCHANGED_NO_COMMIT" : "WRITE_CONFIRMED",
@@ -755,8 +770,10 @@ export class AppApi {
       const sha = same
         ? old.sha
         : await this.cloud.write(path, notes, old?.sha || null);
-      await this.updatePlanTexts(mail);
+      const planIssues:PlanIssue[]=[];
+      await this.updatePlanTexts(mail,undefined,planIssues);
       return respond({
+        planIssues,
         data: same ? old.data : notes,
         sha,
         status: same ? "UNCHANGED_NO_COMMIT" : "WRITE_CONFIRMED",

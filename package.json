@@ -7,13 +7,13 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
     "test:performance": "node scripts/benchmark-trainer.mjs",
-    "test:runtime": "node scripts/test-runtime.mjs && node scripts/test-app-runtime.mjs",
+    "test:runtime": "node scripts/test-runtime.mjs && node scripts/test-app-runtime.mjs && node scripts/test-plan-recovery-runtime.mjs",
     "build": "vite build && node scripts/finalize-pwa.mjs",
     "dev": "vite",
     "dev:worker": "wrangler dev --local",
     "check:worker": "node scripts/check-worker.mjs",
     "deploy:worker": "wrangler deploy",
-    "test:browser": "node scripts/test-browser.mjs && node scripts/test-trainer-cache.mjs"
+    "test:browser": "node scripts/test-browser.mjs && node scripts/test-trainer-cache.mjs && node scripts/test-qa-recovery.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261013.1",
