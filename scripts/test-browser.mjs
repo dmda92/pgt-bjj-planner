@@ -641,8 +641,8 @@ try {
   await sync(); // trainer receives their own snapshot just like any competitor.
   await page.getByRole("button", { name: /Mis planes/ }).click();
   await page.getByLabel("Mi plan",{exact:true}).selectOption({index:1});
-  await visible(page.getByRole("heading", { name: "Torneo · 2026-10-23" }));
-  assert.match(await page.locator(".timer").innerText(), /32:10/);
+  await visible(page.locator(".plan-card").getByRole("heading", { name: "Torneo · 2026-10-23" }));
+  assert.match(await page.locator(".plan-card .timer").innerText(), /32:10/);
   await page.getByRole("button", { name: "Entrenador", exact: true }).click();
   await page.getByRole('button',{name:'Equipo',exact:true}).click();
   await page.getByRole('button',{name:/Trainer Fixture/}).click();
@@ -711,8 +711,8 @@ try {
   );
   await page.getByRole("button", { name: /Mis planes/ }).click();
   await page.getByLabel("Mi plan",{exact:true}).selectOption({index:1});
-  await visible(page.getByRole("heading", { name: "Torneo · 2026-10-23" }));
-  assert.match(await page.locator(".timer").innerText(), /32:10/);
+  await visible(page.locator(".plan-card").getByRole("heading", { name: "Torneo · 2026-10-23" }));
+  assert.match(await page.locator(".plan-card .timer").innerText(), /32:10/);
   await context.setOffline(true);
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Exportar PDF" }).click();
@@ -933,7 +933,7 @@ try {
   await sync();
   await sync(mirror);
   await visible(
-    mirror.getByText("Entrenador: Comentario para el futuro", { exact: true }),
+    mirror.locator(".plan-card").getByText("Entrenador: Comentario para el futuro", { exact: true }),
   );
   assert.deepEqual(
     files.get(planFile[0]).data.sessions.filter((s) => s.date <= todayMadrid),

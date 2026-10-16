@@ -191,3 +191,6 @@ Validación de notificaciones internas de comentarios (16/10/2026): ver docs/VAL
 
 
 Nombre del entrenador en técnicas (16/10/2026): autor por comentario asignado por Worker a partir del perfil autenticado; UI muestra nombre y apellidos, offline incluido. Regresión API con dos entrenadores: payload falsificado ignorado, autor de texto sin cambios conservado y no-op sin commit, legado sin autor no atribuido, cambio de texto cambia autor y alumno no puede escribir comentarios. Chromium de notificaciones comprueba autor tras sync y recarga offline. No modifica planes/PDF.
+
+
+Mis planes por día (16/10/2026): consulta pura de planes locales del propietario, próxima fecha activa estrictamente futura Madrid y selección libre. Pruebas de aislamiento, histórico, vacío, múltiples sesiones/competiciones, orden estable e inmutabilidad. Chromium con dos competiciones de un alumno: fecha inicial, 2 sesiones y 5 ejercicios, cambio de calendario, vacío, selector inferior independiente, reload offline y cambio de cuenta. Capturas de escritorio/móvil en .browser-artifacts/own-day. Sin datos remotos reales ni aceptación Safari/iOS.

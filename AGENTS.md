@@ -112,3 +112,10 @@ Persistencia IndexedDB v4 por usuario/dispositivo, separada de datos pendientes;
 ### Nombre del autor en comentarios de técnicas (16/10/2026)
 
 Petición del propietario: en Mis técnicas sustituir «Entrenador:» por el nombre y apellidos del entrenador que escribió el comentario. Guardar trainerName opcional por comentario, asignado exclusivamente desde el perfil autenticado en Worker al cambiar el texto. Conservar autor de comentarios sin cambios, aunque otro entrenador guarde el documento o un cliente omita/falsee ese campo. Comentarios históricos sin autor mantienen «Entrenador» hasta que cambie su texto; no atribuirlos por suposición. Mantener versiones, notificaciones, permisos, offline y CAS. No modificar planes/PDF ni sus instantáneas históricas.
+
+
+### Entrenamientos por día en Mis planes (16/10/2026)
+
+Petición del propietario: situar primero Mi entrenamiento del día con calendario y todas las sesiones propias para esa fecha, incluso varias competiciones el mismo día. Fecha automática: primera sesión estrictamente posterior a hoy Madrid entre planes activos (torneo >= hoy), igual que Entrenamiento del día del entrenador. Consulta explícita permite cualquier fecha e incluye planes históricos; mostrar estado vacío si no hay sesiones. No agrupar ni deduplicar sesiones de distintos planes; identificar el torneo y conservar ejercicios, textos y tiempos guardados. Mostrar sesiones abiertas.
+
+Debajo, separación visual clara y sección Planes completos con el selector Mi plan existente y todas las sesiones del plan elegido, PDF sin cambios. Ambas selecciones son independientes. Calcular exclusivamente desde planes sincronizados del usuario de sesión; uso offline, sin nuevas peticiones, tablas ni modificaciones al generador o snapshots. Reset de fecha automática al volver a entrar en la pestaña/cambiar de cuenta.

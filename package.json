@@ -13,7 +13,7 @@
     "dev:worker": "wrangler dev --local",
     "check:worker": "node scripts/check-worker.mjs",
     "deploy:worker": "wrangler deploy",
-    "test:browser": "node scripts/test-browser.mjs && node scripts/test-trainer-cache.mjs && node scripts/test-qa-recovery.mjs && node scripts/test-trainer-reports.mjs && node scripts/test-notifications.mjs"
+    "test:browser": "node scripts/test-browser.mjs && node scripts/test-trainer-cache.mjs && node scripts/test-qa-recovery.mjs && node scripts/test-trainer-reports.mjs && node scripts/test-notifications.mjs && node scripts/test-own-training-day.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261013.1",

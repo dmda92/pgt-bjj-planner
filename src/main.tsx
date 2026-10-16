@@ -1,3 +1,4 @@
+import {ownTrainingDay} from "./domain/own-training-day.ts";
 import {Notifications} from "./ui-notifications.tsx";
 import {TrainerPreparation,TrainerDay,Loading} from "./ui-trainer-reports.tsx";
 import {listedCompetitions} from "./domain/trainer-reports.ts";
@@ -186,9 +187,9 @@ function App() {
     });
     await techniqueSaves.current;
   }
-  const plans = entries
+  const plans = useMemo(()=>entries
     .filter((e) => e.key.startsWith("plan:"))
-    .map((e) => e.data as TrainingPlan);
+    .map((e) => e.data as TrainingPlan),[entries]);
   const selectedOwnPlan = plans.find(plan => plan.planId === ownPlanId);
   useEffect(() => {
     if (!active || (ownPlanId && !selectedOwnPlan)) setOwnPlanId("");
@@ -654,9 +655,11 @@ function App() {
               )}
               {tab === "plans" && (
                 <section>
+                  <OwnTrainingDay key={client.identity!.mail} plans={plans} owner={client.identity!.mail} />
+                  <section className="own-complete-plans" aria-label="Planes completos">
                   <div className="section-head">
                     <div>
-                      <h2>Camino al torneo</h2>
+                      <h2>Planes completos</h2>
                       <p>
                         Las sesiones pasadas y la de hoy conservan sus textos.
                         Las futuras reciben las descripciones y comentarios
@@ -681,6 +684,7 @@ function App() {
                       ? <PlanView key={selectedOwnPlan.planId} plan={selectedOwnPlan} run={run} />
                       : <p className="muted">Selecciona un plan para consultar sus sesiones.</p>}
                   </>}
+                  </section>
                 </section>
               )}
               {tab === "profile" && profile && (
@@ -1296,6 +1300,36 @@ function PasswordForm({
     </form>
   );
 }
+function SessionExercises({session}:{session:TrainingPlan["sessions"][number]}) {
+  return <>{session.exercises.map((ex,ei)=><div className="exercise" key={ei}>
+    <strong>{ei+1}. P{ex.prioridad} · {ex.posicion}</strong>
+    <p><strong>{ex.tipo}</strong></p>
+    <p className="plan-description">{ex.descripcion_del_alumno}</p>
+    {ex.comment && <p className="note">Entrenador: {ex.comment}</p>}
+  </div>)}</>;
+}
+function OwnTrainingDay({plans,owner}:{plans:TrainingPlan[];owner:string}) {
+  const [date,setDate]=useState("");
+  const today=madridDate();
+  const day=useMemo(()=>ownTrainingDay(plans,owner,today,date),[plans,owner,today,date]);
+  return <section className="own-training-day" aria-label="Mis entrenamientos del día">
+    <div className="section-head"><div><h2>Mi entrenamiento del día</h2><p>Consulta todas tus sesiones de la fecha elegida. Por defecto se muestra el próximo entrenamiento posterior a hoy.</p></div>
+      <label>Fecha de mis entrenamientos<input type="date" value={day.date} onChange={e=>setDate(e.target.value)} /></label>
+    </div>
+    {!day.date && <p className="empty">No tienes próximos entrenamientos en tus planes activos. Puedes elegir una fecha para consultar las sesiones guardadas.</p>}
+    {day.date && !day.sessions.length && <p className="empty">No tienes sesiones para esta fecha.</p>}
+    {day.sessions.length>0 && <p>{day.sessions.length} {day.sessions.length===1?"sesión":"sesiones"} · {new Date(day.date+"T12:00:00").toLocaleDateString("es-ES",{weekday:"long",day:"2-digit",month:"long",year:"numeric"})}</p>}
+    <div className="own-day-sessions">{day.sessions.map(({plan,session,index})=>{
+      const timer=tabata(plan);
+      return <article className="card own-session-card" key={`${plan.planId}:${index}`}>
+        <h3>Torneo · {plan.fecha_torneo}</h3>
+        {plan.structuralUpdateError && <p role="alert">Actualización del plan bloqueada: {plan.structuralUpdateError} Se muestra la última sesión guardada.</p>}
+        <p className="timer">Trabajo {format(timer.work)} · Cambio {format(timer.rest)} · {timer.cycles} ciclos · {timer.sets} sets · Entre técnicas {format(timer.betweenSets)} · Total {format(timer.duration)}</p>
+        <SessionExercises session={session} />
+      </article>;
+    })}</div>
+  </section>;
+}
 function PlanView({
   plan,
   run,
@@ -1336,16 +1370,7 @@ function PlanView({
               )}{" "}
               · {session.exercises.length} ejercicios
             </summary>
-            {session.exercises.map((ex, ei) => (
-              <div className="exercise" key={ei}>
-                <strong>
-                  {ei + 1}. P{ex.prioridad} · {ex.posicion}
-                </strong>
-                <p><strong>{ex.tipo}</strong></p>
-                <p className="plan-description">{ex.descripcion_del_alumno}</p>
-                {ex.comment && <p className="note">Entrenador: {ex.comment}</p>}
-              </div>
-            ))}
+            <SessionExercises session={session} />
           </details>
         ))}
       </div>
