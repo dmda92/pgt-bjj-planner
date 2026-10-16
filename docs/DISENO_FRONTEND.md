@@ -95,3 +95,7 @@ Validación: 105/105 unitarias, typecheck, build, check:worker, test:runtime, te
 ### Panel del entrenador — 16/10/2026
 
 Se conserva Barlow y paleta pizarra/azul. Competiciones presenta Listado/Nueva competición, filtro de pasadas y tarjetas por fecha. Preparación del plan retira fecha de referencia y usa tres resúmenes, tabla por prioridad, técnicas pendientes más frecuentes y detalle completo. Entrenamiento del día usa calendario y tarjetas agrupadas, contador de alumnos destacado arriba a la derecha y nombres. Spinners en operaciones/carga/actualización; móvil con tarjetas apiladas y tablas dentro de región desplazable. Semántica y caché según apartado 21 de requisitos.
+
+### Nombre y ratio de cobertura (16/10/2026)
+
+Corrección del propietario: «Preparación del plan» pasa a «Cobertura por alumno». La tabla por prioridad sustituye «Repeticiones adicionales» por «Veces por prioridad»: Apariciones / Repertorio actual de esa prioridad, con dos decimales y formato español. Denominador cero muestra «—». No cambiar otros cálculos ni datos del plan.

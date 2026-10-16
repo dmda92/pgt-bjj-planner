@@ -655,7 +655,7 @@ try {
   await visible(page.locator('.student-detail .plan-card'));
   assert.equal(await page.locator('.student-detail .plan-card').count(),1);
   await page
-    .getByRole("button", { name: "Preparación del plan", exact: true })
+    .getByRole("button", { name: "Cobertura por alumno", exact: true })
     .click();
   await page
     .getByLabel("Alumno para cobertura")
@@ -705,7 +705,7 @@ try {
   await visible(page.getByRole("heading", { name: "Tu repertorio" }));
   assert.equal(
     await page
-      .getByRole("button", { name: "Preparación del plan", exact: true })
+      .getByRole("button", { name: "Cobertura por alumno", exact: true })
       .count(),
     0,
   );

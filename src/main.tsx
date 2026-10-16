@@ -695,7 +695,7 @@ function App() {
                           ? "Tu equipo"
                           : trainerSection === "competitions"
                             ? "Competiciones"
-                            : trainerSection === "coverage" ? "Preparación del plan" : "Entrenamiento del día"}
+                            : trainerSection === "coverage" ? "Cobertura por alumno" : "Entrenamiento del día"}
                       </h2>
                       <p>
                         Consulta el repertorio de cada alumno y organiza sus
@@ -718,7 +718,7 @@ function App() {
                     {[
                       ["team", "Equipo"],
                       ["competitions", "Competiciones"],
-                      ["coverage", "Preparación del plan"],
+                      ["coverage", "Cobertura por alumno"],
                       ["day", "Entrenamiento del día"],
                     ].map(([key, title]) => (
                       <button

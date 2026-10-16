@@ -96,3 +96,7 @@ Petición del propietario: Mis planes usa el mismo comportamiento que Planes en 
 ### Panel de competiciones, preparación y día (16/10/2026)
 
 Aplicar apartado 21 de requisitos. Competiciones separa listado/crear y filtra pasado con día Madrid. Preparación usa repertorio actual y un plan completo seleccionado, sin referencia temporal. Entrenamiento del día agrupa multiconjuntos posición/tipo, con orden mayoritario y alumnos únicos. Índices privados structure_<planId>.json ligados a SHA, creados bajo demanda y retirados con el plan; no datos de negocio en DO ni reconstrucciones en sync. IndexedDB v3 añade trainerDays aislada y con invalidación de permisos/sesión. Validación y límites en docs/VALIDACION_PANEL_ENTRENADOR_2026-10-16.md.
+
+### Nombre y ratio de cobertura (16/10/2026)
+
+Corrección del propietario: «Preparación del plan» pasa a «Cobertura por alumno». La tabla por prioridad sustituye «Repeticiones adicionales» por «Veces por prioridad»: Apariciones / Repertorio actual de esa prioridad, con dos decimales y formato español. Denominador cero muestra «—». No cambiar otros cálculos ni datos del plan.
