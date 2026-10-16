@@ -652,3 +652,33 @@ test('Training day authorizes trainers, reuses SHA indexes, rebuilds changed sou
  f.files.set(catalog,{data:{schemaVersion:1,revision:3,updatedAt:new Date().toISOString(),deletedPlanIds:[],plans:[source]},sha:'e'.repeat(40)});f.files.delete(`PGT/users_data/${mail}/user_data.json`);
  const missing=await f.call('/api/app/training-day?date=2099-01-05','GET',undefined,teacher.token);assert.equal((await missing.json() as any).missing,1);
 });
+
+
+test("Comment author comes from authenticated trainer; unchanged comments retain author and legacy stays unknown",async()=>{
+ const f=fixture(), password="synthetic-author-password";
+ const tokens=new Map<string,string>();
+ for(const [mail,nombre,apellidos] of [["author-a@example.com","Ana","García"],["author-b@example.com","Bea","Pérez"],["author-pupil@example.com","Alumno",""]]) {
+  const r=await f.call("/api/app/register","POST",{mail,password,confirm:password,nombre,apellidos});assert.equal(r.status,201);tokens.set(mail,((await r.json()) as any).token);
+ }
+ f.promote("author-a@example.com");f.promote("author-b@example.com");
+ const base="/api/app/users/author-pupil@example.com/";
+ const snapshot=await (await f.call(base+"snapshot","GET",undefined,tokens.get("author-pupil@example.com"))).json() as any;
+ const [first,second]=snapshot.techniques.data.positions[0].tecnicas;
+ const path="PGT/users_data/author-pupil@example.com/trainer_comments.json";
+ // Pre-existing comments carry no author. No attribution may be guessed on a no-op.
+ (f.files.get(path)!.data as any).comments=[{techniqueId:first.id,comment:"Legado"}];
+ async function save(mail:string,comments:any[]) {
+  const old=f.files.get(path)!;
+  const r=await f.call(base+"comments","PUT",{sha:old.sha,data:{...structuredClone(old.data as any),comments}},tokens.get(mail));assert.equal(r.status,200);return await r.json() as any;
+ }
+ let result=await save("author-a@example.com",[{techniqueId:first.id,comment:"Legado",trainerName:"Falso"}]);
+ assert.equal(result.status,"UNCHANGED_NO_COMMIT");assert.equal(result.data.comments[0].trainerName,undefined);
+ result=await save("author-a@example.com",[{techniqueId:first.id,comment:"Revisa agarre",trainerName:"Falso"}]);
+ assert.equal(result.data.comments[0].trainerName,"Ana García");
+ const version=result.data.commentUpdates[first.id];
+ result=await save("author-b@example.com",[{techniqueId:first.id,comment:"Revisa agarre",trainerName:"Bea falsa"},{techniqueId:second.id,comment:"Gira cadera"}]);
+ assert.equal(result.data.comments[0].trainerName,"Ana García");assert.equal(result.data.comments[1].trainerName,"Bea Pérez");assert.equal(result.data.commentUpdates[first.id],version);
+ result=await save("author-b@example.com",[{techniqueId:first.id,comment:"Nuevo agarre"},{techniqueId:second.id,comment:"Gira cadera"}]);
+ assert.equal(result.data.comments[0].trainerName,"Bea Pérez");
+ const own=await f.call(base+"comments","PUT",{sha:result.sha,data:result.data},tokens.get("author-pupil@example.com"));assert.equal(own.status,403);
+});

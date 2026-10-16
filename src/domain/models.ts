@@ -42,7 +42,7 @@ export interface Profile extends Version {
 }
 export interface Comments extends Version {
   commentUpdates?: Record<string, string>;
-  comments: { techniqueId: string; comment: string }[];
+  comments: { techniqueId: string; comment: string; trainerName?: string }[];
 }
 export interface Index extends Version {
   planIds: string[];

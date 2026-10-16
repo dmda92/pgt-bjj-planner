@@ -188,3 +188,6 @@ Crear competición presenta Trabajo por alumno (min:seg), con valor inicial 3:00
 
 
 Validación de notificaciones internas de comentarios (16/10/2026): ver docs/VALIDACION_NOTIFICACIONES.md. Conserva intactos los resultados históricos anteriores.
+
+
+Nombre del entrenador en técnicas (16/10/2026): autor por comentario asignado por Worker a partir del perfil autenticado; UI muestra nombre y apellidos, offline incluido. Regresión API con dos entrenadores: payload falsificado ignorado, autor de texto sin cambios conservado y no-op sin commit, legado sin autor no atribuido, cambio de texto cambia autor y alumno no puede escribir comentarios. Chromium de notificaciones comprueba autor tras sync y recarga offline. No modifica planes/PDF.

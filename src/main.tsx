@@ -505,7 +505,7 @@ function App() {
                                   (c) => c.techniqueId === t.id,
                                 )?.comment && (
                                   <p className="note">
-                                    Entrenador:{" "}
+                                    {comments.comments.find(c => c.techniqueId === t.id)?.trainerName || "Entrenador"}:{" "}
                                     {
                                       comments.comments.find(
                                         (c) => c.techniqueId === t.id,

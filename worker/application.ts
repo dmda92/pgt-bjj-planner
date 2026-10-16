@@ -760,6 +760,14 @@ export class AppApi {
           c.comment.length > MAX_TEXT_LENGTH
         )
           return reject(400, "COMMENT_INVALID");
+      // Authorship is assigned from the authenticated profile, never from payloads.
+      const previousComments = new Map((old?.data as unknown as Comments)?.comments.map(c => [c.techniqueId,c]) || []);
+      const trainerName = [actor.profile.data.nombre,actor.profile.data.apellidos].filter(Boolean).join(" ").trim();
+      notes.comments = notes.comments.map(c => {
+        const previous = previousComments.get(c.techniqueId);
+        const author = c.comment !== previous?.comment && c.comment.trim() ? trainerName : previous?.trainerName;
+        return {techniqueId:c.techniqueId,comment:c.comment,...(author ? {trainerName:author} : {})};
+      });
       const versions = updateTextVersions(
         (old?.data as unknown as Comments)?.commentUpdates,
         commentChanges(
