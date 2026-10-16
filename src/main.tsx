@@ -325,7 +325,7 @@ function App() {
                         ? "Tu preparación"
                         : tab === "profile"
                           ? "Tu perfil"
-                          : "Construye tu juego."}
+                          : "Tu juego, técnica a técnica"}
                   </h1>
                   <p>
                     {tab === "trainer"

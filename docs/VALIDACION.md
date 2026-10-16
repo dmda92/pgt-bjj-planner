@@ -206,3 +206,6 @@ Prioridad como subtítulo (16/10/2026): búsqueda exhaustiva de prefijos P en sr
 
 
 Nuevos participantes en día (16/10/2026): regresión API crea competición y asigna otro alumno sin snapshots/logins de alumnos; ambos aparecen. GET señala pendientes sin crear; POST autorizado los recupera, preservando literalmente el snapshot existente y siendo idempotente. Alumno recibe 403; catálogo vacío sigue pendiente sin plan ficticio. Chromium guarda participantes desde tarjeta, verifica aparición del alumno nuevo, elimina solo snapshot sintético para reproducir legado y pulsa Actualizar; los otros planes permanecen iguales. Sin datos remotos reales.
+
+
+Título de Mis técnicas (16/10/2026): cambio exclusivo del encabezado a «Tu juego, técnica a técnica». npm test (117 pruebas), typecheck, build, check:worker, test:runtime y test:browser completados correctamente. Pruebas locales con datos sintéticos; sin cambios de comportamiento.
