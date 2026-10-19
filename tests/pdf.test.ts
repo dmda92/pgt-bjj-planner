@@ -22,7 +22,7 @@ test('PDF preserves snapshot and chronology, keeps entire sessions inside non-ov
 });
 test('Dense sessions use full width; very long sessions continue without rejecting or changing texts',async()=>{
  const source=plan();source.sessions=source.sessions.slice(0,1);
- for(const ex of source.sessions[0].exercises){ex.descripcion_del_alumno='Descripción larga con acentos y ángulo. '.repeat(12);ex.comment='Comentario del entrenador para practicar.';}
+ for(const ex of source.sessions[0].exercises){ex.descripcion_del_alumno='Descripción larga con acentos y ángulo. '.repeat(10);ex.comment='Comentario del entrenador para practicar.';}
  const {placements}=await buildPlanPdf(source,assets);
  assert.equal(placements.length,1);assert.equal(placements[0].width,178);
  for(const ex of source.sessions[0].exercises)ex.descripcion_del_alumno='Texto imposible de encajar. '.repeat(1000);
@@ -37,4 +37,21 @@ test('PDF accepts variable Tabata, zero rests, empty plans and long names',async
  for(const s of source.sessions){s.exercises=s.exercises.slice(0,3);for(const e of s.exercises)e.posicion='Posición con nombre muy largo y caracteres españoles áéíóú ñ '.repeat(3);}
  const result=await buildPlanPdf(source,assets);assert.equal(result.placements.length,19);
  source.sessions=[];const empty=await buildPlanPdf(source,assets);assert.equal(empty.pdf.getNumberOfPages(),1);assert.deepEqual(empty.placements,[]);
+});
+
+test('BUG-004 preserves Spanish punctuation, links, long text and snapshot',async()=>{
+ const source=plan();source.sessions=source.sessions.slice(0,1);
+ const original='ÁÉÍÓÚ áéíóú ñÑ üÜ ¿¡ «» “comillas” – — … • º ª € https://video.example/watch?v=é&x=1';
+ for(const ex of source.sessions[0].exercises){ex.descripcion_del_alumno=original.repeat(20);ex.comment=original;}
+ const before=JSON.stringify(source),{placements}=await buildPlanPdf(source,assets);
+ assert.equal(JSON.stringify(source),before);
+ assert.ok(placements.length>1);assert.ok(placements.every(p=>p.y+p.height<=276));
+});
+test('BUG-004 rejects unsupported characters before exporting without changing data',async()=>{
+ for(const text of ['日本語','漢字','🙂','АБВ']){
+  const source=plan();source.sessions[0].exercises[0].descripcion_del_alumno=text;
+  const before=JSON.stringify(source);
+  await assert.rejects(buildPlanPdf(source,assets),/caracteres no compatibles/);
+  assert.equal(JSON.stringify(source),before);
+ }
 });

@@ -42,10 +42,11 @@ export interface Profile extends Version {
 }
 export interface Comments extends Version {
   commentUpdates?: Record<string, string>;
-  comments: { techniqueId: string; comment: string }[];
+  comments: { techniqueId: string; comment: string; trainerName?: string }[];
 }
 export interface Index extends Version {
   planIds: string[];
+  deletedPlanIds?: string[];
 }
 export interface Competition {
   planId: string;
@@ -183,7 +184,7 @@ export function validateTechniques(
     }
   }
 }
-export function validateCompetition(c: Competition): void {
+export function validateCompetition(c: Competition, minimumRest: 0 | 1 = 0): void {
   if (
     !validDate(c.fecha_comienzo) ||
     !validDate(c.fecha_torneo) ||
@@ -200,8 +201,8 @@ export function validateCompetition(c: Competition): void {
   for (const [key, min, max] of [
     ["ejercicios_por_sesion", 1, 100],
     ["tiempo_por_tecnica_segundos", 1, 3600],
-    ["descanso_entre_ciclos_segundos", 0, 3600],
-    ["descanso_entre_tecnicas_segundos", 0, 3600],
+    ["descanso_entre_ciclos_segundos", minimumRest, 3600],
+    ["descanso_entre_tecnicas_segundos", minimumRest, 3600],
   ] as const)
     if (!Number.isInteger(c[key]) || c[key] < min || c[key] > max)
       throw Error("Ejercicios o tiempos fuera de límites");

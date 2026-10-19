@@ -1,4 +1,15 @@
-import React, { useEffect, useRef, useState } from "react";
+import {ownTrainingDay} from "./domain/own-training-day.ts";
+import {Notifications} from "./ui-notifications.tsx";
+import {TrainerPreparation,TrainerDay,Loading} from "./ui-trainer-reports.tsx";
+import {listedCompetitions} from "./domain/trainer-reports.ts";
+import {madridDate} from "./domain/plan-text-updates.ts";
+import {weightValue,weightError} from "./application/weight-input.ts";
+import {planIssueMessage,type PlanIssue} from "./domain/plan-issues.ts";
+import {durationSeconds,durationError} from './application/duration-input.ts';
+import {competitionDateErrors} from './application/competition-dates.ts';
+import {syncPresentation} from "./application/sync-presentation.ts";
+import type {TrainerView,TrainerSection} from "./application/trainer-cache.ts";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { client, type Snapshot } from "./application/client.ts";
 import { db, type LocalEntry } from "./infrastructure/local.ts";
@@ -14,7 +25,6 @@ import {
   type Catalog,
 } from "./domain/models.ts";
 import { tabata } from "./domain/planner.ts";
-import { planCoverage } from "./domain/coverage.ts";
 import { exportPlan } from "./infrastructure/pdf.ts";
 import {
   profileDraft,
@@ -52,13 +62,20 @@ function App() {
   const [entries, setEntries] = useState<LocalEntry[]>([]),
     [version, setVersion] = useState(0),
     [tab, setTab] = useState("techniques"),
+    [ownPlanId, setOwnPlanId] = useState(""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
+    [profileUnsaved,setProfileUnsaved]=useState(false),
     [search, setSearch] = useState(""),
     [trainerSection, setTrainerSection] = useState("team"),
+    [competitionSection,setCompetitionSection]=useState("list"),
+    [includePast,setIncludePast]=useState(false),
     [studentSearch, setStudentSearch] = useState(""),
     [students, setStudents] = useState<any[]>([]),
-    [student, setStudent] = useState<Snapshot | null>(null),
+    [student, setStudent] = useState<TrainerView | null>(null),
+    [studentSection, setStudentSection] = useState<TrainerSection>("techniques"),
+    [studentPlanId,setStudentPlanId]=useState(""),
+    [studentRefreshing, setStudentRefreshing] = useState(false),
     [selectedStudent, setSelectedStudent] = useState(""),
     [studentLoading, setStudentLoading] = useState(false),
     [studentLoadFailed, setStudentLoadFailed] = useState(false),
@@ -67,6 +84,8 @@ function App() {
       sha: string | null;
     } | null>(null),
     [update, setUpdate] = useState<ServiceWorkerRegistration | null>(null);
+  const [notificationTarget,setNotificationTarget]=useState("");
+  const [expandedPositions,setExpandedPositions]=useState<Set<string>>(()=>new Set());
   const active = client.identity && !client.locked;
   const profile = entries.find((e) => e.key === "profile")?.data as
     Profile | undefined;
@@ -96,6 +115,8 @@ function App() {
         })
         .catch((e) => setError(e.message));
     } else {
+      setExpandedPositions(new Set());
+      setNotificationTarget("");
       setEntries([]);
       studentSequence.current++;
       setStudent(null);
@@ -110,6 +131,14 @@ function App() {
       setTrainerSection("team");
     }
   }, [version, Boolean(active)]);
+  useEffect(()=>{
+    if(!active || tab!=="techniques" || !notificationTarget)return;
+    const target=document.getElementById(`technique-${notificationTarget}`);
+    if(target){
+      const position=target.closest<HTMLDetailsElement>("details.position");
+      if(position && !position.open){setExpandedPositions(previous=>new Set([...previous,position.dataset.positionId!]));return;}
+      target.scrollIntoView({block:"center"});target.focus({preventScroll:true});setNotificationTarget("");}
+  },[notificationTarget,tab,search,techniques,Boolean(active),expandedPositions]);
   useEffect(() => {
     if ("serviceWorker" in navigator)
       navigator.serviceWorker
@@ -163,33 +192,37 @@ function App() {
     });
     await techniqueSaves.current;
   }
-  const plans = entries
+  const plans = useMemo(()=>entries
     .filter((e) => e.key.startsWith("plan:"))
-    .map((e) => e.data as TrainingPlan);
-  function selectStudent(mail: string) {
-    const sequence = ++studentSequence.current;
-    const owner = client.identity?.mail;
-    setSelectedStudent(mail);
-    setStudent(null);
-    setStudentLoading(true);
-    setStudentLoadFailed(false);
-    void run(async () => {
+    .map((e) => e.data as TrainingPlan),[entries]);
+  const selectedOwnPlan = plans.find(plan => plan.planId === ownPlanId);
+  useEffect(() => {
+    if (!active || (ownPlanId && !selectedOwnPlan)) setOwnPlanId("");
+  }, [active, ownPlanId, selectedOwnPlan]);
+  function selectStudent(mail:string,section:TrainerSection="techniques",force=false,planId="") {
+    const sequence=++studentSequence.current,owner=client.identity?.mail;
+    setSelectedStudent(mail);setStudentSection(section);setStudentPlanId(planId);
+    setStudent(null);setStudentLoading(true);setStudentLoadFailed(false);
+    void (async()=>{
+      const current=()=>sequence===studentSequence.current&&client.identity?.mail===owner&&!client.locked;
+      let cached:TrainerView|undefined;
       try {
-        const data = await client.request<Snapshot>(`/api/app/users/${encodeURIComponent(mail)}/snapshot`);
-        if (sequence === studentSequence.current && client.identity?.mail === owner && !client.locked)
-          setStudent(data);
-      } catch (error) {
-        if (sequence === studentSequence.current) { setStudentLoadFailed(true); throw error; }
-      } finally {
-        if (sequence === studentSequence.current) setStudentLoading(false);
-      }
-    });
+        cached=await client.cachedTrainer(mail,section,planId);
+        if(!current())return;
+        if(cached){setStudent(cached);setStudentLoading(false);}
+        setStudentRefreshing(Boolean(cached)&&navigator.onLine);
+        const data=await client.trainerView(mail,section,force,planId);
+        if(current())setStudent(data);
+      }catch(error){if(current()){if(error instanceof Error && "status" in error && error.status===403){setStudent(null);cached=undefined;}setStudentLoadFailed(!cached);setError(error instanceof Error?error.message:"No se pudo actualizar la ficha");}}
+      finally{if(current()){setStudentLoading(false);setStudentRefreshing(false);}}
+    })();
   }
   async function trainers() {
     const data = await client.request("/api/app/students");
     setStudents(data.users);
     setCatalog(await client.request("/api/app/catalog"));
   }
+  const syncState=syncPresentation(client.status,entries.some(e=>e.dirty)||pendingTechniqueSaves.current>0,entries.some(e=>e.key.startsWith("plan:")&&Boolean((e.data as TrainingPlan).structuralUpdateError)),profileUnsaved);
   return (
     <div className={`shell ${active ? "signed-in" : "signed-out"}`}>
       <a className="skip-link" href="#main-content">
@@ -213,6 +246,7 @@ function App() {
                 {profile?.nombre || client.identity?.mail}
                 <small>{trainer ? "Entrenador" : "Alumno"}</small>
               </span>
+              <Notifications key={client.identity!.mail} owner={client.identity!.mail} techniques={techniques} comments={comments} onError={setError} onOpen={id=>{setSearch("");setTab("techniques");setNotificationTarget(id);}} />
               <button
                 className="subtle"
                 onClick={() => void run(() => client.logout())}
@@ -225,6 +259,7 @@ function App() {
           )}
         </div>
       </header>
+      {busy && <Loading>Procesando solicitud…</Loading>}
       {error && (
         <div role="alert" className="alert">
           {error}
@@ -290,7 +325,7 @@ function App() {
                         ? "Tu preparación"
                         : tab === "profile"
                           ? "Tu perfil"
-                          : "Construye tu juego."}
+                          : "Tu juego, técnica a técnica"}
                   </h1>
                   <p>
                     {tab === "trainer"
@@ -299,7 +334,7 @@ function App() {
                   </p>
                 </div>
                 <div className="sync">
-                  <span role="status">{client.status}</span>
+                  <span role="status" className={syncState.success ? "sync-success" : undefined}>{client.status === "Sincronizando…" && <span className="loading-spinner" aria-hidden="true" />}{syncState.text}</span>
                   <button
                     disabled={busy}
                     onClick={() => void run(() => client.sync())}
@@ -372,10 +407,20 @@ function App() {
                         p.posicion.toLowerCase().includes(search.toLowerCase()),
                       )
                       .map((p) => (
-                        <article className="position" key={p.id}>
+                        <details className={`position repertoire-position ${p.tecnicas.length>0 && p.tecnicas.every(t=>t.descripcion_del_alumno.trim()) ? "is-complete" : "is-incomplete"}`} data-position-id={p.id} key={p.id} open={expandedPositions.has(p.id)} onToggle={e=>{
+                          const open=e.currentTarget.open;
+                          setExpandedPositions(previous=>{if(previous.has(p.id)===open)return previous;const next=new Set(previous);if(open)next.add(p.id);else next.delete(p.id);return next;});
+                        }}>
+                          <summary className="position-summary">
+                            <span className="position-summary-heading"><span className="position-name-block"><strong>{p.posicion || "Sin nombre"}</strong><small className="priority-caption">Prioridad {p.prioridad}</small></span><span className="position-chevron" aria-hidden="true">⌄</span></span>
+                            <span className="position-summary-meta"><span>{p.tecnicas.length} {p.tecnicas.length===1?"técnica":"técnicas"}</span><span className="position-status">{!p.tecnicas.length ? "Sin técnicas" : p.tecnicas.every(t=>t.descripcion_del_alumno.trim()) ? "✓ Completa" : `${p.tecnicas.filter(t=>!t.descripcion_del_alumno.trim()).length} sin descripción`}</span></span>
+                            <span className="position-progress" role="progressbar" aria-label={`Descripciones de ${p.posicion}`} aria-valuemin={0} aria-valuemax={Math.max(1,p.tecnicas.length)} aria-valuenow={p.tecnicas.filter(t=>t.descripcion_del_alumno.trim()).length} aria-valuetext={`${p.tecnicas.filter(t=>t.descripcion_del_alumno.trim()).length} de ${p.tecnicas.length} técnicas con descripción`}><span style={{width:`${p.tecnicas.length ? p.tecnicas.filter(t=>t.descripcion_del_alumno.trim()).length/p.tecnicas.length*100 : 0}%`}} /></span>
+                            <span className="technique-marks" aria-label="Estado de cada técnica">{p.tecnicas.map((t,i)=><span key={t.id} className={t.descripcion_del_alumno.trim()?"is-described":"is-missing"} title={`${t.tipo}: ${t.descripcion_del_alumno.trim()?"con descripción":"sin descripción"}`} aria-label={`${t.tipo}: ${t.descripcion_del_alumno.trim()?"con descripción":"sin descripción"}`}><span className="technique-mark-name" aria-hidden="true">{i+1}. {t.tipo || "Sin nombre"}</span><span aria-hidden="true">{t.descripcion_del_alumno.trim()?"✓":"○"}</span></span>)}</span>
+                            <span className="position-open-hint">{expandedPositions.has(p.id)?"Cerrar posición":p.tecnicas.length>0 && p.tecnicas.every(t=>t.descripcion_del_alumno.trim())?"Ver técnicas":"Abrir y completar"}</span>
+                          </summary>
+                          <div className="position-editor">
                           <div className="position-title">
                             <div>
-                              <span className="pill">P{p.prioridad}</span>
                               <input
                                 aria-label="Nombre de posición"
                                 value={p.posicion}
@@ -417,10 +462,12 @@ function App() {
                             </div>
                           </div>
                           {p.tecnicas.map((t, i) => (
-                            <div className="technique" key={t.id}>
+                            <div className={`technique ${t.descripcion_del_alumno.trim()?"technique-ready":"technique-pending"}`} id={`technique-${t.id}`} tabIndex={-1} key={t.id}>
                               <span className="number">{i + 1}</span>
                               <div>
-                                <input
+                                <div className="technique-state">{t.descripcion_del_alumno.trim()?"✓ Con descripción":"○ Descripción pendiente"}</div>
+                                <label className="technique-label" htmlFor={`type-${t.id}`}>Técnica</label>
+                                <input id={`type-${t.id}`}
                                   aria-label="Tipo de técnica"
                                   value={t.tipo}
                                   onChange={(e) =>
@@ -445,7 +492,8 @@ function App() {
                                     })
                                   }
                                 />
-                                <textarea
+                                <label className="technique-label" htmlFor={`description-${t.id}`}>Tu descripción o enlace de vídeo</label>
+                                <textarea id={`description-${t.id}`}
                                   aria-label="Descripción de técnica o enlace de vídeo"
                                   placeholder="La técnica que te funciona en combate, o su vídeo…"
                                   value={t.descripcion_del_alumno}
@@ -476,7 +524,7 @@ function App() {
                                   (c) => c.techniqueId === t.id,
                                 )?.comment && (
                                   <p className="note">
-                                    Entrenador:{" "}
+                                    {comments.comments.find(c => c.techniqueId === t.id)?.trainerName || "Entrenador"}:{" "}
                                     {
                                       comments.comments.find(
                                         (c) => c.techniqueId === t.id,
@@ -600,34 +648,26 @@ function App() {
                               Eliminar posición
                             </button>
                           </div>
-                        </article>
+                          </div>
+                        </details>
                       ))}
                   </div>
-                  <button
-                    onClick={() =>
-                      void saveTech({
-                        ...techniques,
-                        positions: [
-                          ...techniques.positions,
-                          {
-                            id: crypto.randomUUID(),
-                            posicion: "Nueva posición",
-                            prioridad: 1,
-                            tecnicas: [],
-                          },
-                        ],
-                      })
-                    }
-                  >
+                  <button onClick={()=>{
+                    const id=crypto.randomUUID();
+                    setExpandedPositions(previous=>new Set([...previous,id]));
+                    void saveTech({...techniques,positions:[...techniques.positions,{id,posicion:"Nueva posición",prioridad:1,tecnicas:[]}]});
+                  }}>
                     Añadir posición
                   </button>
                 </>
               )}
               {tab === "plans" && (
                 <section>
+                  <OwnTrainingDay key={client.identity!.mail} plans={plans} owner={client.identity!.mail} />
+                  <section className="own-complete-plans" aria-label="Planes completos">
                   <div className="section-head">
                     <div>
-                      <h2>Camino al torneo</h2>
+                      <h2>Planes completos</h2>
                       <p>
                         Las sesiones pasadas y la de hoy conservan sus textos.
                         Las futuras reciben las descripciones y comentarios
@@ -641,9 +681,18 @@ function App() {
                       para recibirla.
                     </div>
                   )}
-                  {plans.map((plan) => (
-                    <PlanView key={plan.planId} plan={plan} run={run} />
-                  ))}
+                  {plans.length > 0 && <>
+                    <label>Mi plan
+                      <select aria-label="Mi plan" value={selectedOwnPlan ? ownPlanId : ""} onChange={e => setOwnPlanId(e.target.value)}>
+                        <option value="">Selecciona un plan</option>
+                        {plans.map(plan => <option key={plan.planId} value={plan.planId}>Torneo · {plan.fecha_torneo}</option>)}
+                      </select>
+                    </label>
+                    {selectedOwnPlan
+                      ? <PlanView key={selectedOwnPlan.planId} plan={selectedOwnPlan} run={run} />
+                      : <p className="muted">Selecciona un plan para consultar sus sesiones.</p>}
+                  </>}
+                  </section>
                 </section>
               )}
               {tab === "profile" && profile && (
@@ -651,6 +700,7 @@ function App() {
                   profile={profile}
                   sha={entries.find((e) => e.key === "profile")?.sha || null}
                   trainer={Boolean(trainer)}
+                  onDirty={setProfileUnsaved}
                   run={run}
                 />
               )}
@@ -666,7 +716,7 @@ function App() {
                           ? "Tu equipo"
                           : trainerSection === "competitions"
                             ? "Competiciones"
-                            : "Cobertura por fecha"}
+                            : trainerSection === "coverage" ? "Cobertura por alumno" : "Entrenamiento del día"}
                       </h2>
                       <p>
                         Consulta el repertorio de cada alumno y organiza sus
@@ -676,7 +726,7 @@ function App() {
                     <a
                       className="action-link"
                       href="#competition-create"
-                      onClick={() => setTrainerSection("competitions")}
+                      onClick={() => {setTrainerSection("competitions");setCompetitionSection("create");}}
                     >
                       Crear competición
                     </a>
@@ -689,7 +739,8 @@ function App() {
                     {[
                       ["team", "Equipo"],
                       ["competitions", "Competiciones"],
-                      ["coverage", "Cobertura por fecha"],
+                      ["coverage", "Cobertura por alumno"],
+                      ["day", "Entrenamiento del día"],
                     ].map(([key, title]) => (
                       <button
                         key={key}
@@ -703,7 +754,7 @@ function App() {
                       </button>
                     ))}
                   </div>
-                  {trainerSection !== "coverage" && (
+                  {["team","competitions"].includes(trainerSection) && (
                     <dl
                       className="dashboard-overview"
                       aria-label="Resumen del equipo"
@@ -829,7 +880,7 @@ function App() {
                         {studentLoading && (
                           <section className="student-placeholder student-loading" role="status" aria-live="polite" aria-label="Cargando alumno">
                             <span className="loading-spinner" aria-hidden="true" />
-                            <h3>Cargando información del alumno…</h3>
+                            <div className="student-loading-copy"><h3>Cargando alumno</h3><p>Preparando sus técnicas y planes…</p></div>
                           </section>
                         )}
                         {studentLoadFailed && !studentLoading && (
@@ -857,11 +908,16 @@ function App() {
                           <TrainerStudent
                             key={student.profile.data.mail}
                             snapshot={student}
+                            section={studentSection}
+                            refreshing={studentRefreshing}
+                            planId={studentPlanId}
+                            choosePlan={(id)=>selectStudent(selectedStudent,"plans",false,id)}
+                            changeSection={(section) => selectStudent(selectedStudent,section)}
                             run={run}
                             reload={async () => {
-                              const sequence = studentSequence.current;
-                              const data = await client.request<Snapshot>(`/api/app/users/${encodeURIComponent(student.profile.data.mail)}/snapshot`);
-                              if (sequence === studentSequence.current && client.identity && !client.locked) setStudent(data);
+                              const sequence=studentSequence.current;
+                              const data=await client.trainerView(selectedStudent,studentSection,true,studentPlanId);
+                              if(sequence===studentSequence.current&&!client.locked)setStudent(data);
                             }}
                           />
                         )}
@@ -869,93 +925,36 @@ function App() {
                     </div>
                   )}
                   {trainerSection === "coverage" && (
-                    <TrainerCoverage
-                      students={students}
-                      run={run}
-                      busy={busy}
-                    />
+                    <TrainerPreparation students={students} run={run} />
                   )}
+                  {trainerSection === "day" && <TrainerDay run={run} />}
                   {catalog && trainerSection === "competitions" && (
-                    <div className="competition-workspace">
-                      <CompetitionForm
+                    <div>
+                      <div className="trainer-sections" role="group" aria-label="Gestión de competiciones">
+                        <button className={competitionSection === "list" ? "selected" : "secondary"} aria-pressed={competitionSection === "list"} onClick={()=>setCompetitionSection("list")}>Listado</button>
+                        <button className={competitionSection === "create" ? "selected" : "secondary"} aria-pressed={competitionSection === "create"} onClick={()=>setCompetitionSection("create")}>Nueva competición</button>
+                      </div>
+                      {competitionSection === "create" && <CompetitionForm
                         students={students}
                         run={run}
                         sha={catalog.sha}
-                        reload={trainers}
-                      />
-                      <section
+                        reload={async()=>{await trainers();setCompetitionSection("list");}}
+                      />}
+                      {competitionSection === "list" && <section
                         className="competition-list"
                         aria-label="Competiciones creadas"
                       >
                         <h3>Competiciones del equipo</h3>
-                        {!catalog.data.plans.length && (
+                        <label className="check"><input type="checkbox" checked={includePast} onChange={e=>setIncludePast(e.target.checked)}/>Incluir competiciones pasadas</label>
+                        {!listedCompetitions(catalog.data.plans,madridDate(),includePast).length && (
                           <p className="competition-empty">
-                            Aún no hay competiciones. Define las fechas y asigna
-                            alumnos en el formulario.
+                            No hay competiciones para este filtro.
                           </p>
                         )}
-                        {catalog.data.plans.map((c) => (
-                          <article
-                            key={c.planId}
-                            className="card competition-card"
-                          >
-                            <h3>Torneo · {c.fecha_torneo}</h3>
-                            <p>
-                              Inicio {c.fecha_comienzo} ·{" "}
-                              {c.ejercicios_por_sesion} ejercicios · días{" "}
-                              {c.dias_de_entrenamiento.join(", ")}
-                            </p>
-                            <p>Configuración fijada al crear la competición.</p>
-                            {students.map((s) => (
-                              <label className="check" key={s.profile.mail}>
-                                <input
-                                  type="checkbox"
-                                  checked={c.alumnos.includes(s.profile.mail)}
-                                  onChange={(e) =>
-                                    void run(async () => {
-                                      await client.request(
-                                        "/api/app/assignment",
-                                        "POST",
-                                        {
-                                          planId: c.planId,
-                                          alumnos: e.target.checked
-                                            ? [...c.alumnos, s.profile.mail]
-                                            : c.alumnos.filter(
-                                                (m) => m !== s.profile.mail,
-                                              ),
-                                          sha: catalog.sha,
-                                        },
-                                      );
-                                      await trainers();
-                                    })
-                                  }
-                                />
-                                {s.profile.nombre || s.profile.mail}
-                              </label>
-                            ))}
-                            <button
-                              className="danger"
-                              onClick={() => {
-                                if (
-                                  confirm(
-                                    "¿Borrar esta competición y todos sus planes individuales? Desasignar solo un alumno se hace con su casilla.",
-                                  )
-                                )
-                                  void run(async () => {
-                                    await client.request(
-                                      "/api/app/delete-competition",
-                                      "POST",
-                                      { planId: c.planId, sha: catalog.sha },
-                                    );
-                                    await trainers();
-                                  });
-                              }}
-                            >
-                              Borrar competición completa
-                            </button>
-                          </article>
+                        {listedCompetitions(catalog.data.plans,madridDate(),includePast).map((c) => (
+                          <CompetitionCard key={c.planId} competition={c} students={students} sha={catalog.sha} run={run} reload={trainers} />
                         ))}
-                      </section>
+                      </section>}
                     </div>
                   )}
                 </section>
@@ -1068,6 +1067,7 @@ function Auth({
   busy: boolean;
 }) {
   const [register, setRegister] = useState(false);
+  const [showPassword,setShowPassword]=useState(false);
   return (
     <section className="auth" id="main-content">
       <p className="auth-team">Portugal Gold Team</p>
@@ -1110,14 +1110,20 @@ function Auth({
         )}
         <label>
           Contraseña
+          <span className="password-input">
           <input
+            aria-label="Contraseña"
             required
             minLength={12}
             maxLength={128}
             name="password"
-            type="password"
+            type={!register && showPassword ? "text" : "password"}
             autoComplete={register ? "new-password" : "current-password"}
           />
+          {!register && <button type="button" className="password-toggle" aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} aria-pressed={showPassword} onClick={()=>setShowPassword(value=>!value)}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>{showPassword && <path d="m3 3 18 18"/>}</svg>
+          </button>}
+          </span>
         </label>
         {register && (
           <label>
@@ -1133,7 +1139,7 @@ function Auth({
               : "Entrar"}
         </button>
       </form>
-      <button className="subtle" onClick={() => setRegister(!register)}>
+      <button className="subtle" onClick={() => {setShowPassword(false);setRegister(!register);}}>
         {register ? "Ya tengo cuenta" : "Registrarme"}
       </button>
       <button
@@ -1150,13 +1156,16 @@ function ProfileView({
   sha,
   trainer,
   run,
+  onDirty,
 }: {
   profile: Profile;
   sha: string | null;
   trainer: boolean;
+  onDirty:(dirty:boolean)=>void;
   run: (a: () => Promise<unknown>) => Promise<void>;
 }) {
   const [draft, setDraft] = useState(() => profileDraft(profile));
+  const [weightInvalid,setWeightInvalid]=useState("");
   const previous = useRef(profileDraft(profile));
   useEffect(() => {
     const incoming = profileDraft(profile);
@@ -1164,6 +1173,11 @@ function ProfileView({
     setDraft((current) => refreshProfileDraft(current, baseline, incoming));
     previous.current = incoming;
   }, [profile]);
+  useEffect(()=>{
+    const saved=profileDraft(profile);
+    onDirty((Object.keys(saved) as (keyof typeof draft)[]).some(key=>draft[key]!==saved[key]&&!(key==="peso"&&draft[key]!==""&&saved[key]!==""&&weightValue(draft[key])===weightValue(saved[key]))));
+  },[draft,profile,onDirty]);
+  useEffect(()=>()=>onDirty(false),[onDirty]);
   const field = (name: keyof typeof draft) => ({
     value: draft[name],
     onChange: (
@@ -1180,13 +1194,16 @@ function ProfileView({
         onSubmit={(e) => {
           e.preventDefault();
           const f = new FormData(e.currentTarget);
+          const error=weightError(String(f.get("peso")));
+          setWeightInvalid(error);
+          if(error){(e.currentTarget.elements.namedItem("peso") as HTMLInputElement).focus();return;}
           void run(() =>
             client.edit("profile", {
               ...profile,
               nombre: String(f.get("nombre")),
               apellidos: String(f.get("apellidos")),
               fecha_nacimiento: String(f.get("fecha")) || null,
-              peso: f.get("peso") ? Number(f.get("peso")) : null,
+              peso: weightValue(String(f.get("peso"))),
               cinturon: String(f.get("cinturon")) as Profile["cinturon"],
             }),
           );
@@ -1207,7 +1224,10 @@ function ProfileView({
           </label>
           <label>
             Peso (kg)
-            <input name="peso" type="number" min="0.1" max="499.9" step="0.1" {...field("peso")} />
+            <input name="peso" type="text" inputMode="decimal" {...field("peso")}
+              aria-invalid={Boolean(weightInvalid)} aria-describedby={weightInvalid ? "profile-weight-error" : undefined}
+              onInput={e=>{const error=weightError(e.currentTarget.value);e.currentTarget.setCustomValidity(error);setWeightInvalid(error);}} />
+            {weightInvalid && <span className="field-error" role="alert" id="profile-weight-error">{weightInvalid}</span>}
           </label>
           <label>
             Cinturón
@@ -1288,6 +1308,37 @@ function PasswordForm({
     </form>
   );
 }
+function SessionExercises({session}:{session:TrainingPlan["sessions"][number]}) {
+  return <>{session.exercises.map((ex,ei)=><div className="exercise" key={ei}>
+    <strong>{ei+1}. {ex.posicion}</strong>
+    <small className="priority-caption">Prioridad {ex.prioridad}</small>
+    <p><strong>{ex.tipo}</strong></p>
+    <p className="plan-description">{ex.descripcion_del_alumno}</p>
+    {ex.comment && <p className="note">Entrenador: {ex.comment}</p>}
+  </div>)}</>;
+}
+function OwnTrainingDay({plans,owner}:{plans:TrainingPlan[];owner:string}) {
+  const [date,setDate]=useState("");
+  const today=madridDate();
+  const day=useMemo(()=>ownTrainingDay(plans,owner,today,date),[plans,owner,today,date]);
+  return <section className="own-training-day" aria-label="Mis entrenamientos del día">
+    <div className="section-head"><div><h2>Mi entrenamiento del día</h2><p>Consulta todas tus sesiones de la fecha elegida. Por defecto se muestra el próximo entrenamiento posterior a hoy.</p></div>
+      <label>Fecha de mis entrenamientos<input type="date" value={day.date} onChange={e=>setDate(e.target.value)} /></label>
+    </div>
+    {!day.date && <p className="empty">No tienes próximos entrenamientos en tus planes activos. Puedes elegir una fecha para consultar las sesiones guardadas.</p>}
+    {day.date && !day.sessions.length && <p className="empty">No tienes sesiones para esta fecha.</p>}
+    {day.sessions.length>0 && <p>{day.sessions.length} {day.sessions.length===1?"sesión":"sesiones"} · {new Date(day.date+"T12:00:00").toLocaleDateString("es-ES",{weekday:"long",day:"2-digit",month:"long",year:"numeric"})}</p>}
+    <div className="own-day-sessions">{day.sessions.map(({plan,session,index})=>{
+      const timer=tabata(plan);
+      return <article className="card own-session-card" key={`${plan.planId}:${index}`}>
+        <h3>Torneo · {plan.fecha_torneo}</h3>
+        {plan.structuralUpdateError && <p role="alert">Actualización del plan bloqueada: {plan.structuralUpdateError} Se muestra la última sesión guardada.</p>}
+        <p className="timer">Trabajo {format(timer.work)} · Cambio {format(timer.rest)} · {timer.cycles} ciclos · {timer.sets} sets · Entre técnicas {format(timer.betweenSets)} · Total {format(timer.duration)}</p>
+        <SessionExercises session={session} />
+      </article>;
+    })}</div>
+  </section>;
+}
 function PlanView({
   plan,
   run,
@@ -1328,16 +1379,7 @@ function PlanView({
               )}{" "}
               · {session.exercises.length} ejercicios
             </summary>
-            {session.exercises.map((ex, ei) => (
-              <div className="exercise" key={ei}>
-                <strong>
-                  {ei + 1}. P{ex.prioridad} · {ex.posicion}
-                </strong>
-                <p><strong>{ex.tipo}</strong></p>
-                <p className="plan-description">{ex.descripcion_del_alumno}</p>
-                {ex.comment && <p className="note">Entrenador: {ex.comment}</p>}
-              </div>
-            ))}
+            <SessionExercises session={session} />
           </details>
         ))}
       </div>
@@ -1346,25 +1388,41 @@ function PlanView({
 }
 function TrainerStudent({
   snapshot,
+  section,
+  refreshing,
+  planId,
+  choosePlan,
+  changeSection,
   run,
   reload,
 }: {
-  snapshot: Snapshot;
+  snapshot: TrainerView;
+  section:TrainerSection;
+  refreshing:boolean;
+  planId:string;
+  choosePlan:(id:string)=>void;
+  changeSection:(section:TrainerSection)=>void;
   run: (a: () => Promise<unknown>) => Promise<void>;
   reload: () => Promise<void>;
 }) {
+  const [commentIssues,setCommentIssues]=useState<PlanIssue[]>([]);
+  useEffect(()=>setCommentIssues([]),[snapshot.profile.data.mail]);
   const p = snapshot.profile.data,
-    t = snapshot.techniques.data as Techniques,
+    t = snapshot.techniques?.data as Techniques | undefined,
     [search, setSearch] = useState(""),
-    [section, setSection] = useState("techniques");
-  const notes = snapshot.comments.data as Comments;
-  const total = t.positions.reduce((n, p) => n + p.tecnicas.length, 0);
-  const described = t.positions
-    .flatMap((p) => p.tecnicas)
-    .filter((t) => t.descripcion_del_alumno.trim()).length;
+    [roleDraft,setRoleDraft]=useState(p.perfil),
+    [roleSaving,setRoleSaving]=useState(false);
+  useEffect(()=>setRoleDraft(p.perfil),[p.mail,p.perfil]);
+  const notes = snapshot.comments?.data as Comments | undefined;
+  const {total,described}=useMemo(()=>{
+    let total=0,described=0;
+    for(const p of t?.positions||[])for(const technique of p.tecnicas){total++;if(technique.descripcion_del_alumno.trim())described++;}
+    return {total,described};
+  },[t]);
   const percent = Math.round((described / Math.max(1, total)) * 100);
   return (
     <section className="card student-detail">
+      {commentIssues.length>0 && <p role="alert" className="field-error">{planIssueMessage(commentIssues)}</p>}
       <div className="student-detail-heading">
         <div>
           <p className="muted">Ficha del alumno</p>
@@ -1375,10 +1433,11 @@ function TrainerStudent({
       </div>
       <div className="student-sections" role="group" aria-label="Información del alumno">
         {[["techniques", "Técnicas"], ["plans", "Planes"], ["administration", "Administración"]].map(([key,label]) => (
-          <button key={key} className={section === key ? "selected" : "secondary"} aria-pressed={section === key} onClick={() => setSection(key)}>{label}</button>
+          <button key={key} className={section === key ? "selected" : "secondary"} aria-pressed={section === key} onClick={() => changeSection(key as TrainerSection)}>{label}</button>
         ))}
       </div>
-      {section === "techniques" && <>
+      {refreshing && <p className="muted" role="status" aria-label="Actualizando ficha"><span className="loading-spinner" aria-hidden="true" />Actualizando en segundo plano…</p>}
+      {section === "techniques" && t && notes && <>
       <div className="repertoire-progress">
         <div>
           <span>
@@ -1403,12 +1462,12 @@ function TrainerStudent({
         .map((p) => (
           <details key={p.id}>
             <summary>
-              P{p.prioridad} · {p.posicion}
+              <span>{p.posicion}<small className="priority-caption">Prioridad {p.prioridad}</small></span>
             </summary>
             {p.tecnicas.map((tech) => (
               <div key={tech.id} className="exercise">
                 <strong>{tech.tipo}</strong>
-                <p>{tech.descripcion_del_alumno || "Sin descripción"}</p>
+                <textarea className="student-description" aria-label="Descripción del alumno" readOnly value={tech.descripcion_del_alumno} placeholder="Sin descripción" rows={3} />
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -1423,14 +1482,16 @@ function TrainerStudent({
                           comment: String(f.get("comment")),
                         },
                       ];
-                      await client.request(
+                      const saved=await client.request<{planIssues?:PlanIssue[]}>(
                         `/api/app/users/${encodeURIComponent(snapshot.profile.data.mail)}/comments`,
                         "PUT",
                         {
                           data: { ...notes, comments },
-                          sha: snapshot.comments.sha,
+                          sha: snapshot.comments!.sha,
                         },
                       );
+                      setCommentIssues(saved.planIssues || []);
+                      if(saved.planIssues?.length)client.status=planIssueMessage(saved.planIssues);
                       await reload();
                     });
                   }}
@@ -1457,256 +1518,96 @@ function TrainerStudent({
         Rol
         <select
           aria-label="Rol"
-          value={p.perfil}
-          onChange={(e) =>
+          value={roleDraft}
+          disabled={roleSaving}
+          onChange={(e) => {
+            // Capture before run awaits local saves: React restores a controlled select meanwhile.
+            const perfil=e.currentTarget.value as Profile["perfil"];
+            setRoleDraft(perfil);setRoleSaving(true);
             void run(async () => {
-              await client.request("/api/app/role", "POST", {
-                mail: p.mail,
-                perfil: e.target.value,
-                sha: snapshot.profile.sha,
-              });
-              await reload();
-            })
-          }
+              try {
+                await client.request("/api/app/role", "POST", {mail:p.mail,perfil,sha:snapshot.profile.sha});
+                await reload();
+              } catch(error) {setRoleDraft(p.perfil);throw error;}
+              finally {setRoleSaving(false);}
+            });
+          }}
         >
           <option value="alumno">Alumno</option>
           <option value="entrenador">Entrenador</option>
         </select>
       </label>
+      {roleSaving && <p role="status" aria-label="Guardando rol">Guardando rol…</p>}
         <PasswordForm mail={p.mail} sha={snapshot.profile.sha} run={run} />
       </>}
       {section === "plans" && <>
-        {snapshot.plans.length ? snapshot.plans.map((r) => (
+        {Boolean(snapshot.planSummaries?.length) && <label>Plan del alumno<select aria-label="Plan del alumno" value={planId} onChange={e=>choosePlan(e.target.value)}><option value="">Selecciona un plan</option>{snapshot.planSummaries?.map(p=><option key={p.planId} value={p.planId}>{p.fecha_torneo?`Torneo · ${p.fecha_torneo}`:`Plan · ${p.planId}`}</option>)}</select></label>}
+
+        {snapshot.plans?.length ? snapshot.plans.map((r) => (
           <PlanView key={r.data.planId} plan={r.data} run={run} />
-        )) : <p className="muted">Este alumno todavía no tiene planes asignados.</p>}
+        )) : <p className="muted">{snapshot.planSummaries?.length ? "Selecciona un plan para consultar sus sesiones." : "Este alumno todavía no tiene planes asignados."}</p>}
       </>}
     </section>
   );
 }
-function TrainerCoverage({
-  students,
-  run,
-  busy,
-}: {
-  students: any[];
-  run: (a: () => Promise<unknown>) => Promise<void>;
-  busy: boolean;
+function CompetitionCard({competition:c, students, sha, run, reload}: {
+  competition: Competition; students: any[]; sha: string | null;
+  run: (action: () => Promise<unknown>) => Promise<void>; reload: () => Promise<void>;
 }) {
-  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
-  const [mail, setMail] = useState("");
-  const [planId, setPlanId] = useState("");
-  const [date, setDate] = useState(
-    new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
-      .toISOString()
-      .slice(0, 10),
-  );
-  const [inclusive, setInclusive] = useState(true);
-  const [filter, setFilter] = useState("all");
-  const plan = snapshot?.plans.find((r) => r.data.planId === planId)?.data;
-  const report = plan ? planCoverage(plan, date, inclusive) : null;
-  return (
-    <section
-      className="coverage-area"
-      aria-label="Cobertura del plan por fecha"
-    >
-      <p>
-        Trabajo previsto en la instantánea del plan. No registra asistencia ni
-        cambia la planificación.
-      </p>
-      <div className="card coverage-controls">
-        <label>
-          Alumno para cobertura
-          <select
-            disabled={busy}
-            value={mail}
-            onChange={(e) => {
-              const selected = e.target.value;
-              setMail(selected);
-              setSnapshot(null);
-              setPlanId("");
-              if (selected)
-                void run(async () => {
-                  const data = (await client.request(
-                    `/api/app/users/${encodeURIComponent(selected)}/snapshot`,
-                  )) as Snapshot;
-                  setSnapshot(data);
-                  setPlanId(data.plans[0]?.data.planId || "");
-                });
-            }}
-          >
-            <option value="">Selecciona un alumno</option>
-            {students.map((s) => (
-              <option key={s.profile.mail} value={s.profile.mail}>
-                {s.profile.nombre || s.profile.mail}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Plan para cobertura
-          <select
-            value={planId}
-            disabled={!snapshot?.plans.length}
-            onChange={(e) => setPlanId(e.target.value)}
-          >
-            <option value="">Selecciona un plan</option>
-            {snapshot?.plans.map((r) => (
-              <option key={r.data.planId} value={r.data.planId}>
-                Torneo {r.data.fecha_torneo} · Desde {r.data.fecha_comienzo}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Fecha de referencia
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
-        </label>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={inclusive}
-            onChange={(e) => setInclusive(e.target.checked)}
-          />
-          Incluir entrenamientos de ese día
-        </label>
-      </div>
-      {snapshot && !snapshot.plans.length && (
-        <p className="empty">
-          Este alumno no tiene planes generados. Si ya tiene una competición
-          asignada, debe sincronizar su cuenta para recibir el plan.
-        </p>
-      )}
-      {!mail && (
-        <p className="empty">
-          Selecciona un alumno y su plan para revisar la preparación hasta una
-          fecha.
-        </p>
-      )}
-      {plan && report && (
-        <>
-          <dl className="coverage-overview">
-            <div>
-              <dt>Técnicas diferentes</dt>
-              <dd>
-                {report.unique} <small>/ {report.total}</small>
-              </dd>
-              <p>Del contenido programado en este plan</p>
-            </div>
-            <div>
-              <dt>Sesiones incluidas</dt>
-              <dd>{report.sessions}</dd>
-              <p>{report.exercises} ejercicios con repeticiones</p>
-            </div>
-            <div>
-              <dt>Posiciones completas</dt>
-              <dd>
-                {report.positions.filter((p) => p.complete > 0).length}{" "}
-                <small>/ {report.positions.length}</small>
-              </dd>
-              <p>Al menos una pasada completa</p>
-            </div>
-            <div>
-              <dt>Posiciones sin empezar</dt>
-              <dd>{report.positions.filter((p) => !p.touched).length}</dd>
-              <p>
-                {report.positions.filter((p) => p.partial).length} con alguna
-                pasada parcial
-              </p>
-            </div>
-          </dl>
-          <div className="section-head">
-            <h3>Detalle por posición y técnica</h3>
-            <label>
-              Filtrar cobertura
-              <select
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-              >
-                <option value="all">Todo el plan</option>
-                <option value="pending">Con técnicas pendientes</option>
-                <option value="partial">Con pasadas parciales</option>
-                <option value="untouched">Sin empezar</option>
-              </select>
-            </label>
-          </div>
-          <p className="coverage-scope">
-            La instantánea conserva las técnicas programadas, no el catálogo
-            completo de la fecha de creación. Las técnicas que nunca aparecen en
-            este plan no se incluyen en el denominador. Una pasada se cuenta
-            completa solo cuando todas sus técnicas programadas han aparecido y
-            el plan conserva su marca de finalización.
-          </p>
-          <div
-            className="coverage-table"
-            role="region"
-            aria-label="Detalle de cobertura"
-            tabIndex={0}
-          >
-            <table>
-              <thead>
-                <tr>
-                  <th>Posición</th>
-                  <th>Técnicas · primera fecha · apariciones</th>
-                  <th>Pasadas completas</th>
-                  <th>Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {report.positions
-                  .filter(
-                    (p) =>
-                      filter === "all" ||
-                      (filter === "pending" &&
-                        p.techniques.some((t) => !t.count)) ||
-                      (filter === "partial" && p.partial) ||
-                      (filter === "untouched" && !p.touched),
-                  )
-                  .map((p) => (
-                    <tr key={p.id}>
-                      <th scope="row">
-                        <span className="pill">P{p.priority}</span>
-                        <strong>{p.name}</strong>
-                        <small>
-                          {p.techniques.filter((t) => t.count).length} /{" "}
-                          {p.techniques.length} técnicas diferentes
-                        </small>
-                      </th>
-                      <td>
-                        {p.techniques.map((t) => (
-                          <div className="coverage-technique" key={t.id}>
-                            <span>{t.type}</span>
-                            <small>
-                              {t.first || "Pendiente"} · {t.count} veces
-                            </small>
-                          </div>
-                        ))}
-                      </td>
-                      <td>{p.complete}</td>
-                      <td>
-                        {!p.touched
-                          ? "Sin empezar"
-                          : p.techniques.some((t) => !t.count)
-                            ? "Técnicas pendientes"
-                            : "Todas alcanzadas"}
-                        {p.partial && <small>Pasada parcial</small>}
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-          {!report.positions.length && (
-            <p className="empty">Este plan no contiene sesiones.</p>
-          )}
-        </>
-      )}
-    </section>
-  );
+  const [draft, setDraft] = useState<{alumnos:string[];base:string[];sha:string|null} | null>(null);
+  const [saving,setSaving] = useState(false);
+  const [deleting,setDeleting] = useState(false);
+  const selected = draft?.alumnos ?? c.alumnos;
+  const changed = selected.length !== c.alumnos.length || selected.some(mail => !c.alumnos.includes(mail));
+  return <article className="card competition-card">
+    <h3>Torneo · {c.fecha_torneo}</h3>
+    <p>Inicio {c.fecha_comienzo} · {c.ejercicios_por_sesion} ejercicios · días {c.dias_de_entrenamiento.join(', ')}</p>
+    <p>Configuración fijada al crear la competición.</p>
+    <p>Al guardar, desasignar un participante elimina su plan individual.</p>
+    {students.map(s => <label className="check" key={s.profile.mail}>
+      <input type="checkbox" checked={selected.includes(s.profile.mail)} disabled={saving || deleting}
+        onChange={e => {
+          const checked=e.currentTarget.checked;
+          setDraft(previous => {
+            const current=previous?.alumnos ?? c.alumnos;
+            const alumnos=checked ? [...current,s.profile.mail] : current.filter(mail=>mail!==s.profile.mail);
+            const unchanged=alumnos.length===c.alumnos.length && alumnos.every(mail=>c.alumnos.includes(mail));
+            return unchanged ? null : {alumnos,base:previous?.base ?? [...c.alumnos],sha:previous?.sha ?? sha};
+          });
+        }} />{s.profile.nombre || s.profile.mail}
+    </label>)}
+    <div className="competition-submit">
+      <button disabled={!changed || saving || deleting} onClick={() => {
+        if(!draft || saving)return;
+        const baseUnchanged=draft.base.length===c.alumnos.length && draft.base.every(mail=>c.alumnos.includes(mail));
+        const payload={planId:c.planId,alumnos:[...draft.alumnos],sha:baseUnchanged ? sha : draft.sha};
+        setSaving(true);
+        void run(async()=>{
+          try {
+            await client.request('/api/app/assignment','POST',payload);
+            await reload();
+            setDraft(null);
+          } finally {setSaving(false);}
+        });
+      }}>Guardar datos</button>
+      {saving && <span role="status" className="competition-loading"><span className="loading-spinner" aria-hidden="true" />Guardando participantes…</span>}
+      {changed && !saving && <span className="competition-loading">Cambios sin guardar</span>}
+      <button className="danger" disabled={saving || deleting} onClick={()=>{
+        if(deleting || saving)return;
+        if(!confirm('¿Borrar esta competición y todos sus planes individuales? Para desasignar un alumno, desmarca su casilla y pulsa Guardar datos.'))return;
+        setDeleting(true);
+        void run(async()=>{
+          try {
+            await client.request('/api/app/delete-competition','POST',{planId:c.planId,sha});
+            await reload();
+          } finally {setDeleting(false);}
+        });
+      }}>Borrar competición completa</button>
+      {deleting && <span role="status" aria-label="Borrando competición" className="competition-loading"><span className="loading-spinner" aria-hidden="true" />Borrando competición…</span>}
+    </div>
+  </article>;
 }
+
 function CompetitionForm({
   students,
   sha,
@@ -1718,12 +1619,38 @@ function CompetitionForm({
   run: (a: () => Promise<unknown>) => Promise<void>;
   reload: () => Promise<void>;
 }) {
+  const [creating,setCreating]=useState(false);
+  const [daysError,setDaysError]=useState(false);
+  const [dateErrors,setDateErrors]=useState<{start?:string;end?:string}>({});
+  function checkDates(form:HTMLFormElement) {
+    const start=form.elements.namedItem('start') as HTMLInputElement;
+    const end=form.elements.namedItem('end') as HTMLInputElement;
+    const errors=competitionDateErrors(start.value,end.value);
+    start.setCustomValidity(errors.start || '');
+    end.setCustomValidity(errors.end || '');
+    setDateErrors(errors);
+    return form.reportValidity();
+  }
   return (
     <section className="card competition-create" id="competition-create">
       <h3>Crear competición</h3>
       <form
+        onInput={e=>{
+          const form=e.currentTarget;
+          const start=form.elements.namedItem('start') as HTMLInputElement;
+          const end=form.elements.namedItem('end') as HTMLInputElement;
+          const errors=competitionDateErrors(start.value,end.value);
+          start.setCustomValidity(errors.start || '');
+          end.setCustomValidity(errors.end || '');
+          setDateErrors(errors);
+        }}
         onSubmit={(e) => {
           e.preventDefault();
+          if(creating)return;
+          const days=e.currentTarget.querySelectorAll<HTMLInputElement>('input[name="day"]:checked');
+          setDaysError(!days.length);
+          if(!checkDates(e.currentTarget))return;
+          if(!days.length){e.currentTarget.querySelector<HTMLInputElement>('input[name="day"]')?.focus();return;}
           const f = new FormData(e.currentTarget);
           const c: Competition = {
             planId: "",
@@ -1732,27 +1659,29 @@ function CompetitionForm({
             alumnos: f.getAll("student").map(String),
             dias_de_entrenamiento: f.getAll("day").map(Number),
             ejercicios_por_sesion: Number(f.get("sets")),
-            tiempo_por_tecnica_segundos: Number(f.get("work")),
+            tiempo_por_tecnica_segundos: durationSeconds(String(f.get("work")))!,
             descanso_entre_ciclos_segundos: Number(f.get("change")),
             descanso_entre_tecnicas_segundos: Number(f.get("rest")),
           };
+          setCreating(true);
           void run(async () => {
-            await client.request("/api/app/competition", "POST", {
-              competition: c,
-              sha,
-            });
-            await reload();
+            try {
+              await client.request("/api/app/competition", "POST", {competition:c,sha});
+              await reload();
+            } finally {setCreating(false);}
           });
         }}
       >
         <div className="fields">
           <label>
             Fecha inicial
-            <input name="start" type="date" required />
+            <input name="start" aria-label="Fecha inicial" type="date" required aria-invalid={Boolean(dateErrors.start)} aria-describedby={dateErrors.start ? 'competition-start-error' : undefined} />
+            {dateErrors.start && <span className="field-error" id="competition-start-error">{dateErrors.start}</span>}
           </label>
           <label>
             Fecha del torneo
-            <input name="end" type="date" required />
+            <input name="end" aria-label="Fecha del torneo" type="date" required aria-invalid={Boolean(dateErrors.end)} aria-describedby={dateErrors.end ? 'competition-end-error' : undefined} />
+            {dateErrors.end && <span className="field-error" id="competition-end-error">{dateErrors.end}</span>}
           </label>
           <label>
             Ejercicios por sesión
@@ -1766,12 +1695,17 @@ function CompetitionForm({
             />
           </label>
           <label>
-            Trabajo por alumno (s)
+            Trabajo por alumno (min:seg)
             <input
+              className="duration-input"
               name="work"
-              type="number"
-              min="1"
-              defaultValue={180}
+              type="text"
+              defaultValue="3:00"
+              placeholder="3:00"
+              maxLength={5}
+              pattern="[0-9]{1,2}:[0-5][0-9]"
+              title="Minutos y segundos, de 0:01 a 60:00"
+              onInput={e=>e.currentTarget.setCustomValidity(durationSeconds(e.currentTarget.value)===null ? durationError : '')}
               required
             />
           </label>
@@ -1779,8 +1713,9 @@ function CompetitionForm({
             Cambio de roles (s)
             <input
               name="change"
+              max="3600"
               type="number"
-              min="0"
+              min="1"
               defaultValue={10}
               required
             />
@@ -1789,15 +1724,18 @@ function CompetitionForm({
             Entre técnicas (s)
             <input
               name="rest"
+              max="3600"
               type="number"
-              min="0"
+              min="1"
               defaultValue={20}
               required
             />
           </label>
         </div>
-        <fieldset>
+        <fieldset aria-invalid={daysError} aria-describedby={daysError ? "competition-days-error" : undefined}
+          onChange={e=>{if(e.currentTarget.querySelector('input:checked'))setDaysError(false);}}>
           <legend>Días de entrenamiento</legend>
+          {daysError && <p role="alert" className="field-error" id="competition-days-error">Selecciona al menos un día de entrenamiento.</p>}
           {[
             "Lunes",
             "Martes",
@@ -1827,7 +1765,10 @@ function CompetitionForm({
             </label>
           ))}
         </fieldset>
-        <button>Crear competición con configuración fija</button>
+        <div className="competition-submit">
+          <button disabled={creating}>Crear competición</button>
+          {creating && <span role="status" aria-label="Creando competición" className="competition-loading"><span className="loading-spinner" aria-hidden="true" /><span>Creando competición…</span></span>}
+        </div>
       </form>
     </section>
   );

@@ -2,7 +2,7 @@
 
 ## Dirección aprobada por el propietario
 
-El 14/10/2026 el propietario rechazó la paleta del logo PGT y eligió como referencia cuatro capturas: navegación lateral oscura, fondo claro, superficies blancas, títulos legibles, espacios generosos y detalle por posición. Esta petición prevalece sobre la dirección verde/dorada anterior. Se adopta una paleta pizarra con acento azul suave; el logo original se conserva para el PDF, no define la interfaz ni el icono PWA.
+El 14/10/2026 el propietario rechazó la paleta del logo PGT y eligió como referencia cuatro capturas: navegación lateral oscura, fondo claro, superficies blancas, títulos legibles, espacios generosos y detalle por posición. Esta petición prevalece sobre la dirección verde/dorada anterior. Se adopta una paleta pizarra con acento azul suave; el logo original se conserva para el PDF y, por decisión del propietario el 16/10/2026, para el icono de instalación PWA. No define la paleta de la interfaz.
 
 La app es un espacio de preparación de competición: repertorio personal editable, sesiones, perfiles y trabajo del entrenador. No añadir actividad, tendencias, asistencia ni gráficos ficticios. Los datos existentes determinan el contenido; las capturas son referencia de composición, no una nueva especificación funcional.
 
@@ -58,3 +58,63 @@ Los diálogos de eliminación explican que se recalculan sesiones futuras y se c
 ### Secciones de la ficha del alumno
 
 Panel derecho con botones Técnicas, Planes y Administración. La ficha de identidad permanece; el contenido se muestra por sección. Técnicas es la vista inicial de cada selección. El selector conserva el resaltado durante carga; spinner y texto accesible sustituyen temporalmente el mensaje inicial, con movimiento reducido respetado. Error de carga conserva selección y ofrece reintento.
+
+### Fichas locales y detalle de planes
+
+La ficha guardada se muestra inmediatamente, con indicador discreto «Actualizando en segundo plano» durante la comprobación remota. La falta de copia usa el spinner del panel y no deshabilita toda la interfaz. Planes muestra primero un selector con fechas de competición y carga solo el plan elegido. Métricas del repertorio memoizadas. Mantener selección, secciones, permisos y textos completos.
+
+### Feedback de acciones y lectura del repertorio
+
+Verde de éxito #397354, solo en texto «Sincronizado» con peso 600: sin fondo llamativo. Pendientes, offline, errores, bloqueos y borradores sin guardar conservan estados distintos del éxito. Spinner de 20 px junto a «Crear competición», con texto accesible mientras se procesa; respetar movimiento reducido. Descripción del alumno en caja textarea readOnly con fondo canvas, tamaño táctil y texto seleccionable.
+
+
+### Feedback de borrado y espera del entrenador (15/10/2026)
+
+Borrado de competición con estado inmediato y spinner accesible en su tarjeta; impedir doble envío y ediciones durante borrado, retirar estado ante fallo. Placeholder de alumno más compacto, título 21 px, texto 15 px; carga horizontal con spinner 28 px y título 18 px. Mantener diseño pizarra/azul y movimiento reducido. Prueba Chromium con petición de borrado retenida y confirmación de retirada de tarjeta.
+
+
+### Visibilidad de contraseña en login (15/10/2026)
+
+Botón de ojo integrado en el campo, accesible Mostrar/Ocultar contraseña, type=button; contraseña oculta inicialmente y al cambiar a registro. Cambia solo type del input, sin modificar valor ni enviar formulario. Chromium verifica mostrar/ocultar y conservación del texto antes de login.
+
+
+### Trabajo por alumno en minutos y segundos (16/10/2026)
+
+Crear competición presenta Trabajo por alumno (min:seg), con valor inicial 3:00 y formato m:ss/mm:ss, entre 0:01 y 60:00. Convertir a segundos al enviar; conservar modelo, API, Tábata y planes existentes. Rechazar cero, segundos >=60 y duraciones superiores al máximo sin petición. Pruebas de conversión exacta y formulario, persistencia de 3:00 como 180 segundos.
+
+### Validación del icono de instalación (16/10/2026)
+
+PNG 192/512 derivados sin recorte del logo oficial; manifest y apple-touch-icon usan rutas nuevas. SHA256 de public/logo-pgt.jpg conservado: c95889f631ca4183ae8108679aed72b4e1a8ead5969108b5e98ae0c518675dd3. Sin cambios en src/, estilos ni PDF. 105/105 unitarias, typecheck, build, check:worker, test:runtime y test:browser correctos; tamaños/referencias de iconos y precaché verificados. La actualización de un icono ya instalado depende del sistema; una instalación nueva usa los recursos nuevos.
+
+### Selector en Mis planes (16/10/2026)
+
+Petición del propietario: Mis planes usa el mismo comportamiento que Planes en la ficha del alumno del entrenador: desplegable con torneos, opción inicial «Selecciona un plan» y solo el plan elegido visible. Mantener lectura, exportación PDF, offline y estado sin planes. Al desaparecer el plan o cerrar sesión se limpia la selección; no modificar datos, sincronización ni permisos.
+
+Validación: 105/105 unitarias, typecheck, build, check:worker, test:runtime, test:browser y test:performance correctos. Chromium verifica estado inicial sin ficha, selección, volver al placeholder, cambio entre dos torneos con una sola ficha visible y exportación PDF offline; capturas 1440/390 revisadas sin desbordamiento. Fixtures locales, sin cambios remotos de usuarios ni aceptación en Safari/iOS físico.
+
+### Panel del entrenador — 16/10/2026
+
+Se conserva Barlow y paleta pizarra/azul. Competiciones presenta Listado/Nueva competición, filtro de pasadas y tarjetas por fecha. Preparación del plan retira fecha de referencia y usa tres resúmenes, tabla por prioridad, técnicas pendientes más frecuentes y detalle completo. Entrenamiento del día usa calendario y tarjetas agrupadas, contador de alumnos destacado arriba a la derecha y nombres. Spinners en operaciones/carga/actualización; móvil con tarjetas apiladas y tablas dentro de región desplazable. Semántica y caché según apartado 21 de requisitos.
+
+### Nombre y ratio de cobertura (16/10/2026)
+
+Corrección del propietario: «Preparación del plan» pasa a «Cobertura por alumno». La tabla por prioridad sustituye «Repeticiones adicionales» por «Veces por prioridad»: Apariciones / Repertorio actual de esa prioridad, con dos decimales y formato español. Denominador cero muestra «—». No cambiar otros cálculos ni datos del plan.
+
+
+### Tarjetas compactas de Mis técnicas (16/10/2026)
+
+Petición del propietario: posiciones cerradas inicialmente, con nombre, prioridad, cantidad de técnicas, progreso de descripciones y marca con número/nombre por técnica. Descripción no vacía tras trim define completada. Ámbar, círculo y texto para pendientes; verde, check y texto para completadas. Una posición sin técnicas no se considera completa. Abrir por resumen nativo accesible; editor inline a ancho completo con campos etiquetados, bloques por técnica, estado individual y comentarios con su autor. Conservar orden, prioridad, altas, borrado y guardado existentes. Nueva posición se abre para editar.
+
+Mantener guía visual pizarra/azul, foco, teclado, 44 px y movimiento reducido. Estado de apertura por UUID solo en sesión UI, conservado entre búsquedas y pestañas, reiniciado al cerrar sesión/recargar. Notificación abre la posición cerrada antes de desplazar y enfocar su técnica. Sin cambios en API, persistencia, permisos, generador, planes ni PDF.
+
+
+### Control de prioridad discreto (16/10/2026)
+
+El propietario pide compactar el control y permite sustituir +/− si es necesario. Se conservan ambos dentro de una sola cápsula neutra, sin botones azules independientes, con etiqueta en línea y número centrado. Mantener áreas táctiles 44 px, foco, mínimo 1 y pasos enteros. Retirar el distintivo P duplicado de la cabecera editable; conservarlo en el resumen. Solo CSS, sin cambiar guardado ni comportamiento.
+
+
+### Prioridad como subtítulo discreto (16/10/2026)
+
+Petición del propietario: retirar abreviaturas P1/P2 de posiciones/técnicas en toda la app y PDF. Mostrar «Prioridad N» debajo del nombre, en letra menor y tono secundario: resumen de Mis técnicas, sesiones completas/día y planes del entrenador, ficha de técnicas del alumno y detalle de cobertura. Control editable conserva su cápsula, situada debajo del nombre. En la tabla agregada Cobertura por prioridad, la columna Prioridad muestra solo el número; no hay nombre al que asociar un subtítulo.
+
+PDF: nombre de posición y pasada, seguido de Prioridad N en 7,5 pt frente a 10 pt del nombre. Medir, paginar y dibujar cada fila con su tamaño real; mantener nombre/prioridad/técnica juntos cuando caben y conservar continuación para sesiones largas. No modificar prioridades guardadas, orden, distribución ni textos de las instantáneas.

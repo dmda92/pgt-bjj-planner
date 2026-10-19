@@ -559,3 +559,118 @@ La revisión de eventos de eliminación (`deletionRevision`, calculada por servi
 ## 18. Panel del alumno en Entrenador (14/10/2026)
 
 Mantener selector izquierdo y mensaje inicial sin selección. Seleccionar un alumno lo resalta inmediatamente y sustituye el mensaje inicial por un spinner accesible durante la carga. El panel derecho muestra tres botones: Técnicas (por defecto cada selección), Planes y Administración (rol y contraseña), mostrando únicamente el contenido elegido. Cambiar alumno no permite que una respuesta tardía sobrescriba la selección actual. Los fallos mantienen la selección y permiten reintentar.
+
+## 19. Apertura eficiente de alumnos desde Entrenador (14/10/2026)
+
+Consultar una copia local autorizada por entrenador/alumno/sección y mostrarla inmediatamente; actualizar en segundo plano sin bloquear toda la UI. Técnicas, Planes y Administración solicitan únicamente su contenido. Planes carga un manifiesto y el detalle elegido, no todos los JSON. Usar SHA para omitir archivos idénticos, paralelismo seguro y limitado, deduplicación de consultas y marcadores para no recalcular sin cambios. Mantener offline, validación, permisos actuales, aislamiento entre sesiones, protección absoluta del histórico y algoritmo. No escribir ni perder el working set dirty mediante la caché de fichas. Invalidar caché al salir o ante revocación observada y descartar respuestas de sesiones/selecciones anteriores. Diagnóstico, medidas y límites en RENDIMIENTO_ENTRENADOR.md.
+
+## 20. Feedback de sincronización, creación y descripciones del entrenador (14/10/2026)
+
+«Sincronizado» se presenta con verde discreto únicamente cuando no hay datos locales pendientes ni planes bloqueados. Tras editar/guardar localmente, indicar pendientes de sincronizar; los campos de perfil todavía sin guardar requieren su propio aviso. La creación usa el literal «Crear competición», spinner junto al botón y bloqueo de repetición durante la petición. Las descripciones del alumno en la ficha del entrenador se muestran completas en textarea de solo lectura, seleccionable y con estilo del repertorio. Comentarios del entrenador siguen siendo editables.
+
+
+### Guardado explícito de participantes (14/10/2026)
+
+Selección inmediata de participantes por competición, en borrador. Guardar datos habilitado solo con diferencias; guardar envía una única asignación con SHA, conserva borrador ante fallo y confirma desde servidor. Casillas bloqueadas solo durante guardado.
+
+
+## Desasignación con borrado individual — corrección del propietario (14/10/2026)
+
+Sustituye todas las reglas anteriores que conservaban visible el plan desasignado. Al guardar la desasignación, borrar el JSON individual remoto del participante, sin borrar la competición ni planes de otros alumnos. El índice mantiene tombstones por alumno; sincronizar elimina la copia local limpia incluso tras trabajar offline. Reasignar elimina el tombstone y genera un plan nuevo. El borrado explícito incluye sesiones históricas de ese plan; no altera las reglas de protección ante recálculos automáticos. Persistir tombstone antes del borrado para recuperar fallos parciales.
+
+
+### Validación de fechas de competición (15/10/2026)
+
+El formulario señala el campo de fecha incorrecto, con mensaje asociado y validación nativa accesible. Torneo estrictamente posterior al inicio y máximo 730 días, conforme al dominio. Corregir el campo retira el error; no enviar solicitudes inválidas. Mantener validación backend. Pruebas de fechas imposibles/bisiestas, igualdad, anterioridad, rango y corrección/reintento.
+
+
+### Mínimo de descansos en nuevas competiciones (15/10/2026)
+
+Corrección del propietario: Cambio de roles y Entre técnicas requieren enteros entre 1 y 3600 segundos al crear competición. Formulario señala el campo mediante min=1 y validación nativa; Worker rechaza cero antes de escribir. Sustituye admisión de descansos cero para nuevas altas. Leer/exportar/recalcular planes históricos con cero sigue permitido sin modificar sus parámetros. Regresión: cero rechazado sin petición/escritura y uno aceptado.
+
+
+### Feedback de borrado de competición (15/10/2026)
+
+Tras confirmar el borrado completo, mostrar inmediatamente spinner y texto Borrando competición en la tarjeta afectada; impedir doble envío y edición mientras se procesa. Recuperar controles si falla. Presentación de espera del entrenador más compacta, manteniendo mensaje inicial y estados de carga/error.
+
+
+### Trabajo por alumno en minutos y segundos (16/10/2026)
+
+Crear competición presenta Trabajo por alumno (min:seg), con valor inicial 3:00 y formato m:ss/mm:ss, entre 0:01 y 60:00. Convertir a segundos al enviar; conservar modelo, API, Tábata y planes existentes. Rechazar cero, segundos >=60 y duraciones superiores al máximo sin petición. Pruebas de conversión exacta y formulario, persistencia de 3:00 como 180 segundos.
+
+
+### Correcciones QA de recuperación, validación y PDF (16/10/2026)
+
+BUG-005/001: snapshot autorizado completo con `planIssues` por plan (`PLAN_TOO_LARGE` con bytes/archivo o `NO_TRAINABLE_TECHNIQUES`). Entregar las fuentes y último plan válido aunque una proyección no sea viable; permitir corregir el catálogo/comentario. Confirmar fuentes solo después de CAS; conservar pendiente de plan hasta proyección/generación válida. Nunca capturar autenticación, permisos, transporte o conflictos agotados como recuperación de negocio. Mantener límites, checkpoints, algoritmo y sesiones protegidas. Sin técnicas no crear planes vacíos. Cliente persiste los avisos por propietario y nunca comunica sincronización completa con pendientes.
+
+BUG-002: peso opcional, finito, estrictamente mayor que 0 y menor que 500, sin discretización ni redondeo; formulario admite coma decimal y señala el campo. BUG-003: cero días impide enviar competición, muestra error asociado al grupo y enfoca la primera casilla; cualquier selección no vacía es válida y Worker mantiene su validación.
+
+BUG-004 (alcance simplificado aprobado por el propietario el 16/10/2026): conservar Barlow local y sus caracteres españoles, puntuación y enlaces. No añadir fuentes CJK, cirílicas ni emoji. Validar cobertura común de Barlow Regular/SemiBold antes de generar: si un carácter no está soportado, mostrar error explícito sin descargar un PDF incompleto ni modificar datos. Mantener textos largos, paginación y exportación offline. Sustituye el fallback Unicode ampliado anterior.
+
+### Selector en Mis planes (16/10/2026)
+
+Petición del propietario: Mis planes usa el mismo comportamiento que Planes en la ficha del alumno del entrenador: desplegable con torneos, opción inicial «Selecciona un plan» y solo el plan elegido visible. Mantener lectura, exportación PDF, offline y estado sin planes. Al desaparecer el plan o cerrar sesión se limpia la selección; no modificar datos, sincronización ni permisos.
+
+## 21. Panel del entrenador — acuerdo del propietario (16/10/2026)
+
+Competiciones: Listado y Nueva competición separados; orden ascendente por fecha de torneo, incluir hoy/futuras por defecto, check para pasadas (torneo < hoy Madrid). Conservar edición explícita de participantes/borrado; crear confirma y vuelve al listado.
+
+Preparación del plan sustituye Cobertura por fecha: seleccionar alumno y plan; sin fecha de referencia. Repertorio actual como denominador y como fuente de descripciones no vacías, identificadas por UUID. Plan completo guardado como fuente de técnicas programadas y apariciones; nunca regenerar al calcular. Descripciones / técnicas únicas del plan; cobertura actual global y por prioridad; apariciones y repeticiones adicionales (apariciones menos técnicas distintas). Mostrar técnicas históricas ausentes del repertorio por separado, sin inflar el porcentaje. Detalle de todas las técnicas programadas con prioridad de la instantánea; agregación según prioridades actuales del repertorio. Añadir cinco técnicas sin descripción más repetidas. Listado de planes y detalle individual bajo demanda; caché de fichas existente y spinner de carga/refresco. Descartar respuestas tardías de otra selección.
+
+Entrenamiento del día: área al mismo nivel que Equipo/Competiciones/Preparación. Fecha inicial estrictamente posterior a hoy Madrid con sesiones en competiciones activas (torneo >= hoy); fecha explícita admite consultar sesiones históricas de competiciones que cubran ese día. Agrupar por multiconjunto exacto de nombre de posición (incluido rol) y tipo de técnica; ignorar UUID por alumno, descripción, comentario, prioridad y orden. Conservar multiplicidades. Orden visible más frecuente entre sesiones del grupo; desempate estable. Tarjetas por número de alumnos únicos descendente, con contador superior derecho y nombres. Un alumno con varias competiciones cuenta una sola vez en cada grupo al que pertenezca.
+
+Eficiencia: índices derivados privados `training_plans/structure_<planId>.json`, diccionario posición/tipo y sesiones con índices numéricos; sin descripciones/comentarios. Construcción perezosa al consultar, fuente vinculada al SHA del plan, CAS para escribir y concurrencia limitada. No construir índices en sincronización; retirar derivados al desasignar/borrar. No considerar un índice fuente de verdad ni almacenarlo en DO. Peticiones autorizadas de entrenador consultan solo fechas/planes relevantes, verifican catálogo antes de devolver y señalan asignaciones sin snapshot/planes bloqueados. Caché IndexedDB por entrenador/fecha, aislada del working set y borrada al salir/401/403. Spinner general de operaciones y spinners locales de cargas. No cambiar generador, PDF, protección histórica ni límites.
+
+### Nombre y ratio de cobertura (16/10/2026)
+
+Corrección del propietario: «Preparación del plan» pasa a «Cobertura por alumno». La tabla por prioridad sustituye «Repeticiones adicionales» por «Veces por prioridad»: Apariciones / Repertorio actual de esa prioridad, con dos decimales y formato español. Denominador cero muestra «—». No cambiar otros cálculos ni datos del plan.
+
+
+## Notificaciones de comentarios — petición del propietario (16/10/2026)
+
+Campana en cabecera superior derecha de la sesión, con contador destacado de pendientes. Solo avisos internos recibidos al restaurar/sincronizar comentarios, sin push ni nuevas peticiones. Cada técnica con comentario nuevo o modificado tiene un aviso independiente; versiones servidor por UUID evitan duplicados, con huella del contenido para comentarios legados. Un comentario eliminado/vacío o una técnica retirada deja de generar avisos. Mostrar posición, técnica y vista previa; al abrir, marcar leído, abrir Mis técnicas, limpiar búsqueda y enfocar/desplazar a su técnica. Abrir la campana no marca leídos los demás.
+
+Persistencia IndexedDB v4 por usuario/dispositivo, separada de datos pendientes; recepción de versiones/avisos y aceptación de comentarios en una transacción. Actualizar conserva cambios offline y usa los comentarios locales como referencia para no notificar antiguos ya descargados. Una instalación nueva muestra los comentarios existentes recibidos en la primera restauración. Leídos se conservan en ese dispositivo entre sesiones; no se sincronizan entre dispositivos y se pierden al borrar los datos del navegador. Sin cambios en API, permisos, planes, generador ni PDF.
+
+
+### Nombre del autor en comentarios de técnicas (16/10/2026)
+
+Petición del propietario: en Mis técnicas sustituir «Entrenador:» por el nombre y apellidos del entrenador que escribió el comentario. Guardar trainerName opcional por comentario, asignado exclusivamente desde el perfil autenticado en Worker al cambiar el texto. Conservar autor de comentarios sin cambios, aunque otro entrenador guarde el documento o un cliente omita/falsee ese campo. Comentarios históricos sin autor mantienen «Entrenador» hasta que cambie su texto; no atribuirlos por suposición. Mantener versiones, notificaciones, permisos, offline y CAS. No modificar planes/PDF ni sus instantáneas históricas.
+
+
+### Entrenamientos por día en Mis planes (16/10/2026)
+
+Petición del propietario: situar primero Mi entrenamiento del día con calendario y todas las sesiones propias para esa fecha, incluso varias competiciones el mismo día. Fecha automática: primera sesión estrictamente posterior a hoy Madrid entre planes activos (torneo >= hoy), igual que Entrenamiento del día del entrenador. Consulta explícita permite cualquier fecha e incluye planes históricos; mostrar estado vacío si no hay sesiones. No agrupar ni deduplicar sesiones de distintos planes; identificar el torneo y conservar ejercicios, textos y tiempos guardados. Mostrar sesiones abiertas.
+
+Debajo, separación visual clara y sección Planes completos con el selector Mi plan existente y todas las sesiones del plan elegido, PDF sin cambios. Ambas selecciones son independientes. Calcular exclusivamente desde planes sincronizados del usuario de sesión; uso offline, sin nuevas peticiones, tablas ni modificaciones al generador o snapshots. Reset de fecha automática al volver a entrar en la pestaña/cambiar de cuenta.
+
+
+### Tarjetas compactas de Mis técnicas (16/10/2026)
+
+Petición del propietario: posiciones cerradas inicialmente, con nombre, prioridad, cantidad de técnicas, progreso de descripciones y marca con número/nombre por técnica. Descripción no vacía tras trim define completada. Ámbar, círculo y texto para pendientes; verde, check y texto para completadas. Una posición sin técnicas no se considera completa. Abrir por resumen nativo accesible; editor inline a ancho completo con campos etiquetados, bloques por técnica, estado individual y comentarios con su autor. Conservar orden, prioridad, altas, borrado y guardado existentes. Nueva posición se abre para editar.
+
+Mantener guía visual pizarra/azul, foco, teclado, 44 px y movimiento reducido. Estado de apertura por UUID solo en sesión UI, conservado entre búsquedas y pestañas, reiniciado al cerrar sesión/recargar. Notificación abre la posición cerrada antes de desplazar y enfocar su técnica. Sin cambios en API, persistencia, permisos, generador, planes ni PDF.
+
+
+### Control de prioridad discreto (16/10/2026)
+
+El propietario pide compactar el control y permite sustituir +/− si es necesario. Se conservan ambos dentro de una sola cápsula neutra, sin botones azules independientes, con etiqueta en línea y número centrado. Mantener áreas táctiles 44 px, foco, mínimo 1 y pasos enteros. Retirar el distintivo P duplicado de la cabecera editable; conservarlo en el resumen. Solo CSS, sin cambiar guardado ni comportamiento.
+
+
+### Prioridad como subtítulo discreto (16/10/2026)
+
+Petición del propietario: retirar abreviaturas P1/P2 de posiciones/técnicas en toda la app y PDF. Mostrar «Prioridad N» debajo del nombre, en letra menor y tono secundario: resumen de Mis técnicas, sesiones completas/día y planes del entrenador, ficha de técnicas del alumno y detalle de cobertura. Control editable conserva su cápsula, situada debajo del nombre. En la tabla agregada Cobertura por prioridad, la columna Prioridad muestra solo el número; no hay nombre al que asociar un subtítulo.
+
+PDF: nombre de posición y pasada, seguido de Prioridad N en 7,5 pt frente a 10 pt del nombre. Medir, paginar y dibujar cada fila con su tamaño real; mantener nombre/prioridad/técnica juntos cuando caben y conservar continuación para sesiones largas. No modificar prioridades guardadas, orden, distribución ni textos de las instantáneas.
+
+
+### Participantes nuevos visibles en Entrenamiento del día (16/10/2026)
+
+Corrección por incidencia del propietario: antes el alta/asignación solo actualizaba índices y los snapshots iniciales dependían de sincronizar cada alumno, por lo que no aparecían en el panel. Al guardar competición/participantes, crear únicamente planes inexistentes de participantes nuevos, con fuentes autorizadas, CAS create-only y concurrencia máxima 4. Compartir esa creación con la restauración habitual; nunca regenerar ni sobrescribir snapshots existentes. Comprobar catálogo para no conservar una creación que fue desasignada durante la operación. Catálogo sin técnicas o plan demasiado grande conservan avisos recuperables, sin planes vacíos.
+
+GET training-day sigue siendo de lectura de planes/derivados. POST training-day, exclusivo de entrenador, prepara los snapshots que falten para asignaciones relevantes y devuelve el mismo informe; permite reparar altas anteriores sin esperar login del alumno. Los índices de estructura siguen perezosos y vinculados a SHA. UI consulta GET al entrar/cambiar fecha/Actualizar entrenamientos y usa POST solo si el informe señala planes pendientes; las consultas normales no consumen el presupuesto de escrituras. Conserva caché offline. Guardar competición/asignación/borrado invalida trainerDays solo de ese actor y una generación de peticiones evita que respuestas previas vuelvan a escribir caché antigua. Sustituye para esta recuperación la prohibición previa de crear snapshots al consultar el panel, sin extender autorización a recalcular planes existentes. Sin datos de negocio en DO ni cambios en permisos o algoritmo.
+
+
+### Título de Mis técnicas (16/10/2026)
+
+Petición del propietario: sustituir «Construye tu juego.» por un literal distinto. Se elige «Tu juego, técnica a técnica», sin cambios adicionales en la pantalla.

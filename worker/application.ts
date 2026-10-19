@@ -1,3 +1,5 @@
+import {readTrainingDay} from "./training-day.ts";
+import type {PlanIssue} from "../src/domain/plan-issues.ts";
 import {catalogOf, deletedUUIDs, updateFutureDeletions} from "../src/domain/plan-continuity.ts";
 import {MAX_APP_BODY_BYTES, MAX_TEXT_LENGTH} from "../src/domain/json-limits.ts";
 import {
@@ -53,6 +55,11 @@ const unchanged = (a: unknown, b: unknown) => {
 };
 const respond = (data: unknown, status = 200) =>
   Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
+async function concurrentMap<T,R>(values:T[],fn:(value:T)=>Promise<R>,limit=4):Promise<R[]> {
+  const result:R[]=new Array(values.length);let index=0;
+  await Promise.all(Array.from({length:Math.min(limit,values.length)},async()=>{for(;;){const i=index++;if(i>=values.length)return;result[i]=await fn(values[i]);}}));
+  return result;
+}
 export class AppApi {
   constructor(
     privateStore: DurableObjectStorage,
@@ -136,66 +143,43 @@ export class AppApi {
     }))
       if (s.mail === mail) await this.store.delete(key);
   }
-  private async updatePlanTexts(mail: string) {
-    const planFiles = (
-      (await this.cloud.list?.(`${root(mail)}/training_plans`)) || []
-    ).filter(
-      (f) => f.type === "file" && /^plan_[0-9a-f-]{36}\.json$/.test(f.name),
-    );
-    if (!planFiles.length) return;
-    const techniques = await this.cloud.read<Techniques>(
-      `${root(mail)}/tecnics.json`,
-    );
-    const comments = await this.cloud.read<Comments>(
-      `${root(mail)}/trainer_comments.json`,
-    );
-    if (
-      !techniques ||
-      !comments ||
-      (!techniques.data.descriptionUpdates && !comments.data.commentUpdates && !techniques.data.deletedIds?.length)
-    )
-      return;
-    for (const file of planFiles) {
-      const path = `${root(mail)}/training_plans/${file.name}`;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const current = await this.cloud.read<TrainingPlan>(path);
-        if (
-          !current ||
-          current.data.mail !== mail ||
-          current.data.fecha_torneo <= madridDate(this.clock())
-        )
-          break;
-        const latestTechniques = await this.cloud.read<Techniques>(
-          `${root(mail)}/tecnics.json`,
-        );
-        const latestComments = await this.cloud.read<Comments>(
-          `${root(mail)}/trainer_comments.json`,
-        );
-        if (!latestTechniques || !latestComments) break;
-        const next = updateFuturePlanText(
-          updateFutureDeletions(current.data, latestTechniques.data, latestComments.data, madridDate(this.clock())),
-          latestTechniques.data,
-          latestComments.data,
-          madridDate(this.clock()),
-        );
-        if (next === current.data) break;
-        try {
-          await this.cloud.write(
-            path,
-            { ...next, revision: current.data.revision + 1, updatedAt: now() },
-            current.sha,
-          );
-          break;
-        } catch (error) {
-          if (
-            !(error instanceof ApiError) ||
-            ![409, 422].includes(error.status) ||
-            attempt === 2
-          )
-            throw error;
+  private async updatePlanTexts(mail: string,onlyPlanId?:string, issues?:PlanIssue[]) {
+    const loaded=new Map<string,CloudRecord<TrainingPlan>>();
+    const [metadata,files]=await Promise.all([this.cloud.list?.(root(mail)),this.cloud.list?.(`${root(mail)}/training_plans`)]);
+    const planFiles=(files||[]).filter(f=>(!onlyPlanId||f.name===`plan_${onlyPlanId}.json`)&&f.type==="file"&&/^plan_[0-9a-f-]{36}\.json$/.test(f.name));
+    const today=madridDate(this.clock());
+    const tSha=metadata?.find(f=>f.name==="tecnics.json")?.sha,cSha=metadata?.find(f=>f.name==="trainer_comments.json")?.sha;
+    const pending=(await Promise.all(planFiles.map(async file=>{
+      const marker=await this.store.get<{t:string;c:string;p:string;day:string}>(`plan-update:${mail}:${file.name}`);
+      return file.sha&&tSha&&cSha&&marker?.t===tSha&&marker.c===cSha&&marker.p===file.sha&&marker.day===today ? null : file;
+    }))).filter((file):file is NonNullable<typeof file>=>file!==null);
+    if(!pending.length)return loaded;
+    const [techniques,comments]=await Promise.all([this.cloud.read<Techniques>(`${root(mail)}/tecnics.json`),this.cloud.read<Comments>(`${root(mail)}/trainer_comments.json`)]);
+    if(!techniques||!comments)return loaded;
+    await concurrentMap(pending,async file=>{
+      const key=`plan-update:${mail}:${file.name}`;
+      const mark=(sha:string,t=techniques,c=comments)=>this.store.put(key,{t:t.sha,c:c.sha,p:sha,day:today});
+      if(!techniques.data.descriptionUpdates&&!comments.data.commentUpdates&&!techniques.data.deletedIds?.length){if(file.sha)await mark(file.sha);return;}
+      const path=`${root(mail)}/training_plans/${file.name}`;
+      for(let attempt=0;attempt<3;attempt++){
+        const current=await this.cloud.read<TrainingPlan>(path);
+        if(!current||current.data.mail!==mail)return;
+        loaded.set(file.name,current);
+        if(current.data.fecha_torneo<=today){await mark(current.sha);return;}
+        const [t,c]=attempt ? await Promise.all([this.cloud.read<Techniques>(`${root(mail)}/tecnics.json`),this.cloud.read<Comments>(`${root(mail)}/trainer_comments.json`)]) : [techniques,comments];
+        if(!t||!c)return;
+        const next=updateFuturePlanText(updateFutureDeletions(current.data,t.data,c.data,today),t.data,c.data,today);
+        if(next===current.data){await mark(current.sha,t,c);return;}
+        try {const data={...next,revision:current.data.revision+1,updatedAt:now()};const sha=await this.cloud.write(path,data,current.sha);loaded.set(file.name,{data,sha});await mark(sha,t,c);return;}
+        catch(error){
+          if(issues && error instanceof ApiError && error.status===413 && error.message==="JSON_TOO_LARGE" && error.size?.file===file.name){
+            issues.push({planId:file.name.slice(5,-5),code:"PLAN_TOO_LARGE",size:error.size});return;
+          }
+          if(!(error instanceof ApiError)||![409,422].includes(error.status)||attempt===2)throw error;
         }
       }
-    }
+    });
+    return loaded;
   }
   private async reconcile(onlyMail?: string) {
     // The catalog is the authority for assignments/deletions; incomplete multi-file writes
@@ -222,21 +206,58 @@ export class AppApi {
       const ids = catalog.data.plans
         .filter((p) => p.alumnos.includes(mail))
         .map((p) => p.planId);
-      if (JSON.stringify(current?.data.planIds || []) !== JSON.stringify(ids))
-        await this.cloud.write(
-          path,
-          {
-            ...initialVersion(),
-            revision: (current?.data.revision || 0) + 1,
-            planIds: ids,
-          },
-          current?.sha || null,
-        );
-      for (const id of catalog.data.deletedPlanIds) {
+      const storedPlans = (await this.cloud.list?.(`${root(mail)}/training_plans`)) || [];
+      const removed = [...new Set([
+        ...(current?.data.deletedPlanIds || []),
+        ...(current?.data.planIds || []).filter(id => !ids.includes(id)),
+        ...storedPlans.filter(file => file.type === 'file' && /^plan_[0-9a-f-]{36}\.json$/.test(file.name))
+          .map(file => file.name.slice(5,-5)).filter(id => !ids.includes(id)),
+        ...storedPlans.filter(file=>file.type==='file' && /^structure_[0-9a-f-]{36}\.json$/.test(file.name)).map(file=>file.name.slice(10,-5)).filter(id=>!ids.includes(id)),
+        ...catalog.data.deletedPlanIds,
+      ])].filter(id => !ids.includes(id));
+      if (JSON.stringify(current?.data.planIds || []) !== JSON.stringify(ids) ||
+          JSON.stringify(current?.data.deletedPlanIds || []) !== JSON.stringify(removed))
+        await this.cloud.write(path, {
+          ...initialVersion(), revision: (current?.data.revision || 0) + 1,
+          planIds: ids, deletedPlanIds: removed,
+        }, current?.sha || null);
+      // Persist per-user tombstones before removing files: offline devices and retries
+      // must still learn about a deletion after the remote file has disappeared.
+      for (const id of removed) {
         const planPath = `${root(mail)}/training_plans/plan_${id}.json`;
         const old = await this.cloud.read(planPath);
         if (old) await this.cloud.remove(planPath, old.sha);
+        if(storedPlans.some(f=>f.name===`structure_${id}.json`)) {
+          const derivedPath=`${root(mail)}/training_plans/structure_${id}.json`;
+          const derived=await this.cloud.read(derivedPath);
+          if(derived)await this.cloud.remove(derivedPath,derived.sha);
+        }
       }
+    }
+  }
+  private async createMissingPlan(mail:string, competition:Competition, issues:PlanIssue[]):Promise<CloudRecord<TrainingPlan>|undefined> {
+    const id=competition.planId,path=`${root(mail)}/training_plans/plan_${id}.json`;
+    const existing=await this.cloud.read<TrainingPlan>(path);
+    if(existing)return existing;
+    const catalog=await this.cloud.read<Catalog>("PGT/master_data/plans.json");
+    const assigned=catalog?.data.plans.find(c=>c.planId===id && c.alumnos.includes(mail) && !catalog.data.deletedPlanIds.includes(id));
+    if(!assigned)return;
+    const t=await this.cloud.read<Techniques>(`${root(mail)}/tecnics.json`),notes=await this.cloud.read<Comments>(`${root(mail)}/trainer_comments.json`);
+    if(!t||!notes)return reject(409,"REGISTRATION_INCOMPLETE");
+    if(!t.data.positions.some(p=>p.tecnicas.length)){issues.push({planId:id,code:"NO_TRAINABLE_TECHNIQUES"});return;}
+    const plan=generatePlan(assigned,mail,t.data,notes.data,now());
+    plan.appliedDescriptionUpdates={...t.data.descriptionUpdates};plan.appliedCommentUpdates={...notes.data.commentUpdates};
+    try {
+      const sha=await this.cloud.write(path,plan,null);
+      const current=await this.cloud.read<Catalog>("PGT/master_data/plans.json");
+      if(!current?.data.plans.some(c=>c.planId===id&&c.alumnos.includes(mail)) || current.data.deletedPlanIds.includes(id)) {
+        const saved=await this.cloud.read<TrainingPlan>(path);if(saved?.sha===sha)await this.cloud.remove(path,sha);return;
+      }
+      return {data:plan,sha};
+    } catch(error) {
+      if(error instanceof ApiError && error.status===413 && error.message==="JSON_TOO_LARGE" && error.size?.file===`plan_${id}.json`){issues.push({planId:id,code:"PLAN_TOO_LARGE",size:error.size});return;}
+      if(error instanceof ApiError && error.status===409){const winner=await this.cloud.read<TrainingPlan>(path);if(winner)return winner;}
+      throw error;
     }
   }
   async handle(request: Request, url: URL): Promise<Response> {
@@ -408,7 +429,8 @@ export class AppApi {
       if (route === "POST /api/app/competition") {
         onlyFields(b, ["competition", "sha"]);
         const input = b.competition as Competition;
-        validate(() => validateCompetition(input));
+        const invalidCompetition = validate(() => validateCompetition(input, 1));
+        if (invalidCompetition) return invalidCompetition;
         if (!Array.isArray(input.alumnos) || input.alumnos.length > 100)
           return reject(400, "STUDENTS_INVALID");
         const p: Competition = {
@@ -448,10 +470,20 @@ export class AppApi {
       c.updatedAt = now();
       await this.cloud.write("PGT/master_data/plans.json", c, old?.sha || null);
       await this.reconcile();
-      return respond({ status: "COMPETITION_OPERATION_CONFIRMED" });
+      const planIssues:PlanIssue[]=[];
+      const changed=route.endsWith("/competition") ? c.plans.at(-1) : c.plans.find(p=>p.planId===b.planId);
+      const previous=new Set(old?.data.plans.find(p=>p.planId===changed?.planId)?.alumnos || []);
+      const added=(changed?.alumnos || []).filter(mail=>!previous.has(mail));
+      let cursor=0;
+      await Promise.all(Array.from({length:Math.min(4,added.length)},async()=>{for(;;){const mail=added[cursor++];if(!mail)return;await this.createMissingPlan(mail,changed!,planIssues);}}));
+      return respond({ status: "COMPETITION_OPERATION_CONFIRMED",planIssues });
+    }
+    if(route === "GET /api/app/training-day" || route === "POST /api/app/training-day") {
+      await this.trainer(request);
+      return respond(await readTrainingDay(this.cloud,url.searchParams.get("date")||"",madridDate(this.clock()),request.method==="POST" ? (mail,c)=>this.createMissingPlan(mail,c,[]) : undefined));
     }
     const match = url.pathname.match(
-      /^\/api\/app\/users\/([^/]+)\/(snapshot|profile|techniques|comments|plan)$/,
+      /^\/api\/app\/users\/([^/]+)\/(snapshot|view|profile|techniques|comments|plan)$/,
     );
     if (!match) return reject(404, "ENDPOINT_NOT_FOUND");
     const actor = await this.session(request);
@@ -460,6 +492,51 @@ export class AppApi {
     if (!own && actor.profile.data.perfil !== "entrenador")
       return reject(403, "OTHER_USER_FORBIDDEN");
     const kind = match[2];
+    if(request.method==="GET"&&kind==="view") {
+      if(actor.profile.data.perfil!=="entrenador")return reject(403,"TRAINER_REQUIRED");
+      const section=url.searchParams.get("section");
+      if(!["techniques","plans","administration"].includes(section||""))return reject(400,"VIEW_INVALID");
+      const q=url.searchParams.get("known")||"{}";
+      let known:Record<string,string>;
+      try{known=JSON.parse(q);if(q.length>16000||!known||Array.isArray(known)||typeof known!=="object"||Object.values(known).some(v=>typeof v!=="string"||!/^([0-9a-f]{40})$/.test(v)))throw Error();}catch{return reject(400,"SYNC_VERSIONS_INVALID");}
+      const record=(key:string,r:CloudRecord<unknown>)=>known[key]===r.sha?{unchanged:true,sha:r.sha,planId:key.startsWith("plan:")?key.slice(5):undefined}:r;
+      // Authorize every request against the current actor profile; caches never authorize access.
+      const profile=own?actor.profile:await this.profile(mail);
+      const result:Record<string,unknown>={profile:record("profile",{data:clean(profile.data),sha:profile.sha})};
+      if(section==="administration")return respond(result);
+      if(section==="techniques"){
+        const metadata=await this.cloud.list?.(root(mail));
+        const get=async(key:string,file:string)=>{
+          const info=metadata?.find(f=>f.name===file&&f.type==="file");
+          if(info?.sha&&known[key]===info.sha)return {unchanged:true,sha:info.sha};
+          const value=await this.cloud.read(`${root(mail)}/${file}`);if(!value)return reject(409,"REGISTRATION_INCOMPLETE");return record(key,value);
+        };
+        const [techniques,comments]=await Promise.all([get("techniques","tecnics.json"),get("comments","trainer_comments.json")]);
+        return respond({...result,techniques,comments});
+      }
+      const planId=url.searchParams.get("planId");
+      if(planId&&!/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(planId))return reject(400,"PLAN_ID_INVALID");
+      const [catalog,listed]=await Promise.all([this.cloud.read<Catalog>("PGT/master_data/plans.json"),this.cloud.list?.(`${root(mail)}/training_plans`)]);
+      const deleted=new Set(catalog?.data.deletedPlanIds||[]);
+      const files=(listed||[]).filter(f=>f.type==="file"&&/^plan_[0-9a-f-]{36}\.json$/.test(f.name)&&!deleted.has(f.name.slice(5,-5)));
+      result.planSummaries=files.map(file=>{const id=file.name.slice(5,-5);return {planId:id,fecha_torneo:catalog?.data.plans.find(p=>p.planId===id)?.fecha_torneo};});
+      result.plans=[];
+      if(!planId)return respond(result);
+      if(!files.some(f=>f.name===`plan_${planId}.json`))return reject(404,"PLAN_NOT_FOUND");
+      const loaded=await this.updatePlanTexts(mail,planId);
+      const refreshed=(await this.cloud.list?.(`${root(mail)}/training_plans`))||[];
+      const file=refreshed.find(f=>f.name===`plan_${planId}.json`);
+      if(!file)return reject(404,"PLAN_NOT_FOUND");
+      const key="plan:"+planId;
+      if(file.sha&&known[key]===file.sha)result.plans=[{unchanged:true,sha:file.sha,planId}];
+      else {
+        const reused=loaded.get(file.name);
+        const p=reused&&(!file.sha||reused.sha===file.sha)?reused:await this.cloud.read<TrainingPlan>(`${root(mail)}/training_plans/${file.name}`);
+        if(!p||p.data.mail!==mail)return reject(409,"PLAN_IDENTITY_INVALID");
+        result.plans=[record(key,p)];
+      }
+      return respond(result);
+    }
     if (request.method === "GET" && kind === "snapshot") {
       let known: Record<string, string> = {};
       const q = url.searchParams.get("known");
@@ -481,7 +558,8 @@ export class AppApi {
         }
       }
       await this.reconcile(mail);
-      await this.updatePlanTexts(mail);
+      const planIssues:PlanIssue[]=[];
+      await this.updatePlanTexts(mail,undefined,planIssues);
       const profile = own ? actor.profile : await this.profile(mail),
         catalog = await this.cloud.read<Catalog>("PGT/master_data/plans.json");
       const record = (key: string, r: CloudRecord<unknown>) =>
@@ -532,44 +610,8 @@ export class AppApi {
         ) || []) {
           const id = competition.planId;
           if (received.has(id)) continue;
-          const t =
-            "data" in techniques
-              ? techniques.data
-              : (
-                  await this.cloud.read<Techniques>(
-                    `${root(mail)}/tecnics.json`,
-                  )
-                )?.data;
-          const notes =
-            "data" in comments
-              ? comments.data
-              : (
-                  await this.cloud.read<Comments>(
-                    `${root(mail)}/trainer_comments.json`,
-                  )
-                )?.data;
-          if (!t || !notes) return reject(409, "REGISTRATION_INCOMPLETE");
-          const plan = generatePlan(
-            competition,
-            mail,
-            t as unknown as Techniques,
-            notes as unknown as Comments,
-            now(),
-          );
-          plan.appliedDescriptionUpdates = {
-            ...(t as Techniques).descriptionUpdates,
-          };
-          plan.appliedCommentUpdates = {
-            ...(notes as Comments).commentUpdates,
-          };
-          const path = `${root(mail)}/training_plans/plan_${id}.json`;
-          const existing = await this.cloud.read<TrainingPlan>(path);
-          plans.push(
-            existing || {
-              data: plan,
-              sha: await this.cloud.write(path, plan, null),
-            },
-          );
+          const created=await this.createMissingPlan(mail,competition,planIssues);
+          if(created)plans.push(created);
         }
       return respond({
         profile: record("profile", {
@@ -580,7 +622,8 @@ export class AppApi {
         comments,
         index,
         plans,
-        deletedPlanIds: catalog?.data.deletedPlanIds || [],
+        planIssues,
+        deletedPlanIds: [...new Set([...(catalog?.data.deletedPlanIds || []), ...((await this.cloud.read<Index>(`${root(mail)}/plans_index.json`))?.data.deletedPlanIds || [])])],
       });
     }
     if (request.method === "PUT" && kind === "profile") {
@@ -671,8 +714,10 @@ export class AppApi {
             notes.sha,
           );
       }
-      await this.updatePlanTexts(mail);
+      const planIssues:PlanIssue[]=[];
+      await this.updatePlanTexts(mail,undefined,planIssues);
       return respond({
+        planIssues,
         data: same ? old.data : next,
         sha,
         status: same ? "UNCHANGED_NO_COMMIT" : "WRITE_CONFIRMED",
@@ -705,6 +750,14 @@ export class AppApi {
           c.comment.length > MAX_TEXT_LENGTH
         )
           return reject(400, "COMMENT_INVALID");
+      // Authorship is assigned from the authenticated profile, never from payloads.
+      const previousComments = new Map((old?.data as unknown as Comments)?.comments.map(c => [c.techniqueId,c]) || []);
+      const trainerName = [actor.profile.data.nombre,actor.profile.data.apellidos].filter(Boolean).join(" ").trim();
+      notes.comments = notes.comments.map(c => {
+        const previous = previousComments.get(c.techniqueId);
+        const author = c.comment !== previous?.comment && c.comment.trim() ? trainerName : previous?.trainerName;
+        return {techniqueId:c.techniqueId,comment:c.comment,...(author ? {trainerName:author} : {})};
+      });
       const versions = updateTextVersions(
         (old?.data as unknown as Comments)?.commentUpdates,
         commentChanges(
@@ -726,8 +779,10 @@ export class AppApi {
       const sha = same
         ? old.sha
         : await this.cloud.write(path, notes, old?.sha || null);
-      await this.updatePlanTexts(mail);
+      const planIssues:PlanIssue[]=[];
+      await this.updatePlanTexts(mail,undefined,planIssues);
       return respond({
+        planIssues,
         data: same ? old.data : notes,
         sha,
         status: same ? "UNCHANGED_NO_COMMIT" : "WRITE_CONFIRMED",

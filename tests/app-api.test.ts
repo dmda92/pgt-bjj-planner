@@ -255,10 +255,15 @@ test("Competición: asignación, snapshot histórico protegido, comentarios, blo
     dias_de_entrenamiento: [2, 4],
     ejercicios_por_sesion: 3,
     tiempo_por_tecnica_segundos: 60,
-    descanso_entre_ciclos_segundos: 0,
-    descanso_entre_tecnicas_segundos: 0,
+    descanso_entre_ciclos_segundos: 1,
+    descanso_entre_tecnicas_segundos: 1,
     alumnos: ["student@example.com"],
   };
+  for(const field of ['descanso_entre_ciclos_segundos','descanso_entre_tecnicas_segundos']) {
+    const before=JSON.stringify([...f.files]);
+    assert.equal((await f.call('/api/app/competition','POST',{competition:{...competition,[field]:0},sha:null},trainer)).status,400);
+    assert.equal(JSON.stringify([...f.files]),before);
+  }
   assert.equal(
     (
       await f.call(
@@ -384,7 +389,8 @@ test("Competición: asignación, snapshot histórico protegido, comentarios, blo
     await f.call(path + "snapshot", "GET", undefined, student)
   ).json()) as any;
   assert.equal(snapshot.index.data.planIds.length, 0);
-  assert.equal(snapshot.plans.length, 1);
+  assert.equal(snapshot.plans.length, 0);
+  assert.ok(snapshot.deletedPlanIds.includes(id));
   catalog = (await (
     await f.call("/api/app/catalog", "GET", undefined, trainer)
   ).json()) as any;
@@ -551,13 +557,15 @@ test("Guardado sin cambios confirma SHA sin crear otro commit", async () => {
   f.reads.clear();const known={profile:snap.profile.sha,techniques:snap.techniques.sha,comments:snap.comments.sha,index:snap.index.sha};const incremental=await (await f.call(path+'snapshot?known='+encodeURIComponent(JSON.stringify(known)),'GET',undefined,auth.token)).json() as any;assert.equal(incremental.techniques.unchanged,true);assert.equal(f.reads.get('PGT/users_data/same@example.com/tecnics.json')||0,0);assert.equal(f.reads.get('PGT/users_data/same@example.com/trainer_comments.json')||0,0);
 });
 
-test("Entrenador puede participar, recibir su propio plan y ser desasignado sin perderlo", async () => {
+test("Entrenador puede participar, recibir su propio plan y borrarse al desasignar y regenerarse al reasignar", async () => {
   const f = fixture();
   const mail = "competing-trainer@example.com";
   await f.call("/api/app/register", "POST", { mail, password: "synthetic-test-password", confirm: "synthetic-test-password", nombre: "Coach", apellidos: "" });
+  const other='other-competitor@example.com';
+  const otherAuth=await (await f.call('/api/app/register','POST',{mail:other,password:'synthetic-test-password',confirm:'synthetic-test-password',nombre:'Other',apellidos:''})).json() as any;
   f.promote(mail);
   const { token } = await (await f.call("/api/app/login", "POST", { mail, password: "synthetic-test-password" })).json() as any;
-  const competition = { fecha_comienzo: "2026-10-13", fecha_torneo: "2026-10-23", dias_de_entrenamiento: [2,4], ejercicios_por_sesion: 5, tiempo_por_tecnica_segundos: 180, descanso_entre_ciclos_segundos: 10, descanso_entre_tecnicas_segundos: 20, alumnos: [mail] };
+  const competition = { fecha_comienzo: "2026-10-13", fecha_torneo: "2026-10-23", dias_de_entrenamiento: [2,4], ejercicios_por_sesion: 5, tiempo_por_tecnica_segundos: 180, descanso_entre_ciclos_segundos: 10, descanso_entre_tecnicas_segundos: 20, alumnos: [mail,other] };
   assert.equal((await f.call("/api/app/competition", "POST", { competition, sha: null }, token)).status, 200);
   const path = `/api/app/users/${encodeURIComponent(mail)}/snapshot`;
   const snapshot = await (await f.call(path, "GET", undefined, token)).json() as any;
@@ -567,13 +575,25 @@ test("Entrenador puede participar, recibir su propio plan y ser desasignado sin 
   assert.equal((await f.call(path.replace("snapshot", "plan"), "PUT", { data: snapshot.plans[0].data, sha: snapshot.plans[0].sha }, token)).status, 403);
   assert.ok(snapshot.plans[0].data.sessions.every((s: any) => s.exercises.length === 5));
   const catalog = await (await f.call("/api/app/catalog", "GET", undefined, token)).json() as any;
-  assert.equal((await f.call("/api/app/assignment", "POST", { planId: catalog.data.plans[0].planId, alumnos: [], sha: catalog.sha }, token)).status, 200);
+  assert.equal((await f.call("/api/app/assignment", "POST", { planId: catalog.data.plans[0].planId, alumnos: [other], sha: catalog.sha }, token)).status, 200);
+  const otherPath=`/api/app/users/${other}/snapshot`;
+  const otherSnapshot=await (await f.call(otherPath,'GET',undefined,otherAuth.token)).json() as any;
+  assert.equal(otherSnapshot.plans.length,1);
+  assert.deepEqual(otherSnapshot.deletedPlanIds,[]);
   const detached = await (await f.call(path, "GET", undefined, token)).json() as any;
   assert.deepEqual(detached.index.data.planIds, []);
-  assert.deepEqual(detached.plans[0].data, snapshot.plans[0].data);
+  assert.equal(detached.plans.length,0);
+  assert.ok(detached.deletedPlanIds.includes(snapshot.plans[0].data.planId));
+  assert.equal(f.files.has(`PGT/users_data/${mail}/training_plans/plan_${snapshot.plans[0].data.planId}.json`),false);
+  const repeated=await (await f.call(path,'GET',undefined,token)).json() as any;
+  assert.deepEqual(repeated.deletedPlanIds,detached.deletedPlanIds);
+  assert.equal(repeated.plans.length,0);
   const latest = await (await f.call("/api/app/catalog", "GET", undefined, token)).json() as any;
-  assert.equal((await f.call("/api/app/assignment", "POST", { planId: latest.data.plans[0].planId, alumnos: [mail], sha: latest.sha }, token)).status, 200);
-  assert.equal((await (await f.call(path, "GET", undefined, token)).json() as any).index.data.planIds.length, 1);
+  assert.equal((await f.call("/api/app/assignment", "POST", { planId: latest.data.plans[0].planId, alumnos: [mail,other], sha: latest.sha }, token)).status, 200);
+  const reassigned=await (await f.call(path,'GET',undefined,token)).json() as any;
+  assert.equal(reassigned.index.data.planIds.length,1);
+  assert.equal(reassigned.plans.length,1);
+  assert.equal(reassigned.deletedPlanIds.includes(snapshot.plans[0].data.planId),false);
 });
 
 
@@ -609,4 +629,81 @@ test('Large tecnics request persists and restores identical descriptions across 
  const restored=await (await f.call(path+'snapshot','GET',undefined,auth.token)).json() as any;
  assert.deepEqual(restored.techniques.data.positions,techniques.positions);
  console.log(`Fixture tecnics.json: ${bytes} bytes UTF-8 antes de metadatos servidor`);
+});
+
+test('Training day authorizes trainers, reuses SHA indexes, rebuilds changed sources and removes derived files with assignment',async()=>{
+ const f=fixture(),mail='day-pupil@example.com',trainer='day-trainer@example.com';
+ const register=async(mail:string)=>(await(await f.call('/api/app/register','POST',{mail,password:'synthetic-test-password',confirm:'synthetic-test-password',nombre:mail,apellidos:''})).json()) as any;
+ const pupil=await register(mail),teacher=await register(trainer);f.promote(trainer);
+ assert.equal((await f.call('/api/app/training-day','GET')).status,401);
+ assert.equal((await f.call('/api/app/training-day','GET',undefined,pupil.token)).status,403);
+ assert.equal((await f.call('/api/app/training-day?date=2026-02-30','GET',undefined,teacher.token)).status,400);
+ const id=crypto.randomUUID(),path=`PGT/users_data/${mail}/training_plans/plan_${id}.json`,derived=`PGT/users_data/${mail}/training_plans/structure_${id}.json`,catalog='PGT/master_data/plans.json';
+ const source={schemaVersion:1,revision:1,updatedAt:new Date().toISOString(),planId:id,mail,fecha_comienzo:'2099-01-01',fecha_torneo:'2099-02-01',alumnos:[mail],dias_de_entrenamiento:[1],ejercicios_por_sesion:1,tiempo_por_tecnica_segundos:180,descanso_entre_ciclos_segundos:10,descanso_entre_tecnicas_segundos:20,generatedAt:new Date().toISOString(),sessions:[{date:'2099-01-05',exercises:[{positionId:crypto.randomUUID(),techniqueId:crypto.randomUUID(),posicion:'Cerrada',prioridad:1,tipo:'Sumisión',descripcion_del_alumno:'privado'.repeat(10000),comment:'privado',pass:1,positionComplete:true}]}]};
+ f.files.set(path,{data:source,sha:'a'.repeat(40)});f.files.set(catalog,{data:{schemaVersion:1,revision:1,updatedAt:new Date().toISOString(),deletedPlanIds:[],plans:[source]},sha:'b'.repeat(40)});
+ const before=JSON.stringify(f.files.get(path));let r=await f.call('/api/app/training-day','GET',undefined,teacher.token);assert.equal(r.status,200);const report=await r.json() as any;
+ assert.equal(report.date,'2099-01-05');assert.equal(report.groups[0].students.length,1);assert.equal(JSON.stringify(report).includes('privado'),false);assert.ok(f.files.has(derived));assert.ok(JSON.stringify(f.files.get(derived)).length<JSON.stringify(source).length/20);console.log('Training-day synthetic bytes:',{source:JSON.stringify(source).length,index:JSON.stringify(f.files.get(derived)).length});assert.equal(JSON.stringify(f.files.get(path)),before);
+ f.reads.clear();r=await f.call('/api/app/training-day?date=2099-01-05','GET',undefined,teacher.token);assert.equal(r.status,200);assert.equal(f.reads.get(path)||0,0,'warm date must not read full plan');
+ const changed=structuredClone(source);changed.sessions[0].exercises[0].tipo='Raspada';f.files.set(path,{data:changed,sha:'c'.repeat(40)});
+ r=await f.call('/api/app/training-day?date=2099-01-05','GET',undefined,teacher.token);assert.equal((await r.json() as any).groups[0].exercises[0][1],'Raspada');assert.equal((f.files.get(derived)!.data as any).sourceSha,'c'.repeat(40));
+ f.files.set(catalog,{data:{schemaVersion:1,revision:2,updatedAt:new Date().toISOString(),deletedPlanIds:[],plans:[{...source,alumnos:[]}]},sha:'d'.repeat(40)});
+ r=await f.call('/api/app/training-day?date=2099-01-05','GET',undefined,teacher.token);assert.deepEqual((await r.json() as any).groups,[]);
+ assert.equal((await f.call(`/api/app/users/${mail}/snapshot`,'GET',undefined,pupil.token)).status,200);assert.equal(f.files.has(path),false);assert.equal(f.files.has(derived),false);
+ f.files.set(catalog,{data:{schemaVersion:1,revision:3,updatedAt:new Date().toISOString(),deletedPlanIds:[],plans:[source]},sha:'e'.repeat(40)});f.files.delete(`PGT/users_data/${mail}/user_data.json`);
+ const missing=await f.call('/api/app/training-day?date=2099-01-05','GET',undefined,teacher.token);assert.equal((await missing.json() as any).missing,1);
+});
+
+
+test("Comment author comes from authenticated trainer; unchanged comments retain author and legacy stays unknown",async()=>{
+ const f=fixture(), password="synthetic-author-password";
+ const tokens=new Map<string,string>();
+ for(const [mail,nombre,apellidos] of [["author-a@example.com","Ana","García"],["author-b@example.com","Bea","Pérez"],["author-pupil@example.com","Alumno",""]]) {
+  const r=await f.call("/api/app/register","POST",{mail,password,confirm:password,nombre,apellidos});assert.equal(r.status,201);tokens.set(mail,((await r.json()) as any).token);
+ }
+ f.promote("author-a@example.com");f.promote("author-b@example.com");
+ const base="/api/app/users/author-pupil@example.com/";
+ const snapshot=await (await f.call(base+"snapshot","GET",undefined,tokens.get("author-pupil@example.com"))).json() as any;
+ const [first,second]=snapshot.techniques.data.positions[0].tecnicas;
+ const path="PGT/users_data/author-pupil@example.com/trainer_comments.json";
+ // Pre-existing comments carry no author. No attribution may be guessed on a no-op.
+ (f.files.get(path)!.data as any).comments=[{techniqueId:first.id,comment:"Legado"}];
+ async function save(mail:string,comments:any[]) {
+  const old=f.files.get(path)!;
+  const r=await f.call(base+"comments","PUT",{sha:old.sha,data:{...structuredClone(old.data as any),comments}},tokens.get(mail));assert.equal(r.status,200);return await r.json() as any;
+ }
+ let result=await save("author-a@example.com",[{techniqueId:first.id,comment:"Legado",trainerName:"Falso"}]);
+ assert.equal(result.status,"UNCHANGED_NO_COMMIT");assert.equal(result.data.comments[0].trainerName,undefined);
+ result=await save("author-a@example.com",[{techniqueId:first.id,comment:"Revisa agarre",trainerName:"Falso"}]);
+ assert.equal(result.data.comments[0].trainerName,"Ana García");
+ const version=result.data.commentUpdates[first.id];
+ result=await save("author-b@example.com",[{techniqueId:first.id,comment:"Revisa agarre",trainerName:"Bea falsa"},{techniqueId:second.id,comment:"Gira cadera"}]);
+ assert.equal(result.data.comments[0].trainerName,"Ana García");assert.equal(result.data.comments[1].trainerName,"Bea Pérez");assert.equal(result.data.commentUpdates[first.id],version);
+ result=await save("author-b@example.com",[{techniqueId:first.id,comment:"Nuevo agarre"},{techniqueId:second.id,comment:"Gira cadera"}]);
+ assert.equal(result.data.comments[0].trainerName,"Bea Pérez");
+ const own=await f.call(base+"comments","PUT",{sha:result.sha,data:result.data},tokens.get("author-pupil@example.com"));assert.equal(own.status,403);
+});
+
+
+test("New participants appear in daily training without pupil login; repair missing plans preserves existing snapshots",async()=>{
+ const f=fixture(),password="synthetic-assignment-password";const tokens=new Map<string,string>();
+ for(const mail of ["daily-trainer@example.com","daily-a@example.com","daily-b@example.com"]){const r=await f.call("/api/app/register","POST",{mail,password,confirm:password,nombre:mail,apellidos:""});assert.equal(r.status,201);tokens.set(mail,((await r.json()) as any).token);}
+ f.promote("daily-trainer@example.com");const trainer=tokens.get("daily-trainer@example.com");
+ const c={fecha_comienzo:"2099-01-01",fecha_torneo:"2099-01-30",alumnos:["daily-a@example.com"],dias_de_entrenamiento:[1,2,3,4,5,6,7],ejercicios_por_sesion:2,tiempo_por_tecnica_segundos:180,descanso_entre_ciclos_segundos:10,descanso_entre_tecnicas_segundos:20};
+ assert.equal((await f.call("/api/app/competition","POST",{competition:c,sha:null},trainer)).status,200);
+ let catalog=await (await f.call("/api/app/catalog","GET",undefined,trainer)).json() as any;const id=catalog.data.plans[0].planId;
+ const path=(mail:string)=>`PGT/users_data/${mail}/training_plans/plan_${id}.json`;
+ assert.ok(f.files.has(path("daily-a@example.com")));
+ const original=structuredClone(f.files.get(path("daily-a@example.com")));
+ assert.equal((await f.call("/api/app/assignment","POST",{planId:id,alumnos:[...c.alumnos,"daily-b@example.com"],sha:catalog.sha},trainer)).status,200);
+ assert.ok(f.files.has(path("daily-b@example.com")));assert.deepEqual(f.files.get(path("daily-a@example.com")),original);
+ const endpoint="/api/app/training-day?date=2099-01-05";
+ let report=await (await f.call(endpoint,"POST",{},trainer)).json() as any;assert.equal(new Set(report.groups.flatMap((g:any)=>g.students.map((s:any)=>s.mail))).size,2);
+ f.files.delete(path("daily-b@example.com"));
+ assert.equal((await f.call(endpoint,"POST",{},tokens.get("daily-a@example.com"))).status,403);
+ assert.equal((await (await f.call(endpoint,"GET",undefined,trainer)).json() as any).missing,1,"GET stays read-only");
+ report=await (await f.call(endpoint,"POST",{},trainer)).json() as any;assert.equal(report.missing,0);assert.ok(f.files.has(path("daily-b@example.com")));assert.deepEqual(f.files.get(path("daily-a@example.com")),original);
+ const stable=JSON.stringify([...f.files]);await f.call(endpoint,"POST",{},trainer);assert.equal(JSON.stringify([...f.files]),stable);
+ // Empty catalogue is recoverable and never becomes a fake empty plan.
+ f.files.delete(path("daily-b@example.com"));(f.files.get("PGT/users_data/daily-b@example.com/tecnics.json")!.data as any).positions=[];
+ report=await (await f.call(endpoint,"POST",{},trainer)).json() as any;assert.equal(report.missing,1);assert.equal(f.files.has(path("daily-b@example.com")),false);
 });

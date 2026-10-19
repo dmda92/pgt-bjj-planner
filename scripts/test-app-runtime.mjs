@@ -250,7 +250,7 @@ try {
     trainer.token,
   );
   snap = await call(bp + "snapshot", "GET", undefined, b.token);
-  assert.equal(snap.plans.length, 1);
+  assert.equal(snap.plans.length, 0);
   assert.deepEqual(snap.index.data.planIds, []);
   catalog = await call("/api/app/catalog", "GET", undefined, trainer.token);
   await call(

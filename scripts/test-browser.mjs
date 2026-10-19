@@ -1,3 +1,4 @@
+import {openAllPositions} from './repertoire-helpers.mjs';
 import { madridDate } from "../src/domain/plan-text-updates.ts";
 import { template } from "../tests/template-fixture.ts";
 import assert from "node:assert/strict";
@@ -137,6 +138,15 @@ async function login(mail) {
   await page
     .getByLabel("Contraseña", { exact: true })
     .fill("synthetic-browser-password");
+  const passwordInput=page.getByLabel('Contraseña',{exact:true});
+  const originalValue=await passwordInput.inputValue();
+  assert.equal(await passwordInput.getAttribute('type'),'password');
+  await page.getByRole('button',{name:'Mostrar contraseña',exact:true}).click();
+  assert.equal(await passwordInput.getAttribute('type'),'text');
+  assert.equal(await passwordInput.inputValue(),originalValue);
+  await page.getByRole('button',{name:'Ocultar contraseña',exact:true}).click();
+  assert.equal(await passwordInput.getAttribute('type'),'password');
+  assert.equal(await passwordInput.inputValue(),originalValue);
   await page.getByRole("button", { name: "Entrar", exact: true }).click();
 }
 async function register(mail, name) {
@@ -153,13 +163,13 @@ async function register(mail, name) {
   await page
     .getByRole("button", { name: "Crear cuenta de alumno", exact: true })
     .click();
-  await visible(page.getByRole("heading", { name: "Tu repertorio" }));
+  await visible(page.getByRole("heading", { name: "Tu repertorio" }));await openAllPositions(page);
 }
 async function sync(p = page) {
   await p.getByRole("button", { name: "Sincronizar", exact: true }).click();
   await p
     .getByRole("status")
-    .filter({ hasText: /^Sincronizado$/ })
+    .filter({ hasText: /^(Sincronizado|Cambios en el perfil sin guardar)$/ })
     .waitFor({ timeout: 15000 });
 }
 try {
@@ -213,7 +223,8 @@ try {
     .getByLabel("Contraseña", { exact: true })
     .fill("synthetic-browser-password");
   await other.getByRole("button", { name: "Entrar", exact: true }).click();
-  await visible(other.getByRole("heading", { name: "Tu repertorio" }));
+  await visible(other.getByRole("heading", { name: "Tu repertorio" }));await openAllPositions(other);
+  assert.equal(await page.locator('.sync-success').count(),1);
   await context.setOffline(true);
   await page
     .getByLabel("Descripción de técnica o enlace de vídeo")
@@ -265,7 +276,7 @@ try {
     await navigator.serviceWorker.ready;
   });
   await page.reload();
-  await visible(page.getByRole("heading", { name: "Tu repertorio" }));
+  await visible(page.getByRole("heading", { name: "Tu repertorio" }));await openAllPositions(page);
   await context.setOffline(true);
   await page
     .getByLabel("Descripción de técnica o enlace de vídeo")
@@ -290,8 +301,10 @@ try {
         };
       }),
   );
+  assert.equal(await page.locator('.sync-success').count(),0);
+  assert.match(await page.locator('.sync [role="status"]').innerText(),/pendientes|Sin conexión/);
   await page.reload();
-  await visible(page.getByRole("heading", { name: "Tu repertorio" }));
+  await visible(page.getByRole("heading", { name: "Tu repertorio" }));await openAllPositions(page);
   assert.equal(
     await page
       .getByLabel("Descripción de técnica o enlace de vídeo")
@@ -308,7 +321,7 @@ try {
   assert.equal(await page.locator(".position").count(), 0);
   failSnapshots = false;
   await login("browser-student@example.com");
-  await visible(page.getByRole("heading", { name: "Tu repertorio" }));
+  await visible(page.getByRole("heading", { name: "Tu repertorio" }));await openAllPositions(page);
   await sync();
   await page.getByRole("button", { name: "Salir", exact: true }).click();
   await visible(page.getByRole("button", { name: "Entrar", exact: true }));
@@ -326,7 +339,7 @@ try {
   );
   failSnapshots = false;
   await login("browser-trainer@example.com");
-  await visible(page.getByRole("heading", { name: "Tu repertorio" }));
+  await visible(page.getByRole("heading", { name: "Tu repertorio" }));await openAllPositions(page);
   assert.equal(
     await page
       .getByLabel("Descripción de técnica o enlace de vídeo")
@@ -367,7 +380,7 @@ try {
   await page.getByLabel("Buscar alumnos", { exact: true }).fill("student");
   let releaseStudent;
   const studentGate = new Promise(resolve => { releaseStudent=resolve; });
-  const studentRoute='**/api/app/users/browser-student%40example.com/snapshot';
+  const studentRoute='**/api/app/users/browser-student%40example.com/view?*';
   const delayedStudent=async route=>{await studentGate;await route.continue();};
   await page.route(studentRoute,delayedStudent);
   await page.getByRole("button", { name: /Student Fixture/ }).click();
@@ -382,6 +395,20 @@ try {
   );
   assert.equal(await page.locator(".student-selected").count(), 1);
   await page.unroute(studentRoute,delayedStudent);
+  let releaseRefresh;const refreshGate=new Promise(resolve=>{releaseRefresh=resolve;});
+  const slowRefresh=async route=>{await refreshGate;await route.continue();};
+  await page.route(studentRoute,slowRefresh);
+  const warmStart=Date.now();await page.getByRole('button',{name:/Student Fixture/}).click();
+  await visible(page.getByRole('heading',{name:'Student Fixture',exact:true}));
+  const warmRenderMs=Date.now()-warmStart;
+  await visible(page.getByRole('status',{name:'Actualizando ficha'}));
+  assert.equal(await page.getByRole('status',{name:'Cargando alumno'}).count(),0);
+  releaseRefresh();await page.getByRole("status",{name:"Actualizando ficha"}).waitFor({state:"hidden"});await page.unroute(studentRoute,slowRefresh);await context.setOffline(true);
+  await page.getByRole('button',{name:/Student Fixture/}).click();await visible(page.getByRole('heading',{name:'Student Fixture',exact:true}));
+  assert.equal(await page.getByRole('status',{name:'Cargando alumno'}).count(),0);
+  await context.setOffline(false);
+  console.log(`Trainer warm React view: ${warmRenderMs} ms while remote request retained; cached offline view OK.`);
+
   const studentPanel=page.locator('.student-detail');
   assert.equal(await studentPanel.getByRole('button',{name:'Técnicas',exact:true}).getAttribute('aria-pressed'),'true');
   assert.equal(await studentPanel.getByLabel('Rol',{exact:true}).count(),0);
@@ -392,6 +419,13 @@ try {
   await visible(studentPanel.getByLabel('Rol',{exact:true}));
   await visible(studentPanel.getByRole('heading',{name:'Restablecer contraseña del alumno',exact:true}));
   assert.equal(await studentPanel.locator('.plan-card').count(),0);
+  await studentPanel.getByLabel('Rol',{exact:true}).selectOption('entrenador');
+  await page.waitForFunction(()=>document.querySelector('select[aria-label="Rol"]')?.value==='entrenador'&&!document.querySelector('select[aria-label="Rol"]')?.disabled);
+  assert.equal(files.get('PGT/users_data/browser-student@example.com/user_data.json').data.perfil,'entrenador');
+  await studentPanel.getByLabel('Rol',{exact:true}).selectOption('alumno');
+  await page.waitForFunction(()=>document.querySelector('select[aria-label="Rol"]')?.value==='alumno'&&!document.querySelector('select[aria-label="Rol"]')?.disabled);
+  assert.equal(files.get('PGT/users_data/browser-student@example.com/user_data.json').data.perfil,'alumno');
+
   await page.getByRole('button',{name:/Student Fixture/}).click();
   await visible(studentPanel.getByLabel('Buscar posición del alumno'));
   assert.equal(await studentPanel.getByRole('button',{name:'Técnicas',exact:true}).getAttribute('aria-pressed'),'true');
@@ -409,6 +443,11 @@ try {
     "36",
   );
   await page.locator(".student-detail details summary").first().click();
+  const readonlyDescription=page.getByLabel('Descripción del alumno',{exact:true}).first();
+  assert.equal(await readonlyDescription.evaluate(el=>el.readOnly),true);
+  assert.equal(await readonlyDescription.inputValue(),'Edición offline');
+  await page.locator('.student-detail').screenshot({path:'.browser-artifacts/student-readonly-description.png'});
+
   await page
     .getByLabel("Comentario", { exact: true })
     .first()
@@ -464,9 +503,53 @@ try {
   await page
     .getByRole("button", { name: "Competiciones", exact: true })
     .click();
+  await page.getByRole("button",{name:"Nueva competición",exact:true}).click();
   await visible(page.getByRole("heading", { name: "Crear competición" }));
   await page.getByLabel("Fecha inicial", { exact: true }).fill("2026-10-13");
+  let createRequests=0;
+  page.on('request',request=>{if(new URL(request.url()).pathname==='/api/app/competition')createRequests++;});
+  const endDate=page.getByLabel('Fecha del torneo',{exact:true});
+  for(const invalidEnd of ['2026-10-13','2026-10-12','2030-10-23']) {
+    await endDate.fill(invalidEnd);
+    await page.locator('.competition-create').getByRole('button',{name:'Crear competición',exact:true}).click();
+    assert.equal(await endDate.getAttribute('aria-invalid'),'true');
+    assert.equal(await endDate.evaluate(el=>el.validity.valid),false);
+    assert.equal(createRequests,0);
+    await visible(page.locator('#competition-end-error'));
+  }
   await page.getByLabel("Fecha del torneo", { exact: true }).fill("2026-10-23");
+  assert.equal(await endDate.evaluate(el=>el.validity.valid),true);
+  assert.equal(await page.locator('#competition-end-error').count(),0);
+  for(const label of ['Cambio de roles (s)','Entre técnicas (s)']) {
+    const input=page.getByLabel(label,{exact:true});
+    await input.fill('0');
+    await page.locator('.competition-create').getByRole('button',{name:'Crear competición',exact:true}).click();
+    assert.equal(await input.evaluate(el=>el.validity.rangeUnderflow),true);
+    assert.equal(createRequests,0);
+    await input.fill('1');
+    assert.equal(await input.evaluate(el=>el.validity.valid),true);
+  }
+  await page.getByLabel('Cambio de roles (s)',{exact:true}).fill('10');
+  await page.getByLabel('Entre técnicas (s)',{exact:true}).fill('20');
+  const workTimer=page.getByLabel('Trabajo por alumno (min:seg)',{exact:true});
+  assert.equal(await workTimer.inputValue(),'3:00');
+  for(const invalid of ['0:00','3:60','60:01','180']) {
+    await workTimer.fill(invalid);
+    await page.locator('.competition-create').getByRole('button',{name:'Crear competición',exact:true}).click();
+    assert.equal(await workTimer.evaluate(el=>el.validity.valid),false);
+    assert.equal(createRequests,0);
+  }
+  await workTimer.fill('2:35');
+  assert.equal(await workTimer.evaluate(el=>el.validity.valid),true);
+  await workTimer.fill('3:00');
+  for(const box of await page.locator('input[name=day]').all())await box.uncheck();
+  await page.locator('.competition-create').getByRole('button',{name:'Crear competición',exact:true}).click();
+  await visible(page.getByText('Selecciona al menos un día de entrenamiento.',{exact:true}));
+  assert.equal(createRequests,0);
+  assert.equal(await page.locator('input[name=day]').first().evaluate(el=>el===document.activeElement),true);
+  await page.locator('input[name=day][value="2"]').check();
+  await page.locator('input[name=day][value="4"]').check();
+  assert.equal(await page.getByText('Selecciona al menos un día de entrenamiento.',{exact:true}).count(),0);
   assert.equal(await page.locator("input[name=student]").count(), 2);
   await page
     .locator('input[name=student][value="browser-student@example.com"]')
@@ -474,10 +557,80 @@ try {
   await page
     .locator('input[name=student][value="browser-trainer@example.com"]')
     .check();
+  let releaseCompetition;const competitionGate=new Promise(resolve=>{releaseCompetition=resolve;});
+  const competitionRoute='**/api/app/competition';
+  const delayedCompetition=async route=>{await competitionGate;await route.continue();};
+  await page.route(competitionRoute,delayedCompetition);
   await page
-    .getByRole("button", { name: "Crear competición con configuración fija" })
+    .locator(".competition-create")
+    .getByRole("button", { name: "Crear competición", exact: true })
     .click();
+  await visible(page.getByRole('status',{name:'Creando competición'}));
+  await page.locator('.competition-create').screenshot({path:'.browser-artifacts/competition-loading.png'});
+  assert.equal(await page.locator('.competition-create').getByRole('button',{name:'Crear competición',exact:true}).isDisabled(),true);
+  releaseCompetition();
   await visible(page.getByRole("heading", { name: "Torneo · 2026-10-23" }));
+  await page.getByRole('status',{name:'Creando competición'}).waitFor({state:'hidden'});
+  await page.unroute(competitionRoute,delayedCompetition);
+  assert.equal(files.get("PGT/master_data/plans.json").data.plans[0].tiempo_por_tecnica_segundos,180);
+
+  await sync(); // Download the trainer participant plan before removing its assignment.
+  // Draft selections are immediate; remote changes occur only on explicit save.
+  const card=page.locator('.competition-card').first();
+  const participant=card.getByRole('checkbox').first();
+  const saveParticipants=card.getByRole('button',{name:'Guardar datos',exact:true});
+  let assignmentRequests=0;
+  await page.route('**/api/app/assignment',async route=>{assignmentRequests++;await route.continue();});
+  assert.equal(await saveParticipants.isDisabled(),true);
+  await participant.click();
+  assert.equal(await participant.isChecked(),false);
+  assert.equal(await saveParticipants.isEnabled(),true);
+  assert.equal(assignmentRequests,0);
+  await participant.click();
+  assert.equal(await saveParticipants.isDisabled(),true);
+  await participant.click();
+  await saveParticipants.click();
+  await page.waitForFunction(() => [...document.querySelectorAll('.dashboard-overview dd')].at(-1)?.textContent === '1');
+  await saveParticipants.waitFor({state:'visible'});
+  assert.equal(await participant.isChecked(),false);
+  await page.waitForFunction(()=>document.querySelector('.competition-card button')?.disabled);
+  await sync();
+  const localPlanCount=await page.evaluate(async()=>{
+    const request=indexedDB.open('pgt-active-user-v1');
+    const database=await new Promise((resolve,reject)=>{request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});
+    const read=database.transaction('entries','readonly').objectStore('entries').getAll();
+    const entries=await new Promise((resolve,reject)=>{read.onsuccess=()=>resolve(read.result);read.onerror=()=>reject(read.error);});
+    database.close();return entries.filter(entry=>entry.key.startsWith('plan:')).length;
+  });
+  assert.equal(localPlanCount,0,'Desasignación elimina el plan previamente descargado tras sincronizar');
+
+  await participant.click();
+  assert.equal(await participant.isChecked(),true);
+  await saveParticipants.click();
+  await page.waitForFunction(() => [...document.querySelectorAll('.dashboard-overview dd')].at(-1)?.textContent === '2');
+  assert.equal(assignmentRequests,2);
+  // A second competition lets us verify deletion feedback without affecting later fixtures.
+  await page.getByRole('button',{name:'Nueva competición',exact:true}).click();
+  await page.getByLabel('Fecha inicial',{exact:true}).fill('2026-10-13');
+  await page.getByLabel('Fecha del torneo',{exact:true}).fill('2026-10-24');
+  await page.locator('.competition-create').getByRole('button',{name:'Crear competición',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelectorAll('.competition-card').length===2);
+  let releaseDelete;
+  const deleteGate=new Promise(resolve=>{releaseDelete=resolve;});
+  const deleteRoute='**/api/app/delete-competition';
+  const delayedDelete=async route=>{await deleteGate;await route.continue();};
+  await page.route(deleteRoute,delayedDelete);
+  const deletingCard=page.locator('.competition-card').last();
+  await deletingCard.getByRole('button',{name:'Borrar competición completa',exact:true}).click();
+  await visible(deletingCard.getByRole('status',{name:'Borrando competición'}));
+  assert.equal(await deletingCard.getByRole('button',{name:'Borrar competición completa',exact:true}).isDisabled(),true);
+  assert.equal(await deletingCard.getByRole('checkbox').first().isDisabled(),true);
+  await deletingCard.screenshot({path:'.browser-artifacts/competition-deleting.png'});
+  releaseDelete();
+  await page.waitForFunction(()=>document.querySelectorAll('.competition-card').length===1);
+  await page.unroute(deleteRoute,delayedDelete);
+
+
   assert.deepEqual(
     await page.locator(".dashboard-overview dd").allTextContents(),
     ["1", "1", "2"],
@@ -488,17 +641,29 @@ try {
   });
   await sync(); // trainer receives their own snapshot just like any competitor.
   await page.getByRole("button", { name: /Mis planes/ }).click();
-  await visible(page.getByRole("heading", { name: "Torneo · 2026-10-23" }));
-  assert.match(await page.locator(".timer").innerText(), /32:10/);
+  await page.getByLabel("Mi plan",{exact:true}).selectOption({index:1});
+  await visible(page.locator(".plan-card").getByRole("heading", { name: "Torneo · 2026-10-23" }));
+  assert.match(await page.locator(".plan-card .timer").innerText(), /32:10/);
   await page.getByRole("button", { name: "Entrenador", exact: true }).click();
+  await page.getByRole('button',{name:'Equipo',exact:true}).click();
+  await page.getByRole('button',{name:/Trainer Fixture/}).click();
+  await visible(page.locator('.student-detail').getByRole('button',{name:'Planes',exact:true}));
+  await page.locator('.student-detail').getByRole('button',{name:'Planes',exact:true}).click();
+  await visible(page.getByLabel('Plan del alumno',{exact:true}));
+  assert.equal(await page.locator('.student-detail .plan-card').count(),0);
+  const selectedPlan=await page.getByLabel('Plan del alumno',{exact:true}).locator('option').nth(1).getAttribute('value');
+  await page.getByLabel('Plan del alumno',{exact:true}).selectOption(selectedPlan);
+  await visible(page.locator('.student-detail .plan-card'));
+  assert.equal(await page.locator('.student-detail .plan-card').count(),1);
   await page
-    .getByRole("button", { name: "Cobertura por fecha", exact: true })
+    .getByRole("button", { name: "Cobertura por alumno", exact: true })
     .click();
   await page
     .getByLabel("Alumno para cobertura")
     .selectOption("browser-student@example.com");
-  await visible(page.getByText(/Este alumno no tiene planes generados/));
-  // Individual snapshots are created by the pupil's first sync, not by a trainer read.
+  await visible(page.locator('.coverage-overview'));
+  assert.equal(await page.getByText(/Este alumno no tiene planes generados/).count(),0);
+  // Assignment now prepares the initial snapshot before the pupil's first sync.
   const pupilDevice = await browser.newContext();
   const pupil = await pupilDevice.newPage();
   await pupil.goto(origin);
@@ -509,24 +674,16 @@ try {
     .getByLabel("Contraseña", { exact: true })
     .fill("synthetic-browser-password");
   await pupil.getByRole("button", { name: "Entrar", exact: true }).click();
-  await visible(pupil.getByRole("heading", { name: "Tu repertorio" }));
+  await visible(pupil.getByRole("heading", { name: "Tu repertorio" }));await openAllPositions(pupil);
   await pupilDevice.close();
   await page.getByLabel("Alumno para cobertura").selectOption("");
   await page
     .getByLabel("Alumno para cobertura")
     .selectOption("browser-student@example.com");
   await visible(page.locator(".coverage-overview"));
-  await page.getByLabel("Fecha de referencia").fill("2026-10-13");
-  assert.equal(
-    await page.locator(".coverage-overview dd").nth(1).innerText(),
-    "1",
-  );
-  await page.getByLabel("Incluir entrenamientos de ese día").uncheck();
-  assert.equal(
-    await page.locator(".coverage-overview dd").nth(1).innerText(),
-    "0",
-  );
-  await page.getByLabel("Incluir entrenamientos de ese día").check();
+  assert.equal(await page.getByLabel("Fecha de referencia").count(),0);
+  assert.equal(await page.getByLabel("Incluir entrenamientos de ese día").count(),0);
+  assert.ok(Number(await page.locator(".coverage-overview dd").nth(2).innerText())>0);
   for (const width of [360, 390, 768, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     assert.equal(
@@ -547,16 +704,17 @@ try {
   await page.getByRole("button", { name: "Salir", exact: true }).click();
   await visible(page.getByRole("button", { name: "Entrar", exact: true }));
   await login("browser-student@example.com");
-  await visible(page.getByRole("heading", { name: "Tu repertorio" }));
+  await visible(page.getByRole("heading", { name: "Tu repertorio" }));await openAllPositions(page);
   assert.equal(
     await page
-      .getByRole("button", { name: "Cobertura por fecha", exact: true })
+      .getByRole("button", { name: "Cobertura por alumno", exact: true })
       .count(),
     0,
   );
   await page.getByRole("button", { name: /Mis planes/ }).click();
-  await visible(page.getByRole("heading", { name: "Torneo · 2026-10-23" }));
-  assert.match(await page.locator(".timer").innerText(), /32:10/);
+  await page.getByLabel("Mi plan",{exact:true}).selectOption({index:1});
+  await visible(page.locator(".plan-card").getByRole("heading", { name: "Torneo · 2026-10-23" }));
+  assert.match(await page.locator(".plan-card .timer").innerText(), /32:10/);
   await context.setOffline(true);
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Exportar PDF" }).click();
@@ -685,7 +843,7 @@ try {
     .getByLabel("Contraseña", { exact: true })
     .fill("synthetic-browser-password");
   await mirror.getByRole("button", { name: "Entrar", exact: true }).click();
-  await visible(mirror.getByRole("heading", { name: "Tu repertorio" }));
+  await visible(mirror.getByRole("heading", { name: "Tu repertorio" }));await openAllPositions(mirror);
   // Future text projections are visible offline and converge on both devices after sync.
   const todayMadrid = madridDate();
   const savedPlan = structuredClone(planFile[1].data);
@@ -700,7 +858,7 @@ try {
     .data.positions.flatMap((p) => p.tecnicas)
     .findIndex((t) => t.id === futureId);
   await context.setOffline(true);
-  await page.getByRole("button", { name: "Mis técnicas", exact: true }).click();
+  await page.getByRole("button", { name: "Mis técnicas", exact: true }).click();await openAllPositions(page);
   await page
     .getByLabel("Descripción de técnica o enlace de vídeo")
     .nth(sourceIndex)
@@ -710,6 +868,7 @@ try {
     .filter({ hasText: /Cambios guardados/ })
     .waitFor();
   await page.getByRole("button", { name: /Mis planes/ }).click();
+  await page.getByLabel("Mi plan",{exact:true}).selectOption({index:1});
   await page.locator(".session summary").nth(futureSessionIndex).click();
   assert.equal(
     await page
@@ -735,6 +894,7 @@ try {
         if (e.techniqueId === futureId)
           assert.equal(e.descripcion_del_alumno, "Texto futuro offline");
   await mirror.getByRole("button", { name: /Mis planes/ }).click();
+  await mirror.getByLabel("Mi plan",{exact:true}).selectOption({index:1});
   await mirror.locator(".session summary").nth(futureSessionIndex).click();
   assert.equal(
     await mirror
@@ -775,7 +935,7 @@ try {
   await sync();
   await sync(mirror);
   await visible(
-    mirror.getByText("Entrenador: Comentario para el futuro", { exact: true }),
+    mirror.locator(".plan-card").getByText("Entrenador: Comentario para el futuro", { exact: true }),
   );
   assert.deepEqual(
     files.get(planFile[0]).data.sessions.filter((s) => s.date <= todayMadrid),
@@ -789,7 +949,7 @@ try {
   await page.getByRole("button", { name: "Perfil", exact: true }).click();
   const weight = page.getByLabel("Peso (kg)");
   await weight.fill("-5");
-  assert.equal(await weight.evaluate(el => el.validity.rangeUnderflow), true);
+  assert.equal(await weight.evaluate(el => el.validity.customError), true);
   await page.getByRole("button", {name: "Guardar en este dispositivo"}).click();
   assert.equal(await weight.evaluate(el => el.validity.valid), false);
   await weight.fill("");
@@ -867,13 +1027,13 @@ try {
   await profileDevice.close();
   const second = await context.newPage();
   await second.goto(origin);
-  await visible(second.getByRole("heading", { name: "Tu repertorio" }));
+  await visible(second.getByRole("heading", { name: "Tu repertorio" }));await openAllPositions(second);
   await page.getByRole("button", { name: "Salir", exact: true }).click();
   await visible(second.getByRole("button", { name: "Entrar", exact: true }));
   assert.equal(await second.locator(".position").count(), 0);
   await second.close();
   await login("browser-student@example.com");
-  await visible(page.getByRole("heading", { name: "Tu repertorio" }));
+  await visible(page.getByRole("heading", { name: "Tu repertorio" }));await openAllPositions(page);
   await page.getByRole("button", { name: "Perfil", exact: true }).click();
   await page
     .getByLabel("Contraseña nueva", { exact: true })
@@ -891,7 +1051,7 @@ try {
     .getByLabel("Contraseña", { exact: true })
     .fill("synthetic-new-browser-password");
   await page.getByRole("button", { name: "Entrar", exact: true }).click();
-  await visible(page.getByRole("heading", { name: "Tu repertorio" }));
+  await visible(page.getByRole("heading", { name: "Tu repertorio" }));await openAllPositions(page);
   assert.equal(
     await page
       .getByLabel("Descripción de técnica o enlace de vídeo")
@@ -921,7 +1081,7 @@ try {
   await largePage.getByLabel('Contraseña',{exact:true}).fill('synthetic-browser-password');
   await largePage.getByLabel('Repetir contraseña',{exact:true}).fill('synthetic-browser-password');
   await largePage.getByRole('button',{name:'Crear cuenta de alumno',exact:true}).click();
-  await visible(largePage.getByRole('heading',{name:'Tu repertorio'}));
+  await visible(largePage.getByRole('heading',{name:'Tu repertorio'}));await openAllPositions(largePage);
   const longText=('Ángulo 日本語 🙂 https://video.example/watch?v=é&x=1\n').repeat(400);
   for(let i=0;i<9;i++) await largePage.getByLabel('Descripción de técnica o enlace de vídeo').nth(i).fill(`${i}: ${longText}`);
   let rejected=false;
@@ -940,18 +1100,18 @@ try {
   await largePage.getByRole('button',{name:'Sincronizar',exact:true}).click();
   await largePage.getByRole('status').filter({hasText:/^Sincronizado$/}).waitFor();
   await largePage.reload();
-  await visible(largePage.getByRole('heading',{name:'Tu repertorio'}));
+  await visible(largePage.getByRole('heading',{name:'Tu repertorio'}));await openAllPositions(largePage);
   for(let i=0;i<9;i++)assert.equal(await largePage.getByLabel('Descripción de técnica o enlace de vídeo').nth(i).inputValue(),`${i}: ${longText}`);
   const restoredContext=await browser.newContext();const restoredPage=await restoredContext.newPage();
   await restoredPage.goto(origin);
   await restoredPage.getByLabel('Correo',{exact:true}).fill('browser-large@example.com');
   await restoredPage.getByLabel('Contraseña',{exact:true}).fill('synthetic-browser-password');
   await restoredPage.getByRole('button',{name:'Entrar',exact:true}).click();
-  await visible(restoredPage.getByRole('heading',{name:'Tu repertorio'}));
+  await visible(restoredPage.getByRole('heading',{name:'Tu repertorio'}));await openAllPositions(restoredPage);
   for(let i=0;i<9;i++)assert.equal(await restoredPage.getByLabel('Descripción de técnica o enlace de vídeo').nth(i).inputValue(),`${i}: ${longText}`);
   await restoredContext.close();await largeContext.close();
   // Deletions recalculate locally while offline; reload and a second device retain the same suffix.
-  await page.getByRole('button',{name:'Mis técnicas',exact:true}).click();
+  await page.getByRole('button',{name:'Mis técnicas',exact:true}).click();await openAllPositions(page);
   const deletionBefore=structuredClone(files.get(planFile[0]).data);
   const techBefore=structuredClone(files.get('PGT/users_data/browser-student@example.com/tecnics.json').data);
   const deletedId=techBefore.positions[0].tecnicas[0].id;
@@ -967,7 +1127,7 @@ try {
   assert.deepEqual(localPlan.sessions.filter(s=>s.date<=todayMadrid),deletionBefore.sessions.filter(s=>s.date<=todayMadrid));
   assert.ok(localPlan.sessions.filter(s=>s.date>todayMadrid).every(s=>s.exercises.length===deletionBefore.ejercicios_por_sesion&&s.exercises.every(e=>e.techniqueId!==deletedId)));
   assert.deepEqual(files.get(planFile[0]).data,deletionBefore);
-  await page.reload();await visible(page.getByRole('heading',{name:'Tu repertorio'}));
+  await page.reload();await visible(page.getByRole('heading',{name:'Tu repertorio'}));await openAllPositions(page);
   await context.setOffline(false);await sync();
   const deletedRemote=structuredClone(files.get(planFile[0]).data);
   assert.deepEqual(deletedRemote.sessions,localPlan.sessions);
@@ -975,7 +1135,7 @@ try {
   await deletionMirror.goto(origin);
   await deletionMirror.getByLabel('Correo',{exact:true}).fill('browser-student@example.com');
   await deletionMirror.getByLabel('Contraseña',{exact:true}).fill('synthetic-new-browser-password');
-  await deletionMirror.getByRole('button',{name:'Entrar',exact:true}).click();await visible(deletionMirror.getByRole('heading',{name:'Tu repertorio'}));
+  await deletionMirror.getByRole('button',{name:'Entrar',exact:true}).click();await visible(deletionMirror.getByRole('heading',{name:'Tu repertorio'}));await openAllPositions(deletionMirror);
   assert.equal(await deletionMirror.getByRole('button',{name:'Borrar técnica',exact:true}).count(),techBefore.positions.flatMap(p=>p.tecnicas).length-1);
   await sync(deletionMirror);assert.deepEqual(files.get(planFile[0]).data,deletedRemote);
   const mirroredPlan=await deletionMirror.evaluate(async id=>{
@@ -986,7 +1146,7 @@ try {
   assert.deepEqual(mirroredPlan.sessions,deletedRemote.sessions);
   await deletionDevice.close();
   // Empty catalogue: preserve the previous plan, show a recoverable warning, never report complete sync.
-  await page.getByRole('button',{name:'Mis técnicas',exact:true}).click();
+  await page.getByRole('button',{name:'Mis técnicas',exact:true}).click();await openAllPositions(page);
   for(let count=await page.getByRole('button',{name:'Eliminar posición',exact:true}).count();count>0;count--){
     await page.getByRole('button',{name:'Eliminar posición',exact:true}).first().click();
     await page.waitForFunction(expected=>document.querySelectorAll('.position').length===expected,count-1);
@@ -995,6 +1155,7 @@ try {
   await page.getByRole('button',{name:'Sincronizar',exact:true}).click();
   await page.getByRole('status').filter({hasText:/Sincronización incompleta:.*actualización bloqueada/}).waitFor();
   await page.getByRole('button',{name:/Mis planes/}).click();
+  await page.getByLabel("Mi plan",{exact:true}).selectOption({index:1});
   await visible(page.getByRole('alert').filter({hasText:/Actualización del plan bloqueada/}).first());
   assert.match(files.get(planFile[0]).data.structuralUpdateError,/No quedan técnicas/);
 

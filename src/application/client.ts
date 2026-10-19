@@ -1,7 +1,11 @@
+import {receiveComments} from "./comment-notifications.ts";
+import {planIssueMessage,type PlanIssue} from "../domain/plan-issues.ts";
+import {trainerCache,trainerKey,validateTrainerView,type TrainerView,type TrainerSection} from "./trainer-cache.ts";
 import {catalogOf, deletedUUIDs, updateFutureDeletions} from "../domain/plan-continuity.ts";
 import {MAX_JSON_BYTES, MAX_APP_BODY_BYTES, jsonBytes, documentFile, sizeMessage} from "../domain/json-limits.ts";
 import type {
   Profile,
+  Comments,
   Document,
   RemoteRecord,
   TrainingPlan,
@@ -33,6 +37,7 @@ export interface Snapshot {
   index: RemoteRecord;
   plans: RemoteRecord<TrainingPlan>[];
   deletedPlanIds: string[];
+  planIssues?: PlanIssue[];
 }
 export interface AuthenticationProvider {
   login(mail: string, password: string): Promise<void>;
@@ -50,10 +55,18 @@ export class ApiFailure extends Error {
   }
 }
 export class Client implements AuthenticationProvider, SyncService {
+  private trainerDeniedToken = "";
+  private trainerLoads = new Map<string,Promise<TrainerView>>();
   identity: Identity | null = null;
   locked = false;
   status = "Sin sesión";
   private running: Promise<void> | null = null;
+  private async rememberPlanIssues(mail:string, issues:PlanIssue[] = []) {
+    await db.transaction("rw",db.meta,async()=>{
+      if(await repository.owner()!==mail)throw Error("Sesión local incompatible");
+      await db.meta.put({key:"plan-issues:"+mail,value:JSON.stringify(issues)});
+    });
+  }
   private channel = new BroadcastChannel("pgt-session");
   onChange: () => void = () => {};
   constructor() {
@@ -64,6 +77,14 @@ export class Client implements AuthenticationProvider, SyncService {
       } catch {
         localStorage.removeItem("pgt-session");
       }
+    }
+    if(this.identity) {
+      const mail=this.identity.mail;
+      void db.meta.get("plan-issues:"+mail).then(entry=>{
+        if(this.identity?.mail!==mail || this.locked || !entry)return;
+        const issues=JSON.parse(entry.value) as PlanIssue[];
+        if(issues.length){this.status=planIssueMessage(issues);this.onChange();}
+      });
     }
     this.channel.onmessage = () => {
       this.identity = null;
@@ -111,12 +132,17 @@ export class Client implements AuthenticationProvider, SyncService {
     });
     const value = (await response.json()) as any;
     if (!response.ok) {
-      if (response.status === 401 && credential === undefined) {
+      if (response.status === 401 && credential === undefined && this.identity?.token === token) {
+        if(this.identity)await trainerCache.clear(this.identity.mail);
         this.locked = true;
         this.status = "La sesión remota fue revocada. Vuelve a entrar.";
         this.onChange();
       }
       throw new ApiFailure(response.status, value.size ? sizeMessage(value.size) : value.error || "Error de API");
+    }
+    if(method==="POST" && ["/api/app/assignment","/api/app/competition","/api/app/delete-competition"].includes(path) && this.identity?.token===token && !this.locked){
+      this.dayEpoch++;
+      await db.trainerDays.where("owner").equals(this.identity.mail).delete();
     }
     return value as T;
   }
@@ -182,16 +208,20 @@ export class Client implements AuthenticationProvider, SyncService {
       throw Error("Restauración de otro usuario");
     const entries = this.snapshotEntries(snapshot, identity.mail);
     if (!reopening)
-      await db.transaction("rw", db.entries, db.meta, async () => {
+      await db.transaction("rw", db.entries, db.meta, db.commentNotices, async () => {
+        const previous = owner === identity.mail ? (await db.entries.get("comments"))?.data as Comments | undefined : undefined;
+        await receiveComments(identity.mail,snapshot.comments.data as Comments,snapshot.techniques.data as Techniques,previous);
         await db.entries.clear();
         await db.entries.bulkPut(entries);
+        await db.meta.clear();
         await db.meta.put({ key: "owner", value: identity.mail });
       });
+    await this.rememberPlanIssues(identity.mail,snapshot.planIssues);
     this.identity = identity;
     this.locked = false;
     localStorage.setItem("pgt-session", JSON.stringify(identity));
     this.channel.postMessage("session-changed");
-    this.status =
+    this.status = snapshot.planIssues?.length ? planIssueMessage(snapshot.planIssues) :
       owner && owner !== identity.mail
         ? "Usuario restaurado"
         : "Sesión iniciada";
@@ -207,6 +237,12 @@ export class Client implements AuthenticationProvider, SyncService {
       !Array.isArray(s.plans)
     )
       throw Error("Restauración incompleta");
+    if(s.planIssues!==undefined && (!Array.isArray(s.planIssues) || s.planIssues.some(issue=>
+      !issue || !/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(issue.planId) ||
+      !["PLAN_TOO_LARGE","NO_TRAINABLE_TECHNIQUES"].includes(issue.code) ||
+      (issue.code==="PLAN_TOO_LARGE" && (!issue.size || issue.size.file!==`plan_${issue.planId}.json` ||
+       !Number.isSafeInteger(issue.size.bytes) || issue.size.bytes<=MAX_JSON_BYTES || issue.size.limitBytes!==MAX_JSON_BYTES)))))
+      throw Error("Estado de planes inválido");
     validateProfile(s.profile.data);
     if ("pwd" in s.profile.data || "probeOnly" in s.profile.data)
       throw Error("Perfil remoto contiene campos privados");
@@ -266,6 +302,91 @@ export class Client implements AuthenticationProvider, SyncService {
       ),
     };
   }
+  private async trainerIdentity() {
+    const identity=this.requireIdentity();
+    const entry=await db.entries.get("profile");
+    if(this.requireIdentity().token!==identity.token)throw Error("Sesión cambiada");
+    // The last confirmed profile may be newer than the profile captured at login.
+    const profile=entry?.mail===identity.mail&&(entry.base as Profile)?.mail===identity.mail ? entry.base as Profile : identity.profile;
+    if(this.trainerDeniedToken===identity.token || profile.perfil!=="entrenador"){
+      await trainerCache.clear(identity.mail);
+      throw Error("Solo entrenadores pueden consultar fichas");
+    }
+    return identity;
+  }
+  async cachedTrainer(mail:string,section:TrainerSection,planId=""):Promise<TrainerView|undefined> {
+    const identity=await this.trainerIdentity();
+    const entry=await trainerCache.get(identity.mail,mail,section,planId);
+    if(this.requireIdentity().token!==identity.token)throw Error("Sesión cambiada");
+    return entry ? this.overlayTrainerLocal(entry.data,mail) : undefined;
+  }
+  private async overlayTrainerLocal(view:TrainerView,mail:string):Promise<TrainerView> {
+    if(this.requireIdentity().mail!==mail)return view;
+    const entries=await repository.entries(mail);
+    const local=new Map(entries.filter(e=>e.dirty).map(e=>[e.key,e]));
+    return {...view,
+      profile:local.has("profile")?{data:local.get("profile")!.data as Profile,sha:local.get("profile")!.sha!}:view.profile,
+      techniques:view.techniques&&local.has("techniques")?{data:local.get("techniques")!.data as Techniques,sha:local.get("techniques")!.sha!}:view.techniques,
+      plans:view.plans?.map(p=>{const e=entries.find(e=>e.key==="plan:"+p.data.planId);return e && (e.dirty || local.has("techniques") || local.has("comments") || e.data.revision>p.data.revision) ? {data:e.data as TrainingPlan,sha:e.sha!}:p;}),
+    };
+  }
+  private dayEpoch=0;
+  private dayLoads = new Map<string,Promise<import("../domain/trainer-reports.ts").TrainingDay>>();
+  async cachedTrainingDay(date:string) {
+    const identity=await this.trainerIdentity();
+    const key=JSON.stringify([identity.mail,date||"next:"+madridDate()]);
+    const entry=await db.trainerDays.get(key);
+    if(this.requireIdentity().token!==identity.token)throw Error("Sesión cambiada");
+    return entry?.data;
+  }
+  async trainingDay(date:string):Promise<import("../domain/trainer-reports.ts").TrainingDay> {
+    const identity=await this.trainerIdentity(),epoch=this.dayEpoch,key=JSON.stringify([identity.mail,date||"next:"+madridDate()]),requestKey=key+identity.token+":"+epoch;
+    const pending=this.dayLoads.get(requestKey);if(pending)return pending;
+    const load=(async()=>{
+      if(!navigator.onLine){const cached=await this.cachedTrainingDay(date);if(cached)return cached;throw Error("Sin conexión y sin copia de los entrenamientos de esta fecha");}
+      try {
+        const path="/api/app/training-day?date="+encodeURIComponent(date);
+        let data=await this.request<import("../domain/trainer-reports.ts").TrainingDay>(path);
+        if(data.missing>0)data=await this.request<import("../domain/trainer-reports.ts").TrainingDay>(path,"POST",{});
+        if(this.requireIdentity().token!==identity.token)throw Error("Sesión cambiada");
+        if(epoch!==this.dayEpoch)throw Error("Las competiciones han cambiado. Actualiza el entrenamiento del día.");
+        if(!data||!Array.isArray(data.groups)||!Array.isArray(data.dates)||typeof data.date!=="string")throw Error("Respuesta de entrenamientos no válida");
+        await db.transaction("rw",db.trainerDays,async()=>{
+          if(this.requireIdentity().token!==identity.token)throw Error("Sesión cambiada");
+          if(epoch!==this.dayEpoch)throw Error("Las competiciones han cambiado. Actualiza el entrenamiento del día.");
+          await db.trainerDays.put({key,owner:identity.mail,data});
+        });
+        return data;
+      }catch(error){if(error instanceof ApiFailure&&error.status===403&&this.identity?.token===identity.token){this.trainerDeniedToken=identity.token;await trainerCache.clear(identity.mail);}throw error;}
+    })();this.dayLoads.set(requestKey,load);try{return await load;}finally{this.dayLoads.delete(requestKey);}
+  }
+  async trainerView(mail:string,section:TrainerSection,force=false,planId=""):Promise<TrainerView> {
+    const identity=await this.trainerIdentity(),key=trainerKey(identity.mail,mail,section,planId),requestKey=key+identity.token;
+    const pending=this.trainerLoads.get(requestKey);
+    if(pending){if(!force)return pending;await pending.catch(()=>{});if(this.requireIdentity().token!==identity.token)throw Error("Sesión cambiada");}
+    const load=(async()=>{
+      const cached=await trainerCache.get(identity.mail,mail,section,planId);
+      if(!navigator.onLine){if(cached)return this.overlayTrainerLocal(cached.data,mail);throw Error("Sin conexión y sin copia disponible de esta sección");}
+      const known:Record<string,string>={};
+      for(const [name,r] of Object.entries(cached?.data||{}))if(r&&!Array.isArray(r)&&name!=="planSummaries")known[name]=(r as RemoteRecord).sha;
+      for(const r of cached?.data.plans||[])known["plan:"+r.data.planId]=r.sha;
+      let raw:any;
+      try {raw=await this.request<any>(`/api/app/users/${encodeURIComponent(mail)}/view?section=${section}&planId=${planId}&known=${encodeURIComponent(JSON.stringify(known))}`);}
+      catch(error){if(error instanceof ApiFailure&&error.status===403&&this.identity?.token===identity.token){this.trainerDeniedToken=identity.token;await trainerCache.clear(identity.mail);}throw error;}
+      const restore=(name:string,r:any)=>r?.unchanged ? (cached?.data as any)?.[name] : r;
+      const data:TrainerView={profile:restore("profile",raw.profile)};
+      if(section==="techniques"){data.techniques=restore("techniques",raw.techniques);data.comments=restore("comments",raw.comments);}
+      if(section==="plans"){data.planSummaries=raw.planSummaries;data.plans=raw.plans.map((r:any)=>r.unchanged?cached?.data.plans?.find(p=>p.data.planId===r.planId&&p.sha===r.sha):r);}
+      validateTrainerView(data,mail,section);
+      await db.transaction("rw",db.trainerViews,async()=>{
+        if(this.requireIdentity().token!==identity.token)throw Error("Sesión cambiada; ficha descartada");
+        await db.trainerViews.put({key,owner:identity.mail,mail,section,data,checkedAt:Date.now()});
+      });
+      return this.overlayTrainerLocal(data,mail);
+    })();
+    this.trainerLoads.set(requestKey,load);
+    try{return await load;}finally{if(this.trainerLoads.get(requestKey)===load)this.trainerLoads.delete(requestKey);}
+  }
   async load() {
     if (!this.identity || this.locked) return [];
     return repository.entries(this.identity.mail);
@@ -294,7 +415,7 @@ export class Client implements AuthenticationProvider, SyncService {
             continue;
           const incoming = {...data as Techniques, deletionRevision:((old.data as Techniques).deletionRevision || 0) + Number(deletedUUIDs(old.data as Techniques, data as Techniques).length > 0), deletionCatalog:(old.data as Techniques).deletionCatalog || catalogOf(old.data as Techniques), deletedIds:[...new Set([...(old.data as Techniques).deletedIds || [], ...deletedUUIDs(old.data as Techniques, data as Techniques)])]};
           const projected = projectFutureDescriptions(
-            updateFutureDeletions(entry.data as TrainingPlan, incoming, (await db.entries.get("comments"))!.data as import("../domain/models.ts").Comments, madridDate()),
+            updateFutureDeletions(entry.data as TrainingPlan, incoming, (await db.entries.get("comments"))!.data as Comments, madridDate()),
             old.data as Techniques,
             data as Techniques,
             madridDate(),
@@ -304,7 +425,7 @@ export class Client implements AuthenticationProvider, SyncService {
         }
       }
     });
-    this.status = "Cambios guardados en este dispositivo";
+    this.status = "Cambios guardados en este dispositivo · pendientes de sincronizar";
     this.onChange();
   }
   async sync() {
@@ -380,11 +501,12 @@ export class Client implements AuthenticationProvider, SyncService {
           });
           continue;
         }
-        const saved = await this.request<RemoteRecord>(entry.endpoint, "PUT", {
+        const saved = await this.request<RemoteRecord & {planIssues?:PlanIssue[]}>(entry.endpoint, "PUT", {
           data: merged.value,
           sha: current.sha,
         });
         this.requireIdentity();
+        if(saved.planIssues)await this.rememberPlanIssues(identity.mail,saved.planIssues);
         await db.transaction("rw", db.entries, db.meta, async () => {
           const latest = await db.entries.get(entry.key);
           if (!latest || latest.mail !== identity.mail)
@@ -418,9 +540,14 @@ export class Client implements AuthenticationProvider, SyncService {
       this.validate(snapshot);
       for (const fresh of this.snapshotEntries(snapshot, identity.mail)) {
         this.requireIdentity();
-        await db.transaction("rw", db.entries, db.meta, async () => {
+        await db.transaction("rw", db.entries, db.meta, db.commentNotices, async () => {
+          this.requireIdentity();
+          if ((await repository.owner()) !== identity.mail) throw Error("Sesión local incompatible");
           const local = await db.entries.get(fresh.key);
-          if (!local?.dirty) await repository.save(fresh, identity.mail);
+          if (!local?.dirty) {
+            if (fresh.key === "comments") await receiveComments(identity.mail,snapshot.comments.data as Comments,snapshot.techniques.data as Techniques,local?.data as Comments | undefined);
+            await repository.save(fresh, identity.mail);
+          }
         });
       }
       for (const id of snapshot.deletedPlanIds) {
@@ -436,7 +563,8 @@ export class Client implements AuthenticationProvider, SyncService {
         (e) => e.dirty,
       );
       const blocked = (await repository.entries(identity.mail)).filter(e=>e.key.startsWith("plan:") && (e.data as TrainingPlan).structuralUpdateError);
-      this.status = blocked.length ? `Sincronización incompleta: ${blocked.length} plan(es) con actualización bloqueada; revisa el aviso del plan` : remaining.length
+      await this.rememberPlanIssues(identity.mail,snapshot.planIssues);
+      this.status = snapshot.planIssues?.length ? planIssueMessage(snapshot.planIssues) : blocked.length ? `Sincronización incompleta: ${blocked.length} plan(es) con actualización bloqueada; revisa el aviso del plan` : remaining.length
         ? `${remaining.length} archivo(s) pendientes; revisa conflictos`
         : "Sincronizado";
     } catch (error) {
@@ -534,18 +662,20 @@ export class Client implements AuthenticationProvider, SyncService {
       choice === "remote"
         ? resolveRemote(entry.data, r.data, entry.conflicts)
         : entry.data;
+    const dirty=JSON.stringify(data)!==JSON.stringify(r.data);
     await repository.save(
       {
         ...entry,
         data,
         base: r.data,
         sha: r.sha,
-        dirty: JSON.stringify(data) !== JSON.stringify(r.data),
+        dirty,
         conflicts: [],
         remote: undefined,
       },
       identity.mail,
     );
+    if(dirty)this.status = "Datos pendientes de sincronizar";
     this.onChange();
   }
   async logout(revoked = false) {
@@ -554,6 +684,7 @@ export class Client implements AuthenticationProvider, SyncService {
     // Lock immediately, retain local business data and queue. Remote token revoked best-effort.
     this.locked = true;
     this.onChange();
+    await trainerCache.clear(identity.mail);
     try {
       if (navigator.onLine && !revoked)
         await this.request("/api/app/logout", "POST", {}, identity.token);

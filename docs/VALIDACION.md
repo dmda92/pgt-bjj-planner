@@ -132,3 +132,84 @@ Regresión adicional: recuperar el catálogo tras un bloqueo y borrar nuevamente
 Ficha del alumno separada en Técnicas (por defecto en cada selección), Planes y Administración (rol y contraseña). Identidad seleccionada independiente del snapshot; resaltado inmediato durante fetch, spinner accesible y mensaje inicial reservado a ausencia de selección. Secuencia de peticiones descarta respuestas antiguas y se invalida al cerrar sesión; recarga tras guardar comentarios conserva la sección. Fallo de carga conserva selección y ofrece reintento.
 
 91/91 tests, typecheck, build, compilación Worker y runtime correctos. Regresión de navegador añadida: petición de snapshot retenida con una promesa, alumno resaltado durante carga, spinner visible y mensaje inicial ausente; Técnicas por defecto, contenido exclusivo por sección, Planes sin asignaciones con mensaje, Administración con rol/restablecimiento y vuelta a Técnicas al seleccionar de nuevo. Se mantienen pruebas de comentarios, responsive, PWA/offline, perfil, planes y recálculos. Sin datos reales ni cambios de permisos/API.
+
+### Optimización de fichas del entrenador — 14/10/2026
+
+Causa, recorrido, instrumentación y cifras en RENDIMIENTO_ENTRENADOR.md. Snapshot completo sin caché/known, verificaciones repetidas de fuentes por cada plan y lectura secuencial de todos los planes bloqueaban incluso Técnicas. Nueva lectura parcial por sección, manifiesto/detalle de planes, IndexedDB por identidad/sección, background, SHA, marcadores de coordinación y concurrencia limitada, sin cambiar algoritmo ni trabajar con alumnos reales. Tests de API y Chromium cubren ausencia de descargas innecesarias, primera/segunda apertura, grandes textos y 20 planes, copia visible con red retenida, offline, múltiples identidades, cambios de sesión durante fetch, revocación, deduplicación y working set dirty intacto. Validación final y paso efectivo de Actions se revisan antes de dar por concluida la publicación.
+
+Resultado final de esta optimización: 93/93 pruebas unitarias/API correctas; typecheck/build/check:worker/runtime correctos. Chromium de app y de caché correctos, incluido detalle individual de planes, render local antes de recibir red, offline, respuesta antigua con una nueva sesión simultánea, edición y baseline local más recientes durante fetch y revocación. Banco de rendimiento ejecutado antes/después con código antiguo fe55820f y código actual; aserciones de descargas incorporadas en test:performance y en Actions antes del deploy. Métodos y cifras en RENDIMIENTO_ENTRENADOR.md; tiempos de producción no medidos.
+
+### Selector de rol del entrenador — 14/10/2026
+
+Causa: onChange leía e.target.value dentro de run después de esperar a los guardados locales. React restauraba antes el valor del select controlado y se enviaba el rol anterior. Capturar e.currentTarget.value sincrónicamente, mostrar la selección pendiente y deshabilitar solo el selector durante el guardado. Refrescar perfil/SHA confirmados; revertir visualmente ante error. Regresión Chromium: Alumno → Entrenador → Alumno, comprobando valor visible y persistencia remota de ambas transiciones. Sin cambios de permisos ni de revocación de sesiones del usuario afectado.
+
+### Estados de sincronización y feedback de competición — 14/10/2026
+
+95/95 tests correctos, typecheck/build/check:worker/runtime correctos. Regresión de presentación: Sincronizado verde solo sin dirty/proyecciones/planes bloqueados/borradores de perfil; errores, offline y cola no muestran éxito. Guardado local y resolución local avisan pendientes; importación conserva su aviso. Chromium correcto: verde tras sync, desaparece después de edición offline, campos de perfil sin guardar preservados durante sync, textarea del alumno readOnly y contenido idéntico, petición de competición retenida para comprobar spinner y submit deshabilitado, spinner retirado tras confirmación. Revisar capturas de creación y ficha de alumno; nueva etiqueta «Crear competición». Se mantienen los permisos, los cambios locales y los tests de caché/offline/regresión de roles. Publicación efectiva se verifica en Actions del commit correspondiente.
+
+## Corrección de asignación de participantes (14/10/2026)
+
+La casilla captura checked antes de esperar la cola de guardado local. Regresión Chromium: retirar y volver a añadir un participante, verificando casilla y recuento confirmado por API. Se conservan permisos, SHA y generación de planes existentes.
+
+
+### Guardado explícito de participantes (14/10/2026)
+
+Selección de participantes en borrador: Chromium verifica respuesta inmediata, ninguna petición al marcar/desmarcar, deshabilitado al revertir, y dos guardados explícitos con recuento remoto confirmado.
+
+
+## Desasignación con borrado individual — corrección del propietario (14/10/2026)
+
+Sustituye todas las reglas anteriores que conservaban visible el plan desasignado. Al guardar la desasignación, borrar el JSON individual remoto del participante, sin borrar la competición ni planes de otros alumnos. El índice mantiene tombstones por alumno; sincronizar elimina la copia local limpia incluso tras trabajar offline. Reasignar elimina el tombstone y genera un plan nuevo. El borrado explícito incluye sesiones históricas de ese plan; no altera las reglas de protección ante recálculos automáticos. Persistir tombstone antes del borrado para recuperar fallos parciales.
+
+
+### Validación de fechas de competición (15/10/2026)
+
+El formulario señala el campo de fecha incorrecto, con mensaje asociado y validación nativa accesible. Torneo estrictamente posterior al inicio y máximo 730 días, conforme al dominio. Corregir el campo retira el error; no enviar solicitudes inválidas. Mantener validación backend. Pruebas de fechas imposibles/bisiestas, igualdad, anterioridad, rango y corrección/reintento.
+
+
+### Mínimo de descansos en nuevas competiciones (15/10/2026)
+
+Corrección del propietario: Cambio de roles y Entre técnicas requieren enteros entre 1 y 3600 segundos al crear competición. Formulario señala el campo mediante min=1 y validación nativa; Worker rechaza cero antes de escribir. Sustituye admisión de descansos cero para nuevas altas. Leer/exportar/recalcular planes históricos con cero sigue permitido sin modificar sus parámetros. Regresión: cero rechazado sin petición/escritura y uno aceptado.
+
+
+### Feedback de borrado y espera del entrenador (15/10/2026)
+
+Borrado de competición con estado inmediato y spinner accesible en su tarjeta; impedir doble envío y ediciones durante borrado, retirar estado ante fallo. Placeholder de alumno más compacto, título 21 px, texto 15 px; carga horizontal con spinner 28 px y título 18 px. Mantener diseño pizarra/azul y movimiento reducido. Prueba Chromium con petición de borrado retenida y confirmación de retirada de tarjeta.
+
+
+### Visibilidad de contraseña en login (15/10/2026)
+
+Botón de ojo integrado en el campo, accesible Mostrar/Ocultar contraseña, type=button; contraseña oculta inicialmente y al cambiar a registro. Cambia solo type del input, sin modificar valor ni enviar formulario. Chromium verifica mostrar/ocultar y conservación del texto antes de login.
+
+
+### Trabajo por alumno en minutos y segundos (16/10/2026)
+
+Crear competición presenta Trabajo por alumno (min:seg), con valor inicial 3:00 y formato m:ss/mm:ss, entre 0:01 y 60:00. Convertir a segundos al enviar; conservar modelo, API, Tábata y planes existentes. Rechazar cero, segundos >=60 y duraciones superiores al máximo sin petición. Pruebas de conversión exacta y formulario, persistencia de 3:00 como 180 segundos.
+
+
+Validación de notificaciones internas de comentarios (16/10/2026): ver docs/VALIDACION_NOTIFICACIONES.md. Conserva intactos los resultados históricos anteriores.
+
+
+Nombre del entrenador en técnicas (16/10/2026): autor por comentario asignado por Worker a partir del perfil autenticado; UI muestra nombre y apellidos, offline incluido. Regresión API con dos entrenadores: payload falsificado ignorado, autor de texto sin cambios conservado y no-op sin commit, legado sin autor no atribuido, cambio de texto cambia autor y alumno no puede escribir comentarios. Chromium de notificaciones comprueba autor tras sync y recarga offline. No modifica planes/PDF.
+
+
+Mis planes por día (16/10/2026): consulta pura de planes locales del propietario, próxima fecha activa estrictamente futura Madrid y selección libre. Pruebas de aislamiento, histórico, vacío, múltiples sesiones/competiciones, orden estable e inmutabilidad. Chromium con dos competiciones de un alumno: fecha inicial, 2 sesiones y 5 ejercicios, cambio de calendario, vacío, selector inferior independiente, reload offline y cambio de cuenta. Capturas de escritorio/móvil en .browser-artifacts/own-day. Sin datos remotos reales ni aceptación Safari/iOS.
+
+
+Mis técnicas compactas (16/10/2026): Chromium verifica tarjetas cerradas, progreso por texto no vacío, indicadores individuales, recompensa completa y regreso a pendiente al vaciar, teclado, abrir/cerrar sin perder borradores, búsqueda, persistencia offline y posición vacía. Capturas compactas/abiertas 360/390/768/1440 en .browser-artifacts/repertoire. Regresión de notificaciones comprueba apertura de posición antes de foco. Pruebas generales de edición abren explícitamente las posiciones antes de usar campos antes visibles; conservación de pruebas de prioridad, guardado, conflictos, borrado y perfiles. Sin cuentas remotas ni validación Safari/iOS físico.
+
+
+Control de prioridad compacto (16/10/2026): cambio CSS, conserva +/−, áreas táctiles, mínimo 1 y guardado. Regresión de prioridad en test-browser; revisión visual de tarjetas abiertas 390/1440 mediante test-repertoire-cards.
+
+
+Prioridad como subtítulo (16/10/2026): búsqueda exhaustiva de prefijos P en src sin restos generados. Mis técnicas y sesiones del día tienen aserciones de subtítulo y ausencia de prefijo. PDF de QA sintético renderizado con Poppler (páginas compacta y continuación), revisado sin cortes/solapamientos y extracción sin P1/P2. Unitarias de PDF preservan snapshots, orden, límites y no solapamiento; fixture denso ajusta longitud de descripción de 12 a 10 repeticiones para seguir verificando el caso de una tarjeta entera con la nueva línea adicional. Sesiones extensas continúan en varias páginas. Artefactos de QA internos; no se modifican archivos de usuarios.
+
+
+Nuevos participantes en día (16/10/2026): regresión API crea competición y asigna otro alumno sin snapshots/logins de alumnos; ambos aparecen. GET señala pendientes sin crear; POST autorizado los recupera, preservando literalmente el snapshot existente y siendo idempotente. Alumno recibe 403; catálogo vacío sigue pendiente sin plan ficticio. Chromium guarda participantes desde tarjeta, verifica aparición del alumno nuevo, elimina solo snapshot sintético para reproducir legado y pulsa Actualizar; los otros planes permanecen iguales. Sin datos remotos reales.
+
+
+Título de Mis técnicas (16/10/2026): cambio exclusivo del encabezado a «Tu juego, técnica a técnica». npm test (117 pruebas), typecheck, build, check:worker, test:runtime y test:browser completados correctamente. Pruebas locales con datos sintéticos; sin cambios de comportamiento.
+
+## Preparación DEV (19/10/2026)
+
+Informe separado en `docs/DEV_ENVIRONMENT.md`: unitarias 117/117, tipos/build/Worker/performance y dry-run DEV correctos; runtime falla en fixture temporal preexistente reproducido en main y navegador bloqueado por instalación Chromium. No se despliega ni se opera sobre PRO. No considerar completa la validación hasta resolver los pendientes.
