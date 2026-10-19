@@ -1,5 +1,7 @@
 # PGT — validación de la aplicación · 13/10/2026
 
+Corrección del gate DEV de recuperación (19/10/2026): ver `docs/CI_RECOVERY_DATES.md`. Fixtures temporales de prueba; no cambia producto ni despliegues. Resultados en la PR de corrección.
+
 ## Estado y evidencia
 
 El propietario dio por terminada la prueba de viabilidad tras confirmar en el Worker desplegado: acceso al repositorio privado, altas de prueba, login, lectura/escritura/actualización de JSON, revisiones, UNCHANGED_NO_COMMIT, aislamiento 403, conflictos 409, borrado/recreación y sincronización móvil→ordenador. El 401 tras logout se comportó como rechazo de sesión. Esta aceptación autoriza desarrollar la aplicación; no equivale a aceptación remota de la nueva UI.
