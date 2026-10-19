@@ -209,3 +209,7 @@ Nuevos participantes en día (16/10/2026): regresión API crea competición y as
 
 
 Título de Mis técnicas (16/10/2026): cambio exclusivo del encabezado a «Tu juego, técnica a técnica». npm test (117 pruebas), typecheck, build, check:worker, test:runtime y test:browser completados correctamente. Pruebas locales con datos sintéticos; sin cambios de comportamiento.
+
+## Preparación DEV (19/10/2026)
+
+Informe separado en `docs/DEV_ENVIRONMENT.md`: unitarias 117/117, tipos/build/Worker/performance y dry-run DEV correctos; runtime falla en fixture temporal preexistente reproducido en main y navegador bloqueado por instalación Chromium. No se despliega ni se opera sobre PRO. No considerar completa la validación hasta resolver los pendientes.
