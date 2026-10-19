@@ -209,3 +209,7 @@ Nuevos participantes en día (16/10/2026): regresión API crea competición y as
 
 
 Título de Mis técnicas (16/10/2026): cambio exclusivo del encabezado a «Tu juego, técnica a técnica». npm test (117 pruebas), typecheck, build, check:worker, test:runtime y test:browser completados correctamente. Pruebas locales con datos sintéticos; sin cambios de comportamiento.
+
+## Corrección del gate DEV de recuperación (19/10/2026)
+
+Ver `docs/CI_RECOVERY_DATES.md`: fixtures runtime/navegador relativos al día Madrid para evitar que el calendario histórico invalide las expectativas. No modifica producto ni despliegues. Resultados actualizados en la PR de corrección.

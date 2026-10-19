@@ -1,4 +1,4 @@
-import { madridDate } from "../src/domain/plan-text-updates.ts";
+import { recoveryStart, recoveryEnd } from './recovery-calendar.mjs';
 import { template } from "../tests/template-fixture.ts";
 import assert from "node:assert/strict";
 import { pbkdf2Sync } from "node:crypto";
@@ -123,7 +123,7 @@ try {
  const read=p=>{const r=files.get(p);return r?{data:JSON.parse(Buffer.from(r.content,'base64').toString()),sha:r.sha}:null;};
  const t=read(root+'/tecnics.json'),original=structuredClone(t.data);t.data.positions=[];
  await call('/api/app/users/'+mail+'/techniques','PUT',{data:t.data,sha:t.sha},auth.token);
- const comp={planId:crypto.randomUUID(),fecha_comienzo:'2026-10-17',fecha_torneo:'2026-12-17',dias_de_entrenamiento:[1,2,3,4,5,6,7],alumnos:[mail],ejercicios_por_sesion:100,tiempo_por_tecnica_segundos:1,descanso_entre_ciclos_segundos:1,descanso_entre_tecnicas_segundos:1};
+ const comp={planId:crypto.randomUUID(),fecha_comienzo:recoveryStart,fecha_torneo:recoveryEnd,dias_de_entrenamiento:[1,2,3,4,5,6,7],alumnos:[mail],ejercicios_por_sesion:100,tiempo_por_tecnica_segundos:1,descanso_entre_ciclos_segundos:1,descanso_entre_tecnicas_segundos:1};
  files.set('PGT/master_data/plans.json',{sha:'9'.repeat(40),content:Buffer.from(JSON.stringify({schemaVersion:1,revision:1,updatedAt:new Date().toISOString(),plans:[comp],deletedPlanIds:[]})).toString('base64')});
  const snapshot=()=>call('/api/app/users/'+mail+'/snapshot','GET',undefined,auth.token);
  const empty=await snapshot();assert.equal(empty.planIssues[0].code,'NO_TRAINABLE_TECHNIQUES');assert.equal(empty.plans.length,0);assert.equal(empty.profile.data.mail,mail);
@@ -141,17 +141,17 @@ try {
  await call('/api/app/users/'+mail+'/techniques','PUT',{data,sha:'0'.repeat(40)},auth.token,409);
  await update('PGT_TEST_REDUCIDO');const recovered=await snapshot();assert.deepEqual(recovered.planIssues,[]);assert.ok(recovered.plans[0].data.sessions.flatMap(s=>s.exercises).every(e=>e.descripcion_del_alumno==='PGT_TEST_REDUCIDO'));
  const stable=structuredClone(files.get(path));await snapshot();assert.deepEqual(files.get(path),stable);
- await call('/api/app/training-day?date=2026-10-17','GET',undefined,auth.token,403);
+ await call(`/api/app/training-day?date=${recoveryStart}`,'GET',undefined,auth.token,403);
  const teacherMail='pgt_test_day_teacher@example.com';
  const teacher=await call('/api/app/register','POST',{mail:teacherMail,password,confirm:password,nombre:'PGT_TEST',apellidos:'Trainer'},'',201);
  const profilePath='PGT/users_data/'+teacherMail+'/user_data.json',teacherProfile=read(profilePath);teacherProfile.data.perfil='entrenador';
  files.set(profilePath,{sha:'e'.repeat(40),content:Buffer.from(JSON.stringify(teacherProfile.data)).toString('base64')});
- const day=await call('/api/app/training-day?date=2026-10-17','GET',undefined,teacher.token);
+ const day=await call(`/api/app/training-day?date=${recoveryStart}`,'GET',undefined,teacher.token);
  assert.equal(day.groups.length,1);assert.equal(day.groups[0].students[0].mail,mail);
  assert.ok(files.has(root+'/training_plans/structure_'+comp.planId+'.json'));
  assert.equal(JSON.stringify(day).includes('PGT_TEST_REDUCIDO'),false);
  assert.deepEqual(files.get(path),stable);
- const again=await call('/api/app/training-day?date=2026-10-17','GET',undefined,teacher.token);assert.deepEqual(again,day);
+ const again=await call(`/api/app/training-day?date=${recoveryStart}`,'GET',undefined,teacher.token);assert.deepEqual(again,day);
  console.log('workerd: trainer-only daily report, derived index, repeat read, no source mutations PASS.');
  console.log(`workerd: BUG-001 empty catalogue recoverable; BUG-005 ${large.planIssues[0].size.bytes} bytes rejected, catalogue downloadable, correction/CAS/idempotency verified. GitHub transport isolated.`);
 } finally {await runtime.dispose();}
