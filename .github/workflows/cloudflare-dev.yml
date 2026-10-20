@@ -67,6 +67,17 @@ jobs:
         run: |
           node scripts/check-dev-config.mjs
           npx --no-install wrangler deploy --config wrangler.dev.jsonc --dry-run --outdir .worker-dev-build
+      - name: Save isolated DEV browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: firestore-isolated-browser
+          path: |
+            artifacts/firestore-local-browser.json
+            artifacts/firestore-student.png
+            artifacts/firestore-trainer.png
+          if-no-files-found: ignore
+          retention-days: 7
 
   deploy-dev:
     needs: validate
@@ -126,8 +137,20 @@ jobs:
             const report = await preflight.json();
             console.log(JSON.stringify(report));
             if (!preflight.ok || report.status !== 'FIRESTORE_DEV_CONNECTION_VERIFIED') throw new Error('DEV Firestore preflight failed');
-            const qa = spawnSync(process.execPath, ['scripts/test-firestore-dev-live.mjs'], {stdio:'inherit',env:process.env});
+            const qaEnv = {...process.env}; delete qaEnv.PGT_LOCAL_QA_ORIGIN;
+            const qa = spawnSync(process.execPath, ['scripts/test-firestore-dev-live.mjs'], {stdio:'inherit',env:qaEnv});
             if (qa.error) throw qa.error;
             if (qa.status !== 0) process.exit(qa.status ?? 1);
           }
           JS
+      - name: Save real DEV verification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: firestore-real-dev
+          path: |
+            artifacts/firestore-dev-live.json
+            artifacts/firestore-student.png
+            artifacts/firestore-trainer.png
+          if-no-files-found: ignore
+          retention-days: 7

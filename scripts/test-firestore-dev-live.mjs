@@ -28,7 +28,7 @@ let http=0;async function call(actor,path,method='GET',body,status=200){http++;c
 const endpoint=mail=>'/api/app/users/'+encodeURIComponent(mail);
 try{
  const t=await login(trainer),s=await login(student,true),o=await login(other);
- await t.page.getByRole('button',{name:'Entrenador',exact:true}).click();await t.page.locator('.student-card').filter({hasText:student}).click();
+ await t.page.getByRole('button',{name:'Entrenador',exact:true}).click();await t.page.getByLabel('Buscar alumnos',{exact:true}).fill(student);await t.page.locator('.student-card').first().click();
  await t.page.locator('.student-detail details summary').first().click();
  await s.page.locator('details.position summary').first().click();
  assert.equal(await s.page.getByRole('button',{name:'Sincronizar',exact:true}).count(),0);
@@ -39,6 +39,8 @@ try{
   const text='QA '+runId.slice(0,8)+' cambio '+i,start=Date.now();
   await editor.fill(text);await poll(()=>remote.inputValue().then(v=>v===text),'Automatic trainer update');samples.push(Date.now()-start);
  }
+ await mkdir('artifacts',{recursive:true});
+ await s.page.screenshot({path:'artifacts/firestore-student.png',fullPage:true});await t.page.screenshot({path:'artifacts/firestore-trainer.png',fullPage:true});
  checks.push('12 real UI autosaves -> trainer without refresh');
  const snapshot=()=>call(s,endpoint(student)+'/snapshot');let before=await snapshot();
  await call(s,endpoint(other)+'/snapshot','GET',undefined,403);await call(s,'/api/app/students','GET',undefined,403);checks.push('Student cross-user and trainer endpoints denied');
@@ -63,7 +65,7 @@ try{
  // Network interruption: no durable mutation can be queued; reconnect reloads truth.
  await s.context.setOffline(true);await poll(()=>s.page.getByText('Sin conexión · copia local de consulta',{exact:true}).isVisible(),'Offline state');
  const previous=await editor.inputValue();await editor.fill('MUST_NOT_BE_STORED');await wait(1000);await s.context.setOffline(false);
- await poll(()=>cached(s,'techniques').then(v=>v&&!JSON.stringify(v.data).includes('MUST_NOT_BE_STORED')),'No offline replay');checks.push('Offline mutation rejected; reconnect reloads authoritative state');
+ await poll(()=>cached(s,'techniques').then(v=>v&&!JSON.stringify(v.data).includes('MUST_NOT_BE_STORED')),'No offline replay');assert.ok(!JSON.stringify((await snapshot()).techniques.data).includes('MUST_NOT_BE_STORED'));checks.push('Offline mutation rejected; reconnect reloads authoritative state');
  catalog=await call(t,'/api/app/catalog');await call(t,'/api/app/assignment','POST',{planId:plan.planId,alumnos:[trainer],sha:catalog.sha});await poll(()=>cached(s,'plan:'+plan.planId).then(v=>!v),'Unassignment removes cached plan automatically');checks.push('Automatic unassignment removal');
  await poll(()=>t.page.locator('.day-groups').textContent().then(text=>!text.includes('Alumno de prueba')),'Training-day removes unassigned student automatically');
  catalog=await call(t,'/api/app/catalog');await call(t,'/api/app/delete-competition','POST',{planId:plan.planId,sha:catalog.sha});
@@ -71,6 +73,6 @@ try{
  assert.deepEqual(errors,[]);
  const sorted=[...samples].sort((a,b)=>a-b),p=n=>sorted[Math.min(sorted.length-1,Math.ceil(n*sorted.length)-1)];
  const report={status:local?'FIRESTORE_LOCAL_BROWSER_QA_VERIFIED':'FIRESTORE_DEV_LIVE_QA_VERIFIED',googleTransport:local?'INTERCEPTED':'REAL',project:'pgt-bjj-dev',database:'(default)',worker:'pgt-github-probe-dev',commit:process.env.GITHUB_SHA,runId,synthetic:true,contexts:3,roles:['entrenador','alumno','alumno'],samplesMs:samples,p50Ms:p(.5),p95Ms:p(.95),latencyIncludes:'700ms autosave debounce + Worker commit + WebSocket + authorized re-read + render',checks,httpTestCalls:http,clientNetwork:network,limits:'Chromium desktop and mobile viewport, not physical devices or Safari; billing counters not queried'};
- await mkdir('artifacts',{recursive:true});await writeFile(local?'artifacts/firestore-local-browser.json':'artifacts/firestore-dev-live.json',JSON.stringify(report,null,2));console.log(JSON.stringify(report));
  assert.ok(report.p95Ms<10000,'DEV propagation exceeds 10 seconds including autosave and complete refresh');
-}finally{for(const context of contexts)await context.close();await browser.close();}
+ await mkdir('artifacts',{recursive:true});await writeFile(local?'artifacts/firestore-local-browser.json':'artifacts/firestore-dev-live.json',JSON.stringify(report,null,2));console.log(JSON.stringify(report));
+}catch(error){await mkdir('artifacts',{recursive:true});for(const [index,role] of [[0,'trainer'],[1,'student']]){const page=contexts[index]?.pages()[0];if(page)await page.screenshot({path:'artifacts/firestore-'+role+'.png',fullPage:true}).catch(()=>{});}throw error;}finally{for(const context of contexts)await context.close();await browser.close();}

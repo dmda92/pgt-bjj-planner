@@ -22,8 +22,7 @@ export class ProbeSecurity extends LegacySecurity {
   }
   override fetch(request:Request):Promise<Response>{
     if(new URL(request.url).pathname==='/api/dev/firestore-preflight')return this.check(request);
-    if(new URL(request.url).pathname==='/api/dev/synthetic-fixture')return this.fixture(request);
-    const result=this.requests.then(()=>this.online(request));this.requests=result.catch(()=>{});return result;
+    const result=this.requests.then(()=>new URL(request.url).pathname==='/api/dev/synthetic-fixture'?this.fixture(request):this.online(request));this.requests=result.catch(()=>{});return result;
   }
   private async online(request:Request):Promise<Response>{
     const url=new URL(request.url),path=url.pathname;
@@ -111,12 +110,11 @@ export class ProbeSecurity extends LegacySecurity {
     else await this.devState.storage.deleteAlarm();
     for(const [key,value] of await this.devState.storage.list<{expires:number}>({prefix:'ws-ticket:'}))if(value.expires<Date.now())await this.devState.storage.delete(key);
   }
-  async alarm(){try{await this.flush();}catch{await this.devState.storage.setAlarm(Date.now()+60000);}}
-  async webSocketMessage(ws:WebSocket,message:string|ArrayBuffer){
-    // No business mutations over the socket; clients use the validated AppApi.
-    if(message!=='ping'){ws.close(1008,'INVALID_MESSAGE');return;}
-    try{const a=ws.deserializeAttachment(),current=await this.authorizeHash(a.sessionHash);if(current.role!==a.role)throw new ApiError(401,'SESSION_REVOKED');ws.send('pong');}
-    catch{ws.close(4401,'SESSION_REVOKED');}
+  async alarm(){const result=this.requests.then(async()=>{try{await this.flush();}catch{await this.devState.storage.setAlarm(Date.now()+60000);}});this.requests=result.catch(()=>{});return result;}
+  webSocketMessage(ws:WebSocket,_message:string|ArrayBuffer){
+    // Server-only invalidations: no client messages can cause Firestore reads,
+    // writes or an unbounded authentication loop while the socket is idle.
+    ws.close(1008,'INVALID_MESSAGE');
   }
   webSocketClose(ws:WebSocket,code:number){ws.close(code===1006?1000:code);}
   webSocketError(ws:WebSocket){ws.close(1011,'RECONNECT');}
@@ -128,7 +126,9 @@ export class ProbeSecurity extends LegacySecurity {
       await authorizePreflight(request,this.devEnv,(url,init)=>fetch(url,init));
       const body=await jsonBody(request,1024);onlyFields(body,['runId','password']);
       if(typeof body.runId!=='string'||typeof body.password!=='string')throw new ApiError(400,'SYNTHETIC_FIXTURE_INVALID');
-      return Response.json(await seedSynthetic(this.cloud(),body.runId,body.password),{headers:{'Cache-Control':'no-store'}});
+      await this.devState.storage.setAlarm(Date.now()+15000);
+      try{return Response.json(await seedSynthetic(this.cloud(),body.runId,body.password),{headers:{'Cache-Control':'no-store'}});}
+      finally{await this.flush().catch(()=>console.warn('PGT_REALTIME_RETRY_SCHEDULED'));}
     }catch(error){return Response.json({error:error instanceof ApiError?error.message:'SYNTHETIC_FIXTURE_FAILED'},{status:error instanceof ApiError?error.status:503});}
   }
   private async check(request:Request):Promise<Response>{

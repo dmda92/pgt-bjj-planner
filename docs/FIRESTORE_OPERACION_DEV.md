@@ -23,7 +23,7 @@ Consultas de manifiestos por un único campo `kind` o `directory`: índices auto
 
 ## Tiempo real y caché
 
-Ticket opaco de un uso, 30 segundos, emitido tras validar sesión y perfil Firestore. El WebSocket recibe solo invalidaciones, sin datos de negocio ni nombres de otros alumnos. SQLite guarda sesiones, tickets, límites y coordinación; no negocio. WebSocket Hibernation API conserva adjuntos autorizados. Cada publicación y mensaje vuelve a validar sesión/contraseña/rol; logout y cambios de rol cierran sockets revocados. Alumnos solo reciben invalidaciones propias/globales; entrenadores las autorizadas por su rol.
+Ticket opaco de un uso, 30 segundos, emitido tras validar sesión y perfil Firestore. El WebSocket recibe solo invalidaciones, sin datos de negocio ni nombres de otros alumnos. SQLite guarda sesiones, tickets, límites y coordinación; no negocio. WebSocket Hibernation API conserva adjuntos autorizados. Cada publicación vuelve a validar sesión/contraseña/rol; el canal rechaza mensajes del cliente sin consumir lecturas Firestore; logout y cambios de rol cierran sockets revocados. Alumnos solo reciben invalidaciones propias/globales; entrenadores las autorizadas por su rol.
 
 Antes de cada petición de negocio se programa alarma recuperable; un crash tras Commit deja outbox durable. La respuesta intenta publicar/confirmar outbox; ante fallo la alarma reintenta, en páginas de 100. No hay sondeo continuo de Firestore en reposo ni listeners de colecciones globales. Handshake seguido de snapshot, relectura si llegan eventos durante carga, deduplicación acotada y backoff con jitter en reconexión.
 
