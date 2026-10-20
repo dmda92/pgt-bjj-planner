@@ -25,9 +25,11 @@ Runtime comprobó recuperación con catálogo vacío y una proyección sintétic
 - Oráculo capturado contra los archivos sin modificar de main, con hashes SHA-256 de planner, plan-continuity, plan-text-updates y models.
 - Comparación exacta del objeto completo generado/recalculado, no solo totales ni ausencia de excepción. Tiempos, cobertura, cursores/checkpoints y entradas originales incluidos.
 - Protege hoy/pasado, torneo acabado, continuidad tras borrados, vacío/cursor corrupto, idempotencia, prioridades no consecutivas, posición partida, año bisiesto y descansos históricos cero.
-- Datos y UUID sintéticos fijos; no datos de alumnos. No se modifican las fuentes de dominio, UI, Worker, configuraciones ni workflows en esta fase.
+- Datos y UUID sintéticos fijos; no datos de alumnos. No se modifican las fuentes de dominio, UI, Worker ni configuraciones Wrangler. Único cambio de CI: fijar SO del job de validación DEV para poder ejecutar las pruebas de navegador existentes.
 
 Suite completa ampliada ejecutada: **131/131 pruebas pasan**, 0 fallos, 0 omitidas; typecheck posterior OK. El código de aplicación/bundle no cambia respecto a la línea base anterior. CI remoto de esta PR pendiente al registrar estas evidencias; consultar el estado del commit en GitHub. No tratar el CI verde del commit anterior como evidencia del commit nuevo.
+
+CI remoto [39450761182](https://github.com/dmda92/pgt-bjj-planner/actions/runs/39450761182), commit `d7c10f8`: unit tests 131/131, typecheck, build, compile Worker y runtime OK. Bloqueo adicional de entorno en Install Chromium: `ubuntu-latest` resolvió a Ubuntu 26.04, que Playwright 1.58.2 rechaza explícitamente. Navegador, benchmark y dry-run posteriores no se ejecutaron; deploy-dev omitido. Corrección limitada a `validate.runs-on: ubuntu-24.04` en cloudflare-dev.yml, SO soportado por el registro de plataformas de la versión instalada; sin modificar workflow PRO ni el job de despliegue. Reejecución CI pendiente tras ese ajuste.
 
 ## Gates aún pendientes (no superados)
 

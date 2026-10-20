@@ -18,7 +18,9 @@ concurrency:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    # Playwright 1.58.2 does not support Ubuntu 26.04. Keep browser QA on
+    # a supported runner instead of inheriting ubuntu-latest image changes.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       CI: 'true'
