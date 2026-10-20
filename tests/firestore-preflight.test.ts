@@ -6,7 +6,7 @@ const keys=await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLeng
 const privateKey='-----BEGIN PRIVATE KEY-----\n'+Buffer.from(await crypto.subtle.exportKey('pkcs8',keys.privateKey)).toString('base64')+'\n-----END PRIVATE KEY-----';
 const account={type:'service_account',project_id:'pgt-bjj-dev',client_email:'pgt-worker-dev@pgt-bjj-dev.iam.gserviceaccount.com',private_key:privateKey};
 const env={FIRESTORE_PROJECT_ID:'pgt-bjj-dev',FIRESTORE_DATABASE_ID:'(default)',FIRESTORE_SERVICE_ACCOUNT_JSON:JSON.stringify(account),DEV_ACCOUNT_ID:'a'.repeat(32)};
-function fixture(options:{anonymousOpen?:boolean;metadataDenied?:boolean;badEdition?:boolean;staleAccepted?:boolean;ambiguousCreate?:boolean}={}){
+function fixture(options:{anonymousOpen?:boolean;metadataDenied?:boolean;badEdition?:boolean;staleAccepted?:boolean;ambiguousCreate?:boolean;googlePrecondition?:boolean;invalidArgument?:boolean}={}){
   const records=new Map<string,any>();let version=0,oauth=0,commits=0;
   const calls:{url:string;method:string}[]=[];
   const transport:Transport=async(url,init={})=>{
@@ -29,7 +29,10 @@ function fixture(options:{anonymousOpen?:boolean;metadataDenied?:boolean;badEdit
       commits++;const writes=JSON.parse(String(init.body)).writes;
       for(const w of writes){const name=w.update?.name||w.delete;assert.ok(name.startsWith(DEV_DATABASE_NAME+'/documents/_pgt_dev_diagnostics/'));const previous=records.get(name);
         if(w.currentDocument?.exists===false&&previous)return Response.json({}, {status:409});
-        if(w.currentDocument?.updateTime!==undefined&&w.currentDocument.updateTime!==previous?.updateTime&&!options.staleAccepted)return Response.json({}, {status:412});
+        if(w.currentDocument?.updateTime!==undefined&&w.currentDocument.updateTime!==previous?.updateTime&&!options.staleAccepted){
+          if(options.googlePrecondition||options.invalidArgument)return Response.json({error:{code:400,status:options.invalidArgument?'INVALID_ARGUMENT':'FAILED_PRECONDITION',message:'Synthetic private detail must not appear in report'}},{status:400});
+          return Response.json({}, {status:412});
+        }
         if(w.delete)records.delete(name);else records.set(name,{...w.update,updateTime:'version-'+(++version)});
       }
       if(options.ambiguousCreate&&commits===1)throw Error('Connection lost after committed create with secret details');
@@ -56,6 +59,12 @@ test('DEV preflight proves metadata, read/write, CAS, anonymous denial and clean
 test('Project/database misconfiguration fails closed before network, with no fallback to GitHub',async()=>{
   const f=fixture();await assert.rejects(firestorePreflight({...env,FIRESTORE_PROJECT_ID:'other-project'},f.transport),/FIRESTORE_DEV_TARGET_REQUIRED/);assert.equal(f.calls.length,0);
   await assert.rejects(firestorePreflight({...env,FIRESTORE_DATABASE_ID:'other'},f.transport),/FIRESTORE_DEV_TARGET_REQUIRED/);assert.equal(f.calls.length,0);
+});
+test('Google HTTP 400 FAILED_PRECONDITION is a rejected stale version; unrelated HTTP 400 is not proof of CAS',async()=>{
+  const valid=fixture({googlePrecondition:true});const report=await firestorePreflight(env,valid.transport);
+  assert.equal(report.staleWriteStatus,400);assert.equal(report.staleWriteRejected,true);assert.equal(valid.records.size,0);
+  assert.ok(!JSON.stringify(report).includes('Synthetic private detail'));
+  const invalid=fixture({invalidArgument:true});await assert.rejects(firestorePreflight(env,invalid.transport),/FIRESTORE_PREFLIGHT_CAS_NOT_ENFORCED/);assert.equal(invalid.records.size,0);
 });
 for(const [name,options,error] of [
   ['metadata permission',{metadataDenied:true},'FIRESTORE_METADATA_403'],
