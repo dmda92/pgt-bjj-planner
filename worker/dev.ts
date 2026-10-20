@@ -32,6 +32,7 @@ export class ProbeSecurity extends LegacySecurity {
       const origin=request.headers.get('Origin');
       if(origin!==null&&origin!=='https://pgt-github-probe-dev.david-dzm5.workers.dev')throw new ApiError(403,'ORIGIN_FORBIDDEN');
       if(!path.startsWith('/api/app/'))throw new ApiError(404,'ENDPOINT_NOT_FOUND');
+      if(!['GET','HEAD','OPTIONS'].includes(request.method)&&request.headers.get('X-PGT-Client')!=='firestore-dev-v1')throw new ApiError(426,'CLIENT_UPDATE_REQUIRED');
       await this.limit(request,path);
       if(path==='/api/app/realtime'&&request.method==='GET')return await this.open(request,url);
       if(path==='/api/app/realtime-ticket'&&request.method==='POST'){

@@ -26,6 +26,7 @@ export class OnlineClient extends Client {
     window.addEventListener('focus',()=>{if(this.identity&&!this.locked&&navigator.onLine)void this.sync().catch(()=>{});});
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&this.identity&&!this.locked&&navigator.onLine)void this.sync().catch(()=>{});});
   }
+  protected override requestHeaders(){return {'X-PGT-Client':'firestore-dev-v1'};}
   override async request<T=any>(path:string,method='GET',body?:unknown,credential?:string):Promise<T>{
     if(method!=='GET'&&!navigator.onLine)throw Error('Sin conexión. No se ha guardado ningún cambio.');
     try{return await super.request<T>(path,method,body,credential);}

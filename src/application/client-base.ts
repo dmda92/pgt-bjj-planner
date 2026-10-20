@@ -107,6 +107,7 @@ export class Client implements AuthenticationProvider, SyncService {
       throw Error("Sesión cerrada o cambiada");
     return i;
   }
+  protected requestHeaders():Record<string,string>{return {};}
   async request<T = any>(
     path: string,
     method = "GET",
@@ -125,6 +126,7 @@ export class Client implements AuthenticationProvider, SyncService {
     const response = await fetch(API + path, {
       method,
       headers: {
+        ...this.requestHeaders(),
         ...(token ? { Authorization: "Bearer " + token } : {}),
         ...(body ? { "Content-Type": "application/json" } : {}),
       },

@@ -11,7 +11,7 @@ const bundle=await build({entryPoints:['worker/dev.ts'],bundle:true,write:false,
 const runtime=new Miniflare(convertV4MiniflareOptions({modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-13',durableObjects:{SECURITY:{className:'ProbeSecurity',useSQLite:true}},bindings:{...f.env,ALLOWED_ORIGINS:origin},outboundService:async request=>f.transport(request.url,{method:request.method,headers:request.headers,body:['GET','HEAD'].includes(request.method)?undefined:await request.text()})}));
 let requests=0;const sockets=[];
 async function call(path,method='GET',body,token='',status=200){
- const r=await runtime.dispatchFetch('http://localhost'+path,{method,headers:{Origin:origin,'CF-Connecting-IP':'synthetic-'+requests++,...(token?{Authorization:'Bearer '+token}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
+ const r=await runtime.dispatchFetch('http://localhost'+path,{method,headers:{Origin:origin,'X-PGT-Client':'firestore-dev-v1','CF-Connecting-IP':'synthetic-'+requests++,...(token?{Authorization:'Bearer '+token}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
  const v=await r.json();assert.equal(r.status,status,method+' '+path+' '+JSON.stringify(v));return v;
 }
 async function socket(token){
@@ -23,6 +23,7 @@ async function socket(token){
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function changed(w,after){for(let n=0;n<100;n++){if(w.messages.slice(after).some(v=>v.type==='changed'))return;await sleep(20);}assert.fail('Missing realtime change');}
 try{
+ const obsolete=await runtime.dispatchFetch('http://localhost/api/app/login',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:'{}'});assert.equal(obsolete.status,426);
  const runId=crypto.randomUUID(),password='synthetic-runtime-password-more-than-24';
  const setup=await call('/api/dev/synthetic-fixture','POST',{runId,password},'synthetic-deployment-token');
  const [trainer,student,other]=setup.users.map(u=>u.mail),login=mail=>call('/api/app/login','POST',{mail,password});

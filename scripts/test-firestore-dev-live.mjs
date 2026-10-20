@@ -24,7 +24,7 @@ async function login(mail,mobile=false){
  await page.goto(origin,{waitUntil:'networkidle'});await page.getByLabel('Correo',{exact:true}).fill(mail);await page.getByLabel('Contraseña',{exact:true}).fill(password);await page.getByRole('button',{name:'Entrar',exact:true}).click();await page.getByRole('button',{name:'Salir',exact:true}).waitFor({timeout:30000});
  const token=await page.evaluate(()=>JSON.parse(localStorage.getItem('pgt-session')).token);console.log('::add-mask::'+token);return {context,page,token,mail};
 }
-let http=0;async function call(actor,path,method='GET',body,status=200){http++;const result=await actor.page.evaluate(async({path,method,body,token})=>{const r=await fetch(path,{method,headers:{Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});return {status:r.status,body:await r.json()};},{path,method,body,token:actor.token});assert.equal(result.status,status,method+' '+path+' '+JSON.stringify(result.body));return result.body;}
+let http=0;async function call(actor,path,method='GET',body,status=200){http++;const result=await actor.page.evaluate(async({path,method,body,token})=>{const r=await fetch(path,{method,headers:{'X-PGT-Client':'firestore-dev-v1',Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});return {status:r.status,body:await r.json()};},{path,method,body,token:actor.token});assert.equal(result.status,status,method+' '+path+' '+JSON.stringify(result.body));return result.body;}
 const endpoint=mail=>'/api/app/users/'+encodeURIComponent(mail);
 try{
  const t=await login(trainer),s=await login(student,true),o=await login(other);
