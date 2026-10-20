@@ -27,10 +27,10 @@ test('Lost mutation ACK is resolved by the exact operation revision without repl
  assert.equal((await s.read(path))?.sha,sha);assert.equal(f.calls.filter(c=>c.url.endsWith('/documents:commit')).length,1);
 });
 test('Corrupt/missing fragments, oversize and foreign targets fail closed',async()=>{
- const f=await firestoreFixture(),s=new FirestoreStorage(f.env,f.transport);await s.write(path,{n:1},null);
+ const f=await firestoreFixture(),s=new FirestoreStorage(f.env,f.transport);const original=await s.write(path,{n:1},null);
  const part=[...f.docs.values()].find(d=>d.fields.inline);part.fields.inline.bytesValue=Buffer.from('{"n":9}').toString('base64');
  await assert.rejects(s.read(path),/CHECKSUM/);
- const before=f.docs.size;await assert.rejects(s.write(path,{text:'x'.repeat(4194304)},null));assert.equal(f.docs.size,before);
+ const before=f.docs.size;await assert.rejects(s.write(path,{text:'x'.repeat(4194304)},original),/JSON_TOO_LARGE/);assert.equal(f.docs.size,before);
  assert.throws(()=>new FirestoreStorage({...f.env,FIRESTORE_PROJECT_ID:'foreign'},f.transport),/DEV_TARGET/);
  await assert.rejects(s.read('PGT/users_data/../tecnics.json'),/PATH_FORBIDDEN/);
 });

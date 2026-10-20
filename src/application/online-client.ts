@@ -89,7 +89,7 @@ export class OnlineClient extends Client {
             // Preserve legacy drafts for explicit export; never upload them or
             // let a cache entry overwrite the remote source of truth.
             const old=await repository.entries(identity.mail),drafts=old.filter(e=>e.dirty);
-            if(drafts.length)await db.meta.put({key:'legacy-drafts:'+identity.mail,value:JSON.stringify({schemaVersion:1,mail:identity.mail,entries:drafts.map(({key,data})=>({key,data}))})});
+            await this.archiveEntries(identity.mail,drafts);
             await receiveComments(identity.mail,snapshot.comments.data as Comments,snapshot.techniques.data as Techniques,old.find(e=>e.key==='comments')?.data as Comments|undefined);
             await db.entries.clear();await db.entries.bulkPut(entries);
           });
@@ -101,8 +101,27 @@ export class OnlineClient extends Client {
       }while(this.refreshAgain&&this.identity&&!this.locked&&navigator.onLine);
     })().finally(()=>{this.refresh=undefined;});return this.refresh;
   }
-  override async login(mail:string,password:string){await super.login(mail,password);await this.sync();}
-  override async register(mail:string,password:string,confirm:string,nombre:string,apellidos:string){await super.register(mail,password,confirm,nombre,apellidos);await this.sync();}
+  private async archiveEntries(mail:string,drafts:{key:string;data:Document}[]){
+    if(!drafts.length)return;
+    const key='legacy-drafts:'+mail,previous=await db.meta.get(key);
+    const value={schemaVersion:1,mail,entries:drafts.map(({key,data})=>({key,data}))};
+    if(!previous){await db.meta.put({key,value:JSON.stringify(value)});return;}
+    const old=JSON.parse(previous.value),history=old.history||[old];
+    if(!history.some((v:unknown)=>JSON.stringify(v)===JSON.stringify(value)))history.push(value);
+    await db.meta.put({key,value:JSON.stringify({schemaVersion:1,mail,history})});
+  }
+  private async preserveLegacyBeforeLogin(){
+    const owner=await repository.owner();if(!owner)return;
+    await db.transaction('rw',db.entries,db.meta,async()=>{
+      if(await repository.owner()!==owner)throw Error('Sesión local incompatible');
+      const drafts=(await repository.entries(owner)).filter(e=>e.dirty);await this.archiveEntries(owner,drafts);
+      // Archived copies survive account changes; these old edits must never be
+      // interpreted as an upload queue by the inherited authentication flow.
+      for(const e of drafts)await db.entries.put({...e,dirty:false,conflicts:[],remote:undefined});
+    });
+  }
+  override async login(mail:string,password:string){await this.preserveLegacyBeforeLogin();await super.login(mail,password);await this.sync();}
+  override async register(mail:string,password:string,confirm:string,nombre:string,apellidos:string){await this.preserveLegacyBeforeLogin();await super.register(mail,password,confirm,nombre,apellidos);await this.sync();}
   override async edit(key:string,data:Document,expectedVersion?:string|null){
     if(key.startsWith('plan:'))throw Error('PLAN_READ_ONLY');
     if(key==='profile')validateProfile(data as Profile);

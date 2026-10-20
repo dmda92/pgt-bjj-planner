@@ -218,7 +218,7 @@ export class Client implements AuthenticationProvider, SyncService {
         await receiveComments(identity.mail,snapshot.comments.data as Comments,snapshot.techniques.data as Techniques,previous);
         await db.entries.clear();
         await db.entries.bulkPut(entries);
-        await db.meta.clear();
+        await db.meta.filter(item=>!item.key.startsWith("legacy-drafts:")).delete();
         await db.meta.put({ key: "owner", value: identity.mail });
       });
     await this.rememberPlanIssues(identity.mail,snapshot.planIssues);
