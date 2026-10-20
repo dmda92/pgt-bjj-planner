@@ -27,7 +27,7 @@ Runtime comprobó recuperación con catálogo vacío y una proyección sintétic
 - Protege hoy/pasado, torneo acabado, continuidad tras borrados, vacío/cursor corrupto, idempotencia, prioridades no consecutivas, posición partida, año bisiesto y descansos históricos cero.
 - Datos y UUID sintéticos fijos; no datos de alumnos. No se modifican las fuentes de dominio, UI, Worker, configuraciones ni workflows en esta fase.
 
-Resultados de la suite completa ampliada y CI de esta PR se registrarán tras la ejecución. No tratar el CI verde del commit anterior como evidencia del commit nuevo.
+Suite completa ampliada ejecutada: **131/131 pruebas pasan**, 0 fallos, 0 omitidas; typecheck posterior OK. El código de aplicación/bundle no cambia respecto a la línea base anterior. CI remoto de esta PR pendiente al registrar estas evidencias; consultar el estado del commit en GitHub. No tratar el CI verde del commit anterior como evidencia del commit nuevo.
 
 ## Gates aún pendientes (no superados)
 
