@@ -10,11 +10,11 @@ on:
 permissions:
   contents: read
 
-# Never interrupt an upload in progress. Old pending develop runs may be superseded.
+# Supersede obsolete PR validation only; never interrupt a develop upload.
 # The head check below also prevents rerunning an old SHA over newer DEV.
 concurrency:
   group: pgt-cloudflare-dev-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   validate:
@@ -51,6 +51,8 @@ jobs:
         run: npm run test:runtime
       - name: DEV Firestore diagnostic runtime (isolated)
         run: node scripts/test-firestore-preflight-runtime.mjs
+      - name: DEV Firestore application and realtime runtime (isolated)
+        run: node scripts/test-firestore-app-runtime.mjs
       - name: Install Chromium
         run: npx --no-install playwright install --with-deps chromium
       - name: Browser and offline PDF tests
@@ -62,17 +64,60 @@ jobs:
           node scripts/check-dev-config.mjs
           npx --no-install wrangler deploy --config wrangler.dev.jsonc --dry-run --outdir .worker-dev-build
 
+  validate-online:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CI: 'true'
+      VITE_API_BASE_URL: ''
+      VITE_PERSISTENCE: 'firestore-dev'
+      CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: 'false'
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Install Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Online DEV frontend and Firestore protocol in isolated browsers
+        run: node scripts/test-firestore-online-browser.mjs
+      - name: Verify online DEV bundle configuration
+        run: |
+          node scripts/check-dev-config.mjs
+          npx --no-install wrangler deploy --config wrangler.dev.jsonc --dry-run --outdir .worker-dev-build
+      - name: Save isolated DEV browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: firestore-isolated-browser
+          path: |
+            artifacts/firestore-local-browser.json
+            artifacts/firestore-student.png
+            artifacts/firestore-trainer.png
+          if-no-files-found: ignore
+          retention-days: 7
+
   deploy-dev:
-    needs: validate
+    needs: [validate, validate-online]
     if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/develop' && vars.DEV_DEPLOY_ENABLED == 'true'
     environment: development
-    runs-on: ubuntu-latest
+    # Live QA installs the same Playwright Chromium as validation.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     concurrency:
       group: pgt-worker-dev-deployment
       cancel-in-progress: false
     env:
       VITE_API_BASE_URL: ''
+      VITE_PERSISTENCE: 'firestore-dev'
       CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: 'false'
       WRANGLER_SEND_METRICS: 'false'
     steps:
@@ -86,6 +131,8 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: node scripts/check-dev-config.mjs
+      - name: Install Chromium for live DEV verification
+        run: npx --no-install playwright install --with-deps chromium
       - name: Check current develop HEAD and deploy DEV only
         env:
           GH_TOKEN: ${{ github.token }}
@@ -96,6 +143,7 @@ jobs:
         run: |
           node --input-type=module <<'JS'
           import { spawnSync } from 'node:child_process';
+          import { createHash } from 'node:crypto';
           for (const key of ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID', 'EXPECTED_DEV_ACCOUNT_ID']) {
             if (!process.env[key]) throw new Error(`Missing development configuration: ${key}`);
           }
@@ -108,7 +156,7 @@ jobs:
           if ((await response.json()).object.sha !== process.env.GITHUB_SHA) {
             console.log('Skipping obsolete commit.');
           } else {
-            const result = spawnSync('npx', ['--no-install', 'wrangler', 'deploy', '--config', 'wrangler.dev.jsonc', '--name', 'pgt-github-probe-dev', '--var', `DEV_ACCOUNT_ID:${process.env.CLOUDFLARE_ACCOUNT_ID}`], { stdio: 'inherit' });
+            const result = spawnSync('npx', ['--no-install', 'wrangler', 'deploy', '--config', 'wrangler.dev.jsonc', '--name', 'pgt-github-probe-dev', '--var', `DEV_ACCOUNT_ID:${process.env.CLOUDFLARE_ACCOUNT_ID}`, '--var', `DEV_DEPLOY_TOKEN_HASH:${createHash('sha256').update(process.env.CLOUDFLARE_API_TOKEN).digest('base64')}`], { stdio: 'inherit' });
             if (result.error) throw result.error;
             if (result.status !== 0) process.exit(result.status ?? 1);
             const preflight = await fetch('https://pgt-github-probe-dev.david-dzm5.workers.dev/api/dev/firestore-preflight', {
@@ -117,5 +165,20 @@ jobs:
             const report = await preflight.json();
             console.log(JSON.stringify(report));
             if (!preflight.ok || report.status !== 'FIRESTORE_DEV_CONNECTION_VERIFIED') throw new Error('DEV Firestore preflight failed');
+            const qaEnv = {...process.env}; delete qaEnv.PGT_LOCAL_QA_ORIGIN;
+            const qa = spawnSync(process.execPath, ['scripts/test-firestore-dev-live.mjs'], {stdio:'inherit',env:qaEnv});
+            if (qa.error) throw qa.error;
+            if (qa.status !== 0) process.exit(qa.status ?? 1);
           }
           JS
+      - name: Save real DEV verification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: firestore-real-dev
+          path: |
+            artifacts/firestore-dev-live.json
+            artifacts/firestore-student.png
+            artifacts/firestore-trainer.png
+          if-no-files-found: ignore
+          retention-days: 7

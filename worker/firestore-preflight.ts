@@ -1,6 +1,6 @@
-import {ApiError} from './security.ts';
+import {ApiError,fingerprint,equal} from './security.ts';
 import {FirestoreIdentity,DEV_PROJECT,DEV_DATABASE,DEV_DATABASE_NAME,type Transport} from './firestore-auth.ts';
-export interface PreflightEnv {FIRESTORE_SERVICE_ACCOUNT_JSON?:string;DEV_ACCOUNT_ID?:string;FIRESTORE_PROJECT_ID?:string;FIRESTORE_DATABASE_ID?:string}
+export interface PreflightEnv {FIRESTORE_SERVICE_ACCOUNT_JSON?:string;DEV_ACCOUNT_ID?:string;DEV_DEPLOY_TOKEN_HASH?:string;FIRESTORE_PROJECT_ID?:string;FIRESTORE_DATABASE_ID?:string}
 export class PreflightFailure extends ApiError {
   diagnostic:Record<string,string|number|boolean>;
   constructor(code:string,diagnostic:Record<string,string|number|boolean>){super(503,code);this.diagnostic=diagnostic;}
@@ -15,6 +15,8 @@ export async function authorizePreflight(request:Request,env:PreflightEnv,transp
   if(!/^[0-9a-f]{32}$/.test(env.DEV_ACCOUNT_ID||''))throw new ApiError(503,'DEV_ACCOUNT_NOT_CONFIGURED');
   const token=request.headers.get('Authorization')?.match(/^Bearer ([^\s]{20,})$/)?.[1];
   if(!token)throw new ApiError(401,'DEPLOYMENT_AUTH_REQUIRED');
+  if(!/^[A-Za-z0-9+/]{43}=$/.test(env.DEV_DEPLOY_TOKEN_HASH||''))throw new ApiError(503,'DEV_DEPLOYMENT_CREDENTIAL_NOT_PINNED');
+  if(!equal(await fingerprint(token),env.DEV_DEPLOY_TOKEN_HASH!))throw new ApiError(403,'DEV_DEPLOYMENT_AUTH_REQUIRED');
   let response:Response;
   try{response=await transport(`https://api.cloudflare.com/client/v4/accounts/${env.DEV_ACCOUNT_ID}/workers/scripts/pgt-github-probe-dev/settings`,{headers:{Authorization:'Bearer '+token},redirect:'manual',signal:AbortSignal.timeout(15000)});}
   catch{throw new ApiError(503,'DEPLOYMENT_AUTH_UNAVAILABLE');}

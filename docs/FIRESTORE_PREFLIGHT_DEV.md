@@ -41,3 +41,25 @@ PR #7 integrada en develop `7c408c4`; CI de PR y validación previa al despliegu
 La comprobación original suponía HTTP 409/412. El [contrato oficial google.rpc.Code](https://github.com/googleapis/googleapis/blob/master/google/rpc/code.proto) también asigna HTTP 400 a FAILED_PRECONDITION. Se añade aceptación estricta de ese status **solo** si el cuerpo estructurado contiene error.code=400 y error.status=FAILED_PRECONDITION. Un 400 INVALID_ARGUMENT sigue bloqueando el gate. Se añade regresión positiva/negativa y se usa ese contrato en workerd; el informe incluye el HTTP real de la escritura obsoleta para el segundo ensayo. Local: 141/141 en PR #6, de las que 10 son pruebas del diagnóstico; en la rama selectiva son 127/127. Pendiente segundo ensayo remoto.
 
 El segundo ensayo, [39506222147](https://github.com/dmda92/pgt-bjj-planner/actions/runs/39506222147), también publicó DEV (versión `b75dbbf3-4fff-457f-8629-a11a7e5496e3`), con CI completo correcto, y volvió a detenerse en CAS. Se añade diagnóstico autenticado y acotado de HTTP/código/status de Google, booleans de versión cambiada/valor actualizado y metadata de ubicación/edición/modo. Nunca se devuelve error.message, documentos, tokens ni claves. El gate permanece bloqueado hasta observar la respuesta exacta. Prueba workerd adicional verifica la serialización y el filtrado de este informe en un fallo sintético. Comprobación HTTP remota de Work: portada DEV 200 con HTML PGT; POST de diagnóstico sin credencial 401 DEPLOYMENT_AUTH_REQUIRED.
+
+## Conexión remota verificada — 20/10/2026 22:27 UTC
+
+La PR #9 se integró por merge en develop `fbc71dc219ef7f9b6760538bc92012e091bca599`, tras CI completo correcto [39507594114](https://github.com/dmda92/pgt-bjj-planner/actions/runs/39507594114). El pipeline de integración y despliegue [39507963337](https://github.com/dmda92/pgt-bjj-planner/actions/runs/39507963337) terminó **success** en validate y deploy-dev. Worker exclusivo `pgt-github-probe-dev`, versión `53fe3f55-336c-40ce-9549-fcade35aeb1d`; sin cambios de assets ni de configuración PRO.
+
+Respuesta real del Worker, registrada por Actions a las 22:27:53 UTC:
+
+```json
+{"status":"FIRESTORE_DEV_CONNECTION_VERIFIED","project":"pgt-bjj-dev","database":"(default)","location":"europe-west1","edition":"STANDARD","mode":"FIRESTORE_NATIVE","principal":"pgt-worker-dev@pgt-bjj-dev.iam.gserviceaccount.com","createReadUpdateDelete":true,"staleWriteRejected":true,"staleWriteStatus":400,"anonymousReadDenied":true,"anonymousWriteDenied":true,"rulesSource":"NOT_READ_SERVICE_ACCOUNT_HAS_DATA_ROLE_ONLY","billing":"SPARK_OWNER_CONFIRMED_NOT_QUERIED"}
+```
+
+La prueba obtuvo OAuth2 desde el secreto del Worker, leyó metadatos reales, creó/leyó/actualizó un UUID sintético, comprobó el nuevo updateTime y el valor actualizado, rechazó una escritura con la versión anterior (HTTP 400 FAILED_PRECONDITION), rechazó GET/PATCH anónimos y confirmó HTTP 404 después del borrado condicionado. Solo se utilizó `_pgt_dev_diagnostics/{UUID}`; no se leyó ni migró negocio. El acceso de datos está probado; el nombre del rol IAM y Spark siguen siendo información confirmada por el propietario, no una auditoría de políticas IAM/facturación.
+
+El fallo CAS de los dos despliegues anteriores no se reprodujo con esta revisión, que añade lectura explícita después del update y diagnóstico seguro. Este resultado no demuestra por sí solo la causa del fallo anterior ni sustituye las futuras pruebas reales de concurrencia de la aplicación.
+
+**Pendiente manual para cerrar el gate de seguridad:** el propietario debe abrir Firebase → proyecto `pgt-bjj-dev` → Firestore Database → `(default)` → Rules y proporcionar el texto completo de las reglas actualmente publicadas (sin credenciales), confirmando que no tiene cambios pendientes de publicar. La cuenta runtime tiene rol de datos y no se le elevarán permisos para leer la fuente de reglas. El rechazo anónimo del UUID de prueba no prueba todas las rutas ni permisos de usuarios autenticados. Si las reglas difieren del deny-all documentado, revisar antes de publicar cambios; no tocar PRO.
+
+El backend de negocio Firestore y el canal entre dispositivos siguen pendientes de implementación y QA. No se declara terminada la migración ni probado el tiempo real. La PR #6 conserva el trabajo completo y permanece borrador.
+
+## Gate cerrado por configuración aportada por propietario
+
+El propietario proporcionó en el chat las reglas completas deny-all (`allow read, write: if false` para `/{document=**}`) de Firestore DEV. Se incorporan como referencia en `firestore.dev.rules`. Junto al diagnóstico remoto anterior se cierra la preparación de infraestructura y se continúa implementación de negocio. No se ha vuelto a publicar ni alterado ninguna regla cloud; la procedencia del texto es el propietario, no una lectura administrativa desde la cuenta runtime.
