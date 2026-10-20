@@ -11,7 +11,9 @@ const bundle=await build({entryPoints:['worker/dev.ts'],bundle:true,write:false,
 const runtime=new Miniflare(convertV4MiniflareOptions({modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-13',durableObjects:{SECURITY:{className:'ProbeSecurity',useSQLite:true}},bindings:{...f.env,ALLOWED_ORIGINS:origin},outboundService:async request=>f.transport(request.url,{method:request.method,headers:request.headers,body:['GET','HEAD'].includes(request.method)?undefined:await request.text()})}));
 let requests=0;const sockets=[];
 async function call(path,method='GET',body,token='',status=200){
+ const started=f.calls.length;
  const r=await runtime.dispatchFetch('http://localhost'+path,{method,headers:{Origin:origin,'X-PGT-Client':'firestore-dev-v1','CF-Connecting-IP':'synthetic-'+requests++,...(token?{Authorization:'Bearer '+token}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
+ assert.ok(f.calls.length-started<=50,'DEV runtime exceeded 50 subrequests: '+method+' '+path);
  const v=await r.json();assert.equal(r.status,status,method+' '+path+' '+JSON.stringify(v));return v;
 }
 async function socket(token){
