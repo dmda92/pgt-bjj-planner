@@ -187,3 +187,9 @@ Antes de CADA despliegue comprobar Worker, configuración Wrangler, rama, cuenta
 Al iniciar: identificar rama actual y entorno afectado; clasificar desarrollo/integración DEV/promoción PRO; confirmar feature nacida de main; leer reglas aplicables de AGENTS.md; verificar alcance autorizado antes de modificar archivos.
 
 Al cerrar: documentar pruebas ejecutadas y resultados, archivos modificados, origen/destino de PR, revisión del diff, recursos externos afectados, ausencia de operaciones PRO cuando corresponda y riesgos/pasos manuales pendientes. Antes de cualquier PR a main revisar TODO el diff y confirmar que contiene exclusivamente cambios autorizados.
+
+## Encargo Firestore y tiempo real — 20/10/2026, exclusivamente DEV
+
+El propietario autoriza sustituir GitHub por Firestore como fuente de verdad y eliminar sincronización manual/edición offline en DEV, manteniendo IndexedDB como caché, login, permisos y comportamiento funcional. Sustituye las restricciones históricas incompatibles de persistencia; **no autoriza cambiar el algoritmo**, main, Worker PRO, secretos PRO ni datos reales. Proyectos: pgt-bjj-dev autorizado; pgt-bjj-pro fuera de alcance. Toda feature nace de main y su PR va a develop.
+
+Plan original en docs/FIRESTORE_PLAN_2026-10-20.md; auditoría/decisión inicial en docs/FIRESTORE_AUDITORIA_DEV.md; configuración manual y evidencias en docs/FIRESTORE_CONFIGURACION_DEV.md y docs/FIRESTORE_VALIDACION_DEV.md. Estado inicial: solo auditoría y regresiones, sin implementación/despliegue de Firestore. Antes de implementar completar el gate de infraestructura DEV del plan; no declarar superado con mocks. PR borrador hasta superar las fases pendientes. Los fixtures de tests/fixtures/firestore congelan resultados del main base; no regenerarlos para acomodar el backend ni retirar el guard de integridad del dominio.
