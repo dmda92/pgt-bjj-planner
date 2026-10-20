@@ -18,6 +18,7 @@ export class OnlineClient extends Client {
   private writes:Promise<unknown>=Promise.resolve();
   
   private eventRefresh:ReturnType<typeof setTimeout>|undefined;
+  private ownRefreshPending=false;
   constructor(){
     super();
     window.addEventListener('storage',e=>{if(e.key==='pgt-session')this.stop();});
@@ -35,6 +36,7 @@ export class OnlineClient extends Client {
   private stop(){
     this.connectionEpoch++;this.opening=false;this.socketToken='';
     clearTimeout(this.retry);clearTimeout(this.eventRefresh);this.retry=undefined;
+    this.ownRefreshPending=false;
     const ws=this.socket;this.socket=undefined;if(ws){ws.onclose=null;ws.close();}
   }
   private async connect(){
@@ -56,7 +58,12 @@ export class OnlineClient extends Client {
         this.backoff=500;this.dayEpoch++;this.viewEpoch++;
         // Handshake precedes the snapshot: a mutation during loading always
         // schedules another authoritative read after that load finishes.
-        clearTimeout(this.eventRefresh);this.eventRefresh=setTimeout(()=>void this.sync().then(()=>window.dispatchEvent(new Event('pgt-live-update'))).catch(()=>{}),100);
+        this.ownRefreshPending ||= event.type==='ready'||event.own!==false;
+        clearTimeout(this.eventRefresh);this.eventRefresh=setTimeout(()=>{
+          const refreshOwn=this.ownRefreshPending;this.ownRefreshPending=false;
+          const refresh=refreshOwn?this.sync():Promise.resolve();
+          void refresh.then(()=>window.dispatchEvent(new Event('pgt-live-update'))).catch(()=>{});
+        },100);
       };
       ws.onclose=e=>{
         if(epoch!==this.connectionEpoch)return;
