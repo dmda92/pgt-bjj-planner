@@ -20,12 +20,12 @@ export class OnlineClient extends Client {
   private eventRefresh:ReturnType<typeof setTimeout>|undefined;
   constructor(){
     super();
-    const channel=new BroadcastChannel('pgt-session');channel.onmessage=()=>this.stop();
     window.addEventListener('storage',e=>{if(e.key==='pgt-session')this.stop();});
     window.addEventListener('offline',()=>{this.stop();this.status='Sin conexión · copia local de consulta';this.onChange();});
     window.addEventListener('focus',()=>{if(this.identity&&!this.locked&&navigator.onLine)void this.sync().catch(()=>{});});
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&this.identity&&!this.locked&&navigator.onLine)void this.sync().catch(()=>{});});
   }
+  protected override sessionChanged(){this.stop();}
   protected override requestHeaders(){return {'X-PGT-Client':'firestore-dev-v1'};}
   override async request<T=any>(path:string,method='GET',body?:unknown,credential?:string):Promise<T>{
     if(method!=='GET'&&!navigator.onLine)throw Error('Sin conexión. No se ha guardado ningún cambio.');
@@ -95,7 +95,7 @@ export class OnlineClient extends Client {
           });
           await this.rememberPlanIssues(identity.mail,snapshot.planIssues);
           const archived=await db.meta.get('legacy-drafts:'+identity.mail);
-          this.status=snapshot.planIssues?.length?planIssueMessage(snapshot.planIssues):archived?'Borradores anteriores disponibles para exportar':'Actualizado';
+          this.status=snapshot.planIssues?.length?planIssueMessage(snapshot.planIssues):archived?'Borradores anteriores disponibles para exportar':this.socket?.readyState===WebSocket.OPEN?'Actualizado':'Datos cargados · conectando actualizaciones';
         }catch(error){this.status='No se pudo actualizar: '+(error instanceof Error?error.message:'error');throw error;}
         finally{this.onChange();}
       }while(this.refreshAgain&&this.identity&&!this.locked&&navigator.onLine);

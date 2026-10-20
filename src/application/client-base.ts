@@ -88,6 +88,7 @@ export class Client implements AuthenticationProvider, SyncService {
       });
     }
     this.channel.onmessage = () => {
+      this.sessionChanged();
       this.identity = null;
       this.locked = true;
       this.status = "La sesión cambió en otra pestaña. Recarga para continuar.";
@@ -107,6 +108,7 @@ export class Client implements AuthenticationProvider, SyncService {
       throw Error("Sesión cerrada o cambiada");
     return i;
   }
+  protected sessionChanged():void{}
   protected requestHeaders():Record<string,string>{return {};}
   async request<T = any>(
     path: string,

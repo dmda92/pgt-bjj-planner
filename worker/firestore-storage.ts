@@ -60,14 +60,21 @@ export class FirestoreStorage implements CloudStorageProvider {
     if(d.fields.inline?.bytesValue){
       try{const part=Uint8Array.from(atob(d.fields.inline.bytesValue),c=>c.charCodeAt(0));if(part.length!==size)throw Error();bytes.set(part);offset=size;}catch{throw new ApiError(502,'FIRESTORE_FRAGMENT_INVALID');}
     }
-    // Bounded fan-out, including the maximum-sized valid logical document.
-    for(let start=0;offset<size&&start<count;start+=4){
-      const values=await Promise.all(Array.from({length:Math.min(4,count-start)},async(_,j)=>{
-        const r=await this.request(`/documents/pgt_resources/${id}/parts/${version}_${start+j}`);this.check(r);const part=await r.json() as Doc;
-        const b=part.fields.payload?.bytesValue;if(typeof b!=='string')throw new ApiError(502,'FIRESTORE_FRAGMENT_INVALID');
-        try{return Uint8Array.from(atob(b),c=>c.charCodeAt(0));}catch{throw new ApiError(502,'FIRESTORE_FRAGMENT_INVALID');}
-      }));
-      for(const part of values){if(offset+part.length>size)throw new ApiError(502,'FIRESTORE_FRAGMENT_INVALID');bytes.set(part,offset);offset+=part.length;}
+    if(offset<size){
+      // One batchGet keeps fragmentation from multiplying Worker subrequests.
+      // Firestore may return results out of order; ordinal names are authority.
+      const names=Array.from({length:count},(_,i)=>`${documents}pgt_resources/${id}/parts/${version}_${i}`);
+      const response=await this.request('/documents:batchGet',{method:'POST',body:JSON.stringify({documents:names})});this.check(response);
+      const rows=await response.json() as {found?:Doc;missing?:string}[];
+      if(!Array.isArray(rows)||rows.some(r=>r.missing))throw new ApiError(502,'FIRESTORE_FRAGMENT_INVALID');
+      const found=new Map(rows.flatMap(r=>r.found?[[r.found.name,r.found] as const]:[]));
+      if(found.size!==count)throw new ApiError(502,'FIRESTORE_FRAGMENT_INVALID');
+      for(const name of names){
+        const value=found.get(name)?.fields.payload?.bytesValue;
+        if(typeof value!=='string')throw new ApiError(502,'FIRESTORE_FRAGMENT_INVALID');
+        let part:Uint8Array;try{part=Uint8Array.from(atob(value),c=>c.charCodeAt(0));}catch{throw new ApiError(502,'FIRESTORE_FRAGMENT_INVALID');}
+        if(offset+part.length>size)throw new ApiError(502,'FIRESTORE_FRAGMENT_INVALID');bytes.set(part,offset);offset+=part.length;
+      }
     }
     if(offset!==size||await hex(bytes)!==text(d,'digest'))throw new ApiError(502,'FIRESTORE_CHECKSUM_MISMATCH');
     try{return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes)) as T;}catch{throw new ApiError(502,'FIRESTORE_JSON_INVALID');}

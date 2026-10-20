@@ -23,6 +23,7 @@ export async function firestoreFixture(){
       if(loseAck){loseAck=false;throw Error('ACK lost after atomic commit');}
       return Response.json({writeResults:[],commitTime:'fixture'});
     }
+    if(path==='/documents:batchGet'){const names=JSON.parse(String(init.body)).documents;return Response.json(names.map((name:string)=>docs.has(name)?{found:docs.get(name)}:{missing:name}).reverse());}
     if(path==='/documents:runQuery'){
       const q=JSON.parse(String(init.body)).structuredQuery,field=q.where.fieldFilter;
       return Response.json([...docs.values()].filter(d=>d.name.startsWith(DEV_DATABASE_NAME+'/documents/'+q.from[0].collectionId+'/')&&d.name.split('/').length===7&&d.fields[field.field.fieldPath]?.stringValue===field.value.stringValue).map(document=>({document})));

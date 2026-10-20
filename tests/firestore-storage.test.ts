@@ -7,7 +7,7 @@ test('Firestore preserves ordered JSON >1MiB, UTF-8, hashes, listing and tombsto
  const f=await firestoreFixture(),s=new FirestoreStorage(f.env,f.transport);
  const value={positions:[{id:'unchanged',text:'á😃'.repeat(230000)}],ordered:[8,3,1],nested:{empty:null}};
  const version=await s.write(path,value,null);
- assert.deepEqual(await s.read(path),{data:value,sha:version});
+ const readStart=f.calls.length;assert.deepEqual(await s.read(path),{data:value,sha:version});assert.equal(f.calls.length-readStart,2);assert.ok(f.calls.at(-1)!.url.endsWith('/documents:batchGet'));
  const list=await s.list('PGT/users_data/pgt-dev-storage@example.test');assert.deepEqual(list,[{name:'tecnics.json',type:'file',sha:version}]);
  assert.ok([...f.docs.values()].every(d=>new TextEncoder().encode(JSON.stringify(d)).length<1024*1024));
  await s.remove(path,version);assert.equal(await s.read(path),null);assert.deepEqual(await s.list('PGT/users_data/pgt-dev-storage@example.test'),[]);
