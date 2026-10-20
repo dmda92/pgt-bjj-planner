@@ -34,7 +34,7 @@ export async function firestorePreflight(env:PreflightEnv,transport:Transport=(i
   const fields={runId:{stringValue:id},purpose:{stringValue:'synthetic-dev-preflight'}};
   const commit=(writes:unknown[])=>google('/documents:commit',{method:'POST',body:JSON.stringify({writes})});
   const check=(r:Response,stage:string)=>{if(!r.ok)throw new ApiError(503,`FIRESTORE_PREFLIGHT_${stage}_${r.status}`);};
-  let anonymousReadDenied=false,anonymousWriteDenied=false;
+  let anonymousReadDenied=false,anonymousWriteDenied=false,staleWriteStatus=0;
   try{
     const create=await commit([{update:{name,fields},currentDocument:{exists:false}}]);check(create,'CREATE');created=true;
     const value=await google(path);check(value,'READ');const record=await value.json() as any;
@@ -42,7 +42,12 @@ export async function firestorePreflight(env:PreflightEnv,transport:Transport=(i
     const updatedFields={...fields,confirmed:{booleanValue:true}};
     const update=await commit([{update:{name,fields:updatedFields},currentDocument:{updateTime:record.updateTime}}]);check(update,'UPDATE');
     const stale=await commit([{update:{name,fields},currentDocument:{updateTime:record.updateTime}}]);
-    if(stale.status!==409&&stale.status!==412)throw new ApiError(503,'FIRESTORE_PREFLIGHT_CAS_NOT_ENFORCED');
+    staleWriteStatus=stale.status;
+    // Google RPC maps FAILED_PRECONDITION to HTTP 400, unlike generic HTTP
+    // preconditions (412). A malformed payload/other 400 must never count as CAS.
+    let failedPrecondition=false;
+    if(stale.status===400){const value=await stale.json() as any;failedPrecondition=value?.error?.status==='FAILED_PRECONDITION'&&value?.error?.code===400;}
+    if(stale.status!==409&&stale.status!==412&&!failedPrecondition)throw new ApiError(503,'FIRESTORE_PREFLIGHT_CAS_NOT_ENFORCED');
     const read=await transport(base+path,{redirect:'manual',signal:AbortSignal.timeout(15000)});
     anonymousReadDenied=read.status===401||read.status===403;
     const write=await transport(base+path,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({fields:updatedFields}),redirect:'manual',signal:AbortSignal.timeout(15000)});
@@ -58,5 +63,5 @@ export async function firestorePreflight(env:PreflightEnv,transport:Transport=(i
     }else if(current.status!==404)throw new ApiError(503,'FIRESTORE_PREFLIGHT_CLEANUP_'+current.status);
   }
   const removed=await google(path);if(removed.status!==404)throw new ApiError(503,'FIRESTORE_PREFLIGHT_DELETE_NOT_CONFIRMED');
-  return {status:'FIRESTORE_DEV_CONNECTION_VERIFIED',project:DEV_PROJECT,database:DEV_DATABASE,location:database.locationId,edition:database.databaseEdition,mode:database.type,principal:identity.principal,createReadUpdateDelete:created,staleWriteRejected:true,anonymousReadDenied,anonymousWriteDenied,rulesSource:'NOT_READ_SERVICE_ACCOUNT_HAS_DATA_ROLE_ONLY',billing:'SPARK_OWNER_CONFIRMED_NOT_QUERIED'};
+  return {status:'FIRESTORE_DEV_CONNECTION_VERIFIED',project:DEV_PROJECT,database:DEV_DATABASE,location:database.locationId,edition:database.databaseEdition,mode:database.type,principal:identity.principal,createReadUpdateDelete:created,staleWriteRejected:true,staleWriteStatus,anonymousReadDenied,anonymousWriteDenied,rulesSource:'NOT_READ_SERVICE_ACCOUNT_HAS_DATA_ROLE_ONLY',billing:'SPARK_OWNER_CONFIRMED_NOT_QUERIED'};
 }
