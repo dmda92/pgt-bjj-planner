@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {generateKeyPairSync,verify} from 'node:crypto';
+import {generateKeyPairSync,verify,createHash} from 'node:crypto';
 import {build} from 'esbuild';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
 const {privateKey,publicKey}=generateKeyPairSync('rsa',{modulusLength:2048});
@@ -7,7 +7,7 @@ const credential=JSON.stringify({type:'service_account',project_id:'pgt-bjj-dev'
 const bundle=await build({entryPoints:['worker/dev.ts'],bundle:true,write:false,format:'esm',target:'es2022'});
 const name='projects/pgt-bjj-dev/databases/(default)',base='https://firestore.googleapis.com/v1/'+name;
 const records=new Map();let version=0,outgoing=0,authorized=true,invalidPrecondition=false;
-const runtime=new Miniflare(convertV4MiniflareOptions({modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-13',durableObjects:{SECURITY:{className:'ProbeSecurity',useSQLite:true}},bindings:{FIRESTORE_PROJECT_ID:'pgt-bjj-dev',FIRESTORE_DATABASE_ID:'(default)',DEV_ACCOUNT_ID:'a'.repeat(32),FIRESTORE_SERVICE_ACCOUNT_JSON:credential,DATA_BRANCH:'main',ALLOWED_ORIGINS:'https://pgt-github-probe-dev.david-dzm5.workers.dev'},outboundService:async request=>{
+const runtime=new Miniflare(convertV4MiniflareOptions({modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-13',durableObjects:{SECURITY:{className:'ProbeSecurity',useSQLite:true}},bindings:{FIRESTORE_PROJECT_ID:'pgt-bjj-dev',FIRESTORE_DATABASE_ID:'(default)',DEV_ACCOUNT_ID:'a'.repeat(32),DEV_DEPLOY_TOKEN_HASH:createHash('sha256').update('synthetic-deployment-token').digest('base64'),FIRESTORE_SERVICE_ACCOUNT_JSON:credential,DATA_BRANCH:'main',ALLOWED_ORIGINS:'https://pgt-github-probe-dev.david-dzm5.workers.dev'},outboundService:async request=>{
   outgoing++;
   if(request.url==='https://api.cloudflare.com/client/v4/accounts/'+'a'.repeat(32)+'/workers/scripts/pgt-github-probe-dev/settings'){
     assert.equal(request.headers.get('Authorization'),'Bearer synthetic-deployment-token');

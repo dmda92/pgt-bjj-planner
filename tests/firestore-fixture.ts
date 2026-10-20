@@ -3,7 +3,7 @@ import {DEV_DATABASE_NAME} from '../worker/firestore-auth.ts';
 export async function firestoreFixture(){
   const keys=await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'},true,['sign','verify']);
   const pk=Buffer.from(await crypto.subtle.exportKey('pkcs8',keys.privateKey)).toString('base64');
-  const env={FIRESTORE_PROJECT_ID:'pgt-bjj-dev',FIRESTORE_DATABASE_ID:'(default)',DEV_ACCOUNT_ID:'a'.repeat(32),FIRESTORE_SERVICE_ACCOUNT_JSON:JSON.stringify({type:'service_account',project_id:'pgt-bjj-dev',client_email:'pgt-worker-dev@pgt-bjj-dev.iam.gserviceaccount.com',private_key:'-----BEGIN PRIVATE KEY-----\n'+pk+'\n-----END PRIVATE KEY-----'})};
+  const env={FIRESTORE_PROJECT_ID:'pgt-bjj-dev',FIRESTORE_DATABASE_ID:'(default)',DEV_ACCOUNT_ID:'a'.repeat(32),DEV_DEPLOY_TOKEN_HASH:Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode('synthetic-deployment-token'))).toString('base64'),FIRESTORE_SERVICE_ACCOUNT_JSON:JSON.stringify({type:'service_account',project_id:'pgt-bjj-dev',client_email:'pgt-worker-dev@pgt-bjj-dev.iam.gserviceaccount.com',private_key:'-----BEGIN PRIVATE KEY-----\n'+pk+'\n-----END PRIVATE KEY-----'})};
   const docs=new Map<string,any>(),calls:{url:string;method:string;writes?:number}[]=[];let seq=0,loseAck=false,deny=false;
   const base='https://firestore.googleapis.com/v1/'+DEV_DATABASE_NAME;
   const transport:Transport=async(url,init={})=>{

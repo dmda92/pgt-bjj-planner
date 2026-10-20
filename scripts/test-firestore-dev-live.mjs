@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {randomBytes} from 'node:crypto';
-import {mkdir,writeFile} from 'node:fs/promises';
+import {mkdir,writeFile,readFile} from 'node:fs/promises';
 import {chromium} from 'playwright';
 import {generatePlan} from '../src/domain/planner.ts';
 import {madridDate,updateFuturePlanText} from '../src/domain/plan-text-updates.ts';
@@ -42,6 +42,16 @@ try{
  await mkdir('artifacts',{recursive:true});
  await s.page.screenshot({path:'artifacts/firestore-student.png',fullPage:true});await t.page.screenshot({path:'artifacts/firestore-trainer.png',fullPage:true});
  checks.push('12 real UI autosaves -> trainer without refresh');
+ // A failed save stays a visible, exportable draft and is never retried silently.
+ let blockedAttempts=0;
+ await s.page.route('**/api/app/users/**/techniques',async route=>{if(route.request().method()==='PUT'){blockedAttempts++;await route.abort();}else await route.continue();});
+ const failedText='QA borrador fallido '+runId.slice(0,8);await editor.fill(failedText);
+ await s.page.getByRole('button',{name:'Reintentar guardado',exact:true}).waitFor();await wait(800);assert.equal(blockedAttempts,1);
+ const download=s.page.waitForEvent('download');await s.page.getByRole('button',{name:'Exportar mi copia JSON',exact:true}).click();
+ const backup=JSON.parse(await readFile(await (await download).path(),'utf8'));assert.equal(backup.entries.find(e=>e.key==='techniques').data.positions[0].tecnicas[0].descripcion_del_alumno,failedText);
+ await s.page.unroute('**/api/app/users/**/techniques');await s.page.getByRole('button',{name:'Reintentar guardado',exact:true}).click();
+ await poll(()=>remote.inputValue().then(v=>v===failedText),'Explicit draft retry reaches trainer');checks.push('Failed online draft exported; one failed attempt; explicit retry required');
+
  const snapshot=()=>call(s,endpoint(student)+'/snapshot');let before=await snapshot();
  await call(s,endpoint(other)+'/snapshot','GET',undefined,403);await call(s,'/api/app/students','GET',undefined,403);checks.push('Student cross-user and trainer endpoints denied');
  const today=madridDate(),date=n=>{const d=new Date(today+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};

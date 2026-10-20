@@ -1,11 +1,12 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {fingerprint} from '../worker/security.ts';
 import {FirestoreIdentity,DEV_DATABASE_NAME,type Transport} from '../worker/firestore-auth.ts';
 import {authorizePreflight,firestorePreflight,PreflightFailure} from '../worker/firestore-preflight.ts';
 const keys=await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'},true,['sign','verify']);
 const privateKey='-----BEGIN PRIVATE KEY-----\n'+Buffer.from(await crypto.subtle.exportKey('pkcs8',keys.privateKey)).toString('base64')+'\n-----END PRIVATE KEY-----';
 const account={type:'service_account',project_id:'pgt-bjj-dev',client_email:'pgt-worker-dev@pgt-bjj-dev.iam.gserviceaccount.com',private_key:privateKey};
-const env={FIRESTORE_PROJECT_ID:'pgt-bjj-dev',FIRESTORE_DATABASE_ID:'(default)',FIRESTORE_SERVICE_ACCOUNT_JSON:JSON.stringify(account),DEV_ACCOUNT_ID:'a'.repeat(32)};
+const env={FIRESTORE_PROJECT_ID:'pgt-bjj-dev',FIRESTORE_DATABASE_ID:'(default)',FIRESTORE_SERVICE_ACCOUNT_JSON:JSON.stringify(account),DEV_ACCOUNT_ID:'a'.repeat(32),DEV_DEPLOY_TOKEN_HASH:await fingerprint('synthetic-deployment-token')};
 function fixture(options:{anonymousOpen?:boolean;metadataDenied?:boolean;badEdition?:boolean;staleAccepted?:boolean;ambiguousCreate?:boolean;googlePrecondition?:boolean;invalidArgument?:boolean}={}){
   const records=new Map<string,any>();let version=0,oauth=0,commits=0;
   const calls:{url:string;method:string}[]=[];
@@ -83,6 +84,8 @@ test('Deployment authorization pins account and script; invalid, redirected and 
   const valid:Transport=async(url,init)=>{called++;assert.equal(url,'https://api.cloudflare.com/client/v4/accounts/'+env.DEV_ACCOUNT_ID+'/workers/scripts/pgt-github-probe-dev/settings');assert.equal(init?.redirect,'manual');return Response.json({success:true,result:{bindings:[]}});};
   await assert.rejects(authorizePreflight(new Request('https://example'),env,valid),/DEPLOYMENT_AUTH_REQUIRED/);assert.equal(called,0);
   const request=new Request('https://example',{headers:{Authorization:'Bearer '+'synthetic-deployment-token'}});
+  const wrong=new Request('https://example',{headers:{Authorization:'Bearer synthetic-read-only-token'}});
+  await assert.rejects(authorizePreflight(wrong,env,valid),/DEV_DEPLOYMENT_AUTH_REQUIRED/);assert.equal(called,0);
   await authorizePreflight(request,env,valid);assert.equal(called,1);
   await assert.rejects(authorizePreflight(request,{...env,DEV_ACCOUNT_ID:'bad'},valid),/DEV_ACCOUNT_NOT_CONFIGURED/);assert.equal(called,1);
   await assert.rejects(authorizePreflight(request,env,async()=>new Response(null,{status:302})),/DEV_DEPLOYMENT_AUTH_REQUIRED/);
