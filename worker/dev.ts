@@ -1,6 +1,6 @@
 import legacy,{ProbeSecurity as LegacySecurity,type Env} from './index.ts';
 import {ApiError} from './security.ts';
-import {authorizePreflight,firestorePreflight,requireDev,type PreflightEnv} from './firestore-preflight.ts';
+import {authorizePreflight,firestorePreflight,requireDev,PreflightFailure,type PreflightEnv} from './firestore-preflight.ts';
 export interface DevEnv extends Env,PreflightEnv {}
 export default legacy;
 // Same local class name/binding as the existing DEV SQLite namespace. PRO keeps
@@ -22,6 +22,6 @@ export class ProbeSecurity extends LegacySecurity {
       if(this.preflight)throw new ApiError(409,'PREFLIGHT_IN_PROGRESS');
       this.preflight=firestorePreflight(this.devEnv).then(value=>Response.json(value,{headers:{'Cache-Control':'no-store'}}));
       try{return await this.preflight;}finally{this.preflight=undefined;}
-    }catch(error){return Response.json({error:error instanceof ApiError?error.message:'FIRESTORE_PREFLIGHT_FAILED'},{status:error instanceof ApiError?error.status:503,headers:{'Cache-Control':'no-store'}});}
+    }catch(error){return Response.json({error:error instanceof ApiError?error.message:'FIRESTORE_PREFLIGHT_FAILED',...(error instanceof PreflightFailure?{diagnostic:error.diagnostic}:{})},{status:error instanceof ApiError?error.status:503,headers:{'Cache-Control':'no-store'}});}
   }
 }

@@ -1,6 +1,10 @@
 import {ApiError} from './security.ts';
 import {FirestoreIdentity,DEV_PROJECT,DEV_DATABASE,DEV_DATABASE_NAME,type Transport} from './firestore-auth.ts';
 export interface PreflightEnv {FIRESTORE_SERVICE_ACCOUNT_JSON?:string;DEV_ACCOUNT_ID?:string;FIRESTORE_PROJECT_ID?:string;FIRESTORE_DATABASE_ID?:string}
+export class PreflightFailure extends ApiError {
+  diagnostic:Record<string,string|number|boolean>;
+  constructor(code:string,diagnostic:Record<string,string|number|boolean>){super(503,code);this.diagnostic=diagnostic;}
+}
 export function requireDev(env:PreflightEnv){
   if(env.FIRESTORE_PROJECT_ID!==DEV_PROJECT||env.FIRESTORE_DATABASE_ID!==DEV_DATABASE)throw new ApiError(503,'FIRESTORE_DEV_TARGET_REQUIRED');
 }
@@ -41,13 +45,22 @@ export async function firestorePreflight(env:PreflightEnv,transport:Transport=(i
     if(record.fields?.runId?.stringValue!==id||!record.updateTime)throw new ApiError(503,'FIRESTORE_PREFLIGHT_READ_MISMATCH');
     const updatedFields={...fields,confirmed:{booleanValue:true}};
     const update=await commit([{update:{name,fields:updatedFields},currentDocument:{updateTime:record.updateTime}}]);check(update,'UPDATE');
+    const updated=await google(path);check(updated,'UPDATED_READ');const updatedRecord=await updated.json() as any;
+    const versionChanged=typeof updatedRecord.updateTime==='string'&&updatedRecord.updateTime!==record.updateTime;
+    const updatedValueConfirmed=updatedRecord.fields?.confirmed?.booleanValue===true;
     const stale=await commit([{update:{name,fields},currentDocument:{updateTime:record.updateTime}}]);
     staleWriteStatus=stale.status;
     // Google RPC maps FAILED_PRECONDITION to HTTP 400, unlike generic HTTP
     // preconditions (412). A malformed payload/other 400 must never count as CAS.
-    let failedPrecondition=false;
-    if(stale.status===400){const value=await stale.json() as any;failedPrecondition=value?.error?.status==='FAILED_PRECONDITION'&&value?.error?.code===400;}
-    if(stale.status!==409&&stale.status!==412&&!failedPrecondition)throw new ApiError(503,'FIRESTORE_PREFLIGHT_CAS_NOT_ENFORCED');
+    let failedPrecondition=false,errorCode=0,errorStatus='NONE';
+    if(!stale.ok){
+      let value:any;try{value=await stale.json();}catch{value={};}
+      if(Number.isInteger(value?.error?.code)&&value.error.code>=0&&value.error.code<=599)errorCode=value.error.code;
+      if(typeof value?.error?.status==='string'&&/^[A-Z_]{1,40}$/.test(value.error.status))errorStatus=value.error.status;
+      failedPrecondition=stale.status===400&&errorStatus==='FAILED_PRECONDITION'&&errorCode===400;
+    }
+    if(!versionChanged||!updatedValueConfirmed||(stale.status!==409&&stale.status!==412&&!failedPrecondition))
+      throw new PreflightFailure('FIRESTORE_PREFLIGHT_CAS_NOT_ENFORCED',{httpStatus:stale.status,errorCode,errorStatus,versionChanged,updatedValueConfirmed,location:database.locationId,edition:database.databaseEdition,mode:database.type});
     const read=await transport(base+path,{redirect:'manual',signal:AbortSignal.timeout(15000)});
     anonymousReadDenied=read.status===401||read.status===403;
     const write=await transport(base+path,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({fields:updatedFields}),redirect:'manual',signal:AbortSignal.timeout(15000)});

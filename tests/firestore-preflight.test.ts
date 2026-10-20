@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {FirestoreIdentity,DEV_DATABASE_NAME,type Transport} from '../worker/firestore-auth.ts';
-import {authorizePreflight,firestorePreflight} from '../worker/firestore-preflight.ts';
+import {authorizePreflight,firestorePreflight,PreflightFailure} from '../worker/firestore-preflight.ts';
 const keys=await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'},true,['sign','verify']);
 const privateKey='-----BEGIN PRIVATE KEY-----\n'+Buffer.from(await crypto.subtle.exportKey('pkcs8',keys.privateKey)).toString('base64')+'\n-----END PRIVATE KEY-----';
 const account={type:'service_account',project_id:'pgt-bjj-dev',client_email:'pgt-worker-dev@pgt-bjj-dev.iam.gserviceaccount.com',private_key:privateKey};
@@ -64,7 +64,10 @@ test('Google HTTP 400 FAILED_PRECONDITION is a rejected stale version; unrelated
   const valid=fixture({googlePrecondition:true});const report=await firestorePreflight(env,valid.transport);
   assert.equal(report.staleWriteStatus,400);assert.equal(report.staleWriteRejected,true);assert.equal(valid.records.size,0);
   assert.ok(!JSON.stringify(report).includes('Synthetic private detail'));
-  const invalid=fixture({invalidArgument:true});await assert.rejects(firestorePreflight(env,invalid.transport),/FIRESTORE_PREFLIGHT_CAS_NOT_ENFORCED/);assert.equal(invalid.records.size,0);
+  const invalid=fixture({invalidArgument:true});await assert.rejects(firestorePreflight(env,invalid.transport),error=>{
+    assert.ok(error instanceof PreflightFailure);assert.equal(error.diagnostic.httpStatus,400);assert.equal(error.diagnostic.errorStatus,'INVALID_ARGUMENT');assert.equal(error.diagnostic.versionChanged,true);assert.equal(error.diagnostic.updatedValueConfirmed,true);
+    assert.ok(!JSON.stringify(error).includes('Synthetic private detail'));return true;
+  });assert.equal(invalid.records.size,0);
 });
 for(const [name,options,error] of [
   ['metadata permission',{metadataDenied:true},'FIRESTORE_METADATA_403'],
