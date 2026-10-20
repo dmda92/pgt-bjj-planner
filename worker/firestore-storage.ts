@@ -28,6 +28,9 @@ export class FirestoreStorage implements CloudStorageProvider {
   private identity:FirestoreIdentity;
   private changed:()=>void;
   private transport:Transport;
+  private operation?:{heads:Map<string,Promise<Doc|null>>;decoded:Map<string,unknown>};
+  beginOperation(){this.operation={heads:new Map(),decoded:new Map()};}
+  endOperation(){this.operation=undefined;}
   constructor(env:PreflightEnv,transport:Transport=(url,init)=>fetch(url,init),changed:()=>void=()=>{}){
     requireDev(env);this.changed=changed;this.transport=transport;this.identity=new FirestoreIdentity(env.FIRESTORE_SERVICE_ACCOUNT_JSON||'',transport);
   }
@@ -36,7 +39,7 @@ export class FirestoreStorage implements CloudStorageProvider {
     const readOnly=(!init.method||init.method==='GET')||['/documents:runQuery','/documents:batchGet'].includes(path);
     for(let attempt=0;;attempt++){
       try{
-        const r=await this.transport(root+path,{...init,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},redirect:'manual',signal:AbortSignal.timeout(20000)});
+        const r=await this.transport(root+path,{...init,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},redirect:'manual',signal:AbortSignal.timeout(readOnly?10000:20000)});
         // Finish the network body before the next operation, including Commit
         // acknowledgements and 404s whose callers do not parse a response body.
         const response=new Response(await r.arrayBuffer(),{status:r.status,headers:r.headers});
@@ -61,12 +64,18 @@ export class FirestoreStorage implements CloudStorageProvider {
     await this.identity.token();
   }
   private async id(path:string){resource(path);return hex(new TextEncoder().encode(path));}
-  private async head(id:string){const r=await this.request('/documents/pgt_resources/'+id);if(r.status===404)return null;this.check(r);return await r.json() as Doc;}
+  private async head(id:string,fresh=false):Promise<Doc|null>{
+    if(!fresh&&this.operation?.heads.has(id))return this.operation.heads.get(id)!;
+    const load=(async()=>{const r=await this.request('/documents/pgt_resources/'+id);if(r.status===404)return null;this.check(r);return await r.json() as Doc;})();
+    this.operation?.heads.set(id,load);return load;
+  }
   async read<T=Record<string,unknown>>(path:string):Promise<CloudRecord<T>|null>{
     const id=await this.id(path),d=await this.head(id);if(!d||d.fields.deleted?.booleanValue)return null;
     return {data:await this.decode<T>(id,d),sha:text(d,'version')};
   }
   private async decode<T>(id:string,d:Doc):Promise<T>{
+    const cacheKey=id+':'+text(d,'version');
+    if(this.operation?.decoded.has(cacheKey))return structuredClone(this.operation.decoded.get(cacheKey)) as T;
     const count=Number(d.fields.parts?.integerValue),size=Number(d.fields.bytes?.integerValue),version=text(d,'version');
     if(!/^[0-9a-f]{40}$/.test(version)||!Number.isInteger(count)||count<1||count>Math.ceil(MAX_JSON_BYTES/CHUNK_BYTES)||!Number.isInteger(size)||size<1||size>MAX_JSON_BYTES)throw new ApiError(502,'FIRESTORE_MANIFEST_INVALID');
     const bytes=new Uint8Array(size);let offset=0;
@@ -90,7 +99,7 @@ export class FirestoreStorage implements CloudStorageProvider {
       }
     }
     if(offset!==size||await hex(bytes)!==text(d,'digest'))throw new ApiError(502,'FIRESTORE_CHECKSUM_MISMATCH');
-    try{return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes)) as T;}catch{throw new ApiError(502,'FIRESTORE_JSON_INVALID');}
+    try{const value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));this.operation?.decoded.set(cacheKey,structuredClone(value));return value as T;}catch{throw new ApiError(502,'FIRESTORE_JSON_INVALID');}
   }
   private async commit(writes:unknown[]){
     const body=JSON.stringify({writes});if(new TextEncoder().encode(body).length>9*1024*1024)throw new ApiError(413,'FIRESTORE_COMMIT_TOO_LARGE');
@@ -102,7 +111,7 @@ export class FirestoreStorage implements CloudStorageProvider {
   async write(path:string,data:unknown,expected:string|null):Promise<string>{return this.publish(path,data,expected,false);}
   async remove(path:string,expected:string){await this.publish(path,undefined,expected,true);}
   private async publish(path:string,data:unknown,expected:string|null,deleted:boolean){
-    const entity=resource(path),id=await this.id(path),previous=await this.head(id);
+    const entity=resource(path),id=await this.id(path),previous=await this.head(id,true);
     if(expected!==null&&!/^[0-9a-f]{40}$/.test(expected))throw new ApiError(400,'VERSION_INVALID');
     const exists=previous&&!previous.fields.deleted?.booleanValue;
     if((exists?text(previous!,'version'):null)!==expected)throw new ApiError(409,'VERSION_CONFLICT');
@@ -121,10 +130,10 @@ export class FirestoreStorage implements CloudStorageProvider {
     catch(error){
       // Resolve an ambiguous ACK by our unguessable operation revision; never replay
       // a mutation and never accept somebody else's identical payload as our ACK.
-      const current=await this.head(id).catch(()=>null);
+      const current=await this.head(id,true).catch(()=>null);
       if(!current||text(current,'version')!==version)throw error;
     }
-    this.changed();return version;
+    this.operation?.heads.delete(id);this.changed();return version;
   }
   async list(directory:string):Promise<{name:string;type:string;sha?:string}[]>{
     if(!/^PGT\/(users_data|users_data\/[a-zA-Z0-9@._+-]+(?:\/training_plans)?)$/.test(directory)||directory.includes('..'))throw new ApiError(400,'PATH_FORBIDDEN');
@@ -136,7 +145,10 @@ export class FirestoreStorage implements CloudStorageProvider {
   }
   private async query(collection:string,field:string,value:string){
     const r=await this.request('/documents:runQuery',{method:'POST',body:JSON.stringify({structuredQuery:{from:[{collectionId:collection}],where:{fieldFilter:{field:{fieldPath:field},op:'EQUAL',value:str(value)}}}})});this.check(r);
-    const rows=await r.json() as {document?:Doc}[];if(!Array.isArray(rows))throw new ApiError(502,'FIRESTORE_QUERY_INVALID');return rows.flatMap(v=>v.document?[v.document]:[]);
+    const rows=await r.json() as {document?:Doc}[];if(!Array.isArray(rows))throw new ApiError(502,'FIRESTORE_QUERY_INVALID');
+    const docs=rows.flatMap(v=>v.document?[v.document]:[]);
+    if(collection==='pgt_resources')for(const d of docs){const id=d.name.slice(d.name.lastIndexOf('/')+1);if(!this.operation?.heads.has(id))this.operation?.heads.set(id,Promise.resolve(d));}
+    return docs;
   }
   async beginSyntheticRun(runId:string){
     if(!/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(runId))throw new ApiError(400,'SYNTHETIC_FIXTURE_INVALID');

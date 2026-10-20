@@ -70,3 +70,14 @@ test('Network read retries are bounded; commits are never replayed and runtime l
  const writer=new FirestoreStorage(f.env,async(url,init)=>{if(url.endsWith('/documents:commit')){commits++;throw Error('network');}return f.transport(url,init);});
  await assert.rejects(writer.write(path,{n:2},prior),/FIRESTORE_NETWORK_RETRY/);assert.equal(commits,1);assert.deepEqual((await s.read(path))?.data,{n:1});
 });
+
+test('Operation reads reuse manifests without leaking mutations or weakening fresh CAS checks',async()=>{
+ const f=await firestoreFixture(),a=new FirestoreStorage(f.env,f.transport),b=new FirestoreStorage(f.env,f.transport);
+ const original=await a.write(path,{nested:{n:1}},null);
+ a.beginOperation();const start=f.calls.length;
+ const first=await a.read<any>(path);first!.data.nested.n=99;
+ assert.equal((await a.read<any>(path))?.data.nested.n,1);assert.equal(f.calls.length-start,1);
+ await b.write(path,{nested:{n:2}},original);
+ await assert.rejects(a.write(path,{nested:{n:3}},original),/VERSION_CONFLICT/);
+ a.endOperation();a.beginOperation();assert.equal((await a.read<any>(path))?.data.nested.n,2);a.endOperation();
+});

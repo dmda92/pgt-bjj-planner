@@ -14,7 +14,6 @@ export class ProbeSecurity extends LegacySecurity {
   private preflight:Promise<Response>|undefined;
   private devState:DurableObjectState;
   private cloud:()=>FirestoreStorage;
-  private requests:Promise<unknown>=Promise.resolve();
   constructor(state:DurableObjectState,env:DevEnv){
     let cloud:FirestoreStorage|undefined;
     const provider=()=>cloud||(cloud=new FirestoreStorage(env));
@@ -22,7 +21,12 @@ export class ProbeSecurity extends LegacySecurity {
   }
   override fetch(request:Request):Promise<Response>{
     if(new URL(request.url).pathname==='/api/dev/firestore-preflight')return this.check(request);
-    const result=this.requests.then(()=>['/api/dev/synthetic-fixture','/api/dev/synthetic-fixture-cleanup'].includes(new URL(request.url).pathname)?this.fixture(request):this.online(request));this.requests=result.catch(()=>{});return result;
+    return this.serial(()=>['/api/dev/synthetic-fixture','/api/dev/synthetic-fixture-cleanup'].includes(new URL(request.url).pathname)?this.fixture(request):this.online(request));
+  }
+  private serial<T>(action:()=>Promise<T>):Promise<T>{
+    // Gate incoming events rather than carrying their I/O across a shared
+    // promise chain. Memoized reads exist only for this single event.
+    return this.devState.blockConcurrencyWhile(async()=>{const store=this.cloud();store.beginOperation();try{return await action();}finally{store.endOperation();}});
   }
   private async online(request:Request):Promise<Response>{
     const url=new URL(request.url),path=url.pathname;
@@ -102,7 +106,7 @@ export class ProbeSecurity extends LegacySecurity {
       }
       if(!actor||actor.role!==attached.role){ws.close(4401,'SESSION_REVOKED');continue;}
       const relevant=changes.some(c=>!c.owner||actor.role==='entrenador'||c.owner===actor.mail);
-      if(relevant)try{ws.send(JSON.stringify({type:'changed',id:changes.at(-1)!.version}));}catch{ws.close(1011,'RECONNECT');}
+      if(relevant)try{ws.send(JSON.stringify({type:'changed',id:changes.at(-1)!.version,own:changes.some(c=>!c.owner||c.owner===actor.mail)}));}catch{ws.close(1011,'RECONNECT');}
     }
     await this.cloud().acknowledge(changes);
     // Drain bounded pages and expire tickets without retaining business in SQLite.
@@ -110,7 +114,7 @@ export class ProbeSecurity extends LegacySecurity {
     else await this.devState.storage.deleteAlarm();
     for(const [key,value] of await this.devState.storage.list<{expires:number}>({prefix:'ws-ticket:'}))if(value.expires<Date.now())await this.devState.storage.delete(key);
   }
-  async alarm(){const result=this.requests.then(async()=>{try{await this.flush();}catch{await this.devState.storage.setAlarm(Date.now()+60000);}});this.requests=result.catch(()=>{});return result;}
+  async alarm(){return this.serial(async()=>{try{await this.flush();}catch{await this.devState.storage.setAlarm(Date.now()+60000);}});}
   webSocketMessage(ws:WebSocket,_message:string|ArrayBuffer){
     // Server-only invalidations: no client messages can cause Firestore reads,
     // writes or an unbounded authentication loop while the socket is idle.

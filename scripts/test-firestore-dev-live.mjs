@@ -17,11 +17,11 @@ const fixture=await response.json();assert.equal(response.status,200,JSON.string
 const [trainer,student,other]=fixture.users.map(u=>u.mail);
 const browser=await chromium.launch({headless:true});
 let finalReport;
-const contexts=[],errors=[],samples=[],checks=[],network={requests:0,mutations:0,snapshots:0,websocketMessages:0};
+const contexts=[],errors=[],samples=[],checks=[],network={requests:0,mutations:0,snapshots:0,websocketMessages:0,failedResponses:[]};
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 async function poll(fn,message,timeout=20000){const until=Date.now()+timeout;let last;while(Date.now()<until){try{last=await fn();if(last)return last;}catch(e){last=e.message;}await wait(100);}throw Error(message+': '+String(last));}
 async function login(mail,mobile=false){
- const context=await browser.newContext({viewport:mobile?{width:390,height:844}:{width:1440,height:1000},serviceWorkers:'block'});contexts.push(context);const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{const path=new URL(r.url()).pathname;if(path.startsWith('/api/app/')){network.requests++;if(!['GET','HEAD'].includes(r.method()))network.mutations++;if(path.endsWith('/snapshot'))network.snapshots++;}});page.on('websocket',ws=>ws.on('framereceived',()=>network.websocketMessages++));
+ const context=await browser.newContext({viewport:mobile?{width:390,height:844}:{width:1440,height:1000},serviceWorkers:'block'});contexts.push(context);const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{const path=new URL(r.url()).pathname;if(path.startsWith('/api/app/')){network.requests++;if(!['GET','HEAD'].includes(r.method()))network.mutations++;if(path.endsWith('/snapshot'))network.snapshots++;}});page.on('response',r=>{if(r.status()>=400&&new URL(r.url()).pathname.startsWith('/api/app/'))network.failedResponses.push({status:r.status(),path:new URL(r.url()).pathname.replace(/\/users\/[^/]+/,'/users/:user')});});page.on('websocket',ws=>ws.on('framereceived',()=>network.websocketMessages++));
  await page.goto(origin,{waitUntil:'networkidle'});await page.getByLabel('Correo',{exact:true}).fill(mail);await page.getByLabel('Contraseña',{exact:true}).fill(password);await page.getByRole('button',{name:'Entrar',exact:true}).click();await page.getByRole('button',{name:'Salir',exact:true}).waitFor({timeout:30000});
  const token=await page.evaluate(()=>JSON.parse(localStorage.getItem('pgt-session')).token);console.log('::add-mask::'+token);return {context,page,token,mail};
 }
