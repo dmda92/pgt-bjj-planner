@@ -16,6 +16,7 @@ const response=await fetch(origin+'/api/dev/synthetic-fixture',{method:'POST',he
 const fixture=await response.json();assert.equal(response.status,200,JSON.stringify(fixture));
 const [trainer,student,other]=fixture.users.map(u=>u.mail);
 const browser=await chromium.launch({headless:true});
+let finalReport;
 const contexts=[],errors=[],samples=[],checks=[],network={requests:0,mutations:0,snapshots:0,websocketMessages:0};
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 async function poll(fn,message,timeout=20000){const until=Date.now()+timeout;let last;while(Date.now()<until){try{last=await fn();if(last)return last;}catch(e){last=e.message;}await wait(100);}throw Error(message+': '+String(last));}
@@ -84,5 +85,9 @@ try{
  const sorted=[...samples].sort((a,b)=>a-b),p=n=>sorted[Math.min(sorted.length-1,Math.ceil(n*sorted.length)-1)];
  const report={status:local?'FIRESTORE_LOCAL_BROWSER_QA_VERIFIED':'FIRESTORE_DEV_LIVE_QA_VERIFIED',googleTransport:local?'INTERCEPTED':'REAL',project:'pgt-bjj-dev',database:'(default)',worker:'pgt-github-probe-dev',commit:process.env.GITHUB_SHA,runId,synthetic:true,contexts:3,roles:['entrenador','alumno','alumno'],samplesMs:samples,p50Ms:p(.5),p95Ms:p(.95),latencyIncludes:'700ms autosave debounce + Worker commit + WebSocket + authorized re-read + render',checks,httpTestCalls:http,clientNetwork:network,limits:'Chromium desktop and mobile viewport, not physical devices or Safari; billing counters not queried'};
  assert.ok(report.p95Ms<10000,'DEV propagation exceeds 10 seconds including autosave and complete refresh');
- await mkdir('artifacts',{recursive:true});await writeFile(local?'artifacts/firestore-local-browser.json':'artifacts/firestore-dev-live.json',JSON.stringify(report,null,2));console.log(JSON.stringify(report));
-}catch(error){console.log(JSON.stringify({status:'QA_FAILED',clientNetwork:network,pageErrors:errors.map(()=>true)}));await mkdir('artifacts',{recursive:true});for(const [index,role] of [[0,'trainer'],[1,'student']]){const page=contexts[index]?.pages()[0];if(page)await page.screenshot({path:'artifacts/firestore-'+role+'.png',fullPage:true}).catch(()=>{});}throw error;}finally{for(const context of contexts)await context.close();await browser.close();}
+ finalReport=report;
+}catch(error){console.log(JSON.stringify({status:'QA_FAILED',clientNetwork:network,pageErrors:errors.map(()=>true)}));await mkdir('artifacts',{recursive:true});for(const [index,role] of [[0,'trainer'],[1,'student']]){const page=contexts[index]?.pages()[0];if(page)await page.screenshot({path:'artifacts/firestore-'+role+'.png',fullPage:true}).catch(()=>{});}throw error;}finally{for(const context of contexts)await context.close();await browser.close();
+ const cleaned=await fetch(origin+'/api/dev/synthetic-fixture-cleanup',{method:'POST',headers:{Origin:realOrigin,Authorization:'Bearer '+(local?'synthetic-deployment-token':process.env.CLOUDFLARE_API_TOKEN),'Content-Type':'application/json'},body:JSON.stringify({runId,password})});
+ const cleanup=await cleaned.json();if(!cleaned.ok||cleanup.status!=='SYNTHETIC_FIXTURE_CLEANED')throw Error('Synthetic cleanup failed: '+JSON.stringify(cleanup));
+ if(finalReport){finalReport.fixtureCleanup=true;await mkdir('artifacts',{recursive:true});await writeFile(local?'artifacts/firestore-local-browser.json':'artifacts/firestore-dev-live.json',JSON.stringify(finalReport,null,2));console.log(JSON.stringify(finalReport));}
+}

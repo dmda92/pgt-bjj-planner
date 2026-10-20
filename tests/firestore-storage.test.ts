@@ -34,3 +34,23 @@ test('Corrupt/missing fragments, oversize and foreign targets fail closed',async
  assert.throws(()=>new FirestoreStorage({...f.env,FIRESTORE_PROJECT_ID:'foreign'},f.transport),/DEV_TARGET/);
  await assert.rejects(s.read('PGT/users_data/../tecnics.json'),/PATH_FORBIDDEN/);
 });
+test('Synthetic cleanup requires a provisioned run, preserves unrelated users and is repeatable',async()=>{
+ const f=await firestoreFixture(),s=new FirestoreStorage(f.env,f.transport),run=crypto.randomUUID();
+ await assert.rejects(s.cleanupSynthetic(run));
+ await s.beginSyntheticRun(run);
+ const own=`PGT/users_data/pgt-dev-${run}-student@example.test/user_data.json`,other='PGT/users_data/pgt-dev-unrelated@example.test/user_data.json';
+ await s.write(own,{test:true},null);await s.write(other,{other:true},null);
+ const first=await s.cleanupSynthetic(run);assert.equal(first.status,'SYNTHETIC_FIXTURE_CLEANED');assert.equal(await s.read(own),null);assert.deepEqual((await s.read(other))?.data,{other:true});
+ assert.equal((await s.cleanupSynthetic(run)).resources,0);
+});
+test('Synthetic cleanup refuses a plan referenced by an unrelated owner before any mutation',async()=>{
+ const f=await firestoreFixture(),s=new FirestoreStorage(f.env,f.transport),run=crypto.randomUUID(),id=crypto.randomUUID();await s.beginSyntheticRun(run);
+ const own=`PGT/users_data/pgt-dev-${run}-student@example.test/training_plans/plan_${id}.json`,foreign=`PGT/users_data/pgt-dev-unrelated@example.test/training_plans/plan_${id}.json`;
+ await s.write(own,{owned:true},null);await s.write(foreign,{unrelated:true},null);const before=f.docs.size;
+ await assert.rejects(s.cleanupSynthetic(run),/SYNTHETIC_SHARED_PLAN_NOT_CLEANED/);assert.equal(f.docs.size,before);assert.deepEqual((await s.read(own))?.data,{owned:true});assert.deepEqual((await s.read(foreign))?.data,{unrelated:true});
+});
+test('Directory order is stable by logical name, independent of Firestore hashed IDs and insertion',async()=>{
+ const f=await firestoreFixture(),s=new FirestoreStorage(f.env,f.transport);
+ for(const name of ['pgt-dev-z@example.test','pgt-dev-a@example.test','pgt-dev-m@example.test'])await s.write('PGT/users_data/'+name+'/user_data.json',{fixture:true},null);
+ assert.deepEqual((await s.list('PGT/users_data')).map(v=>v.name),['pgt-dev-a@example.test','pgt-dev-m@example.test','pgt-dev-z@example.test']);
+});

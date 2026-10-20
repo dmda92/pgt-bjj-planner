@@ -109,7 +109,8 @@ jobs:
     needs: [validate, validate-online]
     if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/develop' && vars.DEV_DEPLOY_ENABLED == 'true'
     environment: development
-    runs-on: ubuntu-latest
+    # Live QA installs the same Playwright Chromium as validation.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     concurrency:
       group: pgt-worker-dev-deployment

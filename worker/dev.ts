@@ -22,7 +22,7 @@ export class ProbeSecurity extends LegacySecurity {
   }
   override fetch(request:Request):Promise<Response>{
     if(new URL(request.url).pathname==='/api/dev/firestore-preflight')return this.check(request);
-    const result=this.requests.then(()=>new URL(request.url).pathname==='/api/dev/synthetic-fixture'?this.fixture(request):this.online(request));this.requests=result.catch(()=>{});return result;
+    const result=this.requests.then(()=>['/api/dev/synthetic-fixture','/api/dev/synthetic-fixture-cleanup'].includes(new URL(request.url).pathname)?this.fixture(request):this.online(request));this.requests=result.catch(()=>{});return result;
   }
   private async online(request:Request):Promise<Response>{
     const url=new URL(request.url),path=url.pathname;
@@ -127,7 +127,16 @@ export class ProbeSecurity extends LegacySecurity {
       const body=await jsonBody(request,1024);onlyFields(body,['runId','password']);
       if(typeof body.runId!=='string'||typeof body.password!=='string')throw new ApiError(400,'SYNTHETIC_FIXTURE_INVALID');
       await this.devState.storage.setAlarm(Date.now()+15000);
-      try{return Response.json(await seedSynthetic(this.cloud(),body.runId,body.password),{headers:{'Cache-Control':'no-store'}});}
+      try{
+        let result;
+        if(new URL(request.url).pathname.endsWith('-cleanup')){
+          result=await this.cloud().cleanupSynthetic(body.runId);
+          const mails=['trainer','student','other'].map(role=>`pgt-dev-${body.runId}-${role}@example.test`);
+          for(const [key,session] of await this.devState.storage.list<{mail:string}>({prefix:'app-session:'}))if(mails.includes(session.mail))await this.devState.storage.delete(key);
+          for(const mail of mails)for(const key of (await this.devState.storage.list({prefix:'plan-update:'+mail+':'})).keys())await this.devState.storage.delete(key);
+        }else result=await seedSynthetic(this.cloud(),body.runId,body.password);
+        return Response.json(result,{headers:{'Cache-Control':'no-store'}});
+      }
       finally{await this.flush().catch(()=>console.warn('PGT_REALTIME_RETRY_SCHEDULED'));}
     }catch(error){return Response.json({error:error instanceof ApiError?error.message:'SYNTHETIC_FIXTURE_FAILED'},{status:error instanceof ApiError?error.status:503});}
   }

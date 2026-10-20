@@ -5,6 +5,8 @@ import type {FirestoreStorage} from './firestore-storage.ts';
 /** Explicitly synthetic bootstrap for DEV QA; cannot address existing accounts. */
 export async function seedSynthetic(store:FirestoreStorage,runId:string,password:string){
  if(!/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(runId)||password.length<24||password.length>100)throw new ApiError(400,'SYNTHETIC_FIXTURE_INVALID');
+ for(const role of ['trainer','student','other'])if(await store.read(`PGT/users_data/pgt-dev-${runId}-${role}@example.test/user_data.json`))throw new ApiError(409,'SYNTHETIC_RUN_ALREADY_EXISTS');
+ await store.beginSyntheticRun(runId);
  const base=await store.read('PGT/master_data/tecnics_base.json');
  if(!base)await store.write('PGT/master_data/tecnics_base.json',template,null);
  const pwd=await passwordHash(password),users=[];

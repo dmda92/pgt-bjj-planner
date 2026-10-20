@@ -62,6 +62,8 @@ try{
  const twice=await runtime.dispatchFetch('http://localhost/api/app/realtime?ticket='+reused,{headers:{Origin:origin,Upgrade:'websocket'}});assert.equal(twice.status,401);
  let closed=false;sw.ws.on('close',()=>closed=true);await call('/api/app/logout','POST',{},s.token);for(let i=0;i<40&&!closed;i++)await sleep(20);assert.ok(closed||sw.ws.readyState>=2,"revoked socket must close; state="+sw.ws.readyState);
  await call('/api/app/realtime-ticket','POST',{},s.token,401);
+ await call('/api/dev/synthetic-fixture-cleanup','POST',{runId,password},'synthetic-deployment-token');
+ await call('/api/app/students','GET',undefined,t.token,401);
  assert.ok(f.calls.every(c=>!c.url.includes('api.github.com')));
  console.log('DEV workerd + SQLite + Firestore protocol: login/roles/isolation, two authorized sockets, no third-user leak, exact generated plan, text/deletion recalculation and protected history, CAS, unassignment, one-use tickets/logout revocation PASS. Google transport intercepted; not remote Firestore.');
 }finally{for(const ws of sockets)try{ws.close();}catch{}await runtime.dispose();}

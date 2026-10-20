@@ -117,13 +117,43 @@ export class FirestoreStorage implements CloudStorageProvider {
     if(!/^PGT\/(users_data|users_data\/[a-zA-Z0-9@._+-]+(?:\/training_plans)?)$/.test(directory)||directory.includes('..'))throw new ApiError(400,'PATH_FORBIDDEN');
     if(directory==='PGT/users_data'){
       const docs=await this.query('pgt_resources','kind','user_data');
-      return docs.filter(d=>!d.fields.deleted?.booleanValue).map(d=>({name:text(d,'owner'),type:'dir'}));
+      return docs.filter(d=>!d.fields.deleted?.booleanValue).map(d=>({name:text(d,'owner'),type:'dir'})).sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0);
     }
-    return (await this.query('pgt_resources','directory',directory)).filter(d=>!d.fields.deleted?.booleanValue).map(d=>({name:text(d,'file'),type:'file',sha:text(d,'version')}));
+    return (await this.query('pgt_resources','directory',directory)).filter(d=>!d.fields.deleted?.booleanValue).map(d=>({name:text(d,'file'),type:'file',sha:text(d,'version')})).sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0);
   }
   private async query(collection:string,field:string,value:string){
     const r=await this.request('/documents:runQuery',{method:'POST',body:JSON.stringify({structuredQuery:{from:[{collectionId:collection}],where:{fieldFilter:{field:{fieldPath:field},op:'EQUAL',value:str(value)}}}})});this.check(r);
     const rows=await r.json() as {document?:Doc}[];if(!Array.isArray(rows))throw new ApiError(502,'FIRESTORE_QUERY_INVALID');return rows.flatMap(v=>v.document?[v.document]:[]);
+  }
+  async beginSyntheticRun(runId:string){
+    if(!/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(runId))throw new ApiError(400,'SYNTHETIC_FIXTURE_INVALID');
+    await this.commit([{update:{name:documents+'pgt_qa_runs/'+runId,fields:{synthetic:{booleanValue:true},cleaned:{booleanValue:false}}},currentDocument:{exists:false}}]);
+  }
+  async cleanupSynthetic(runId:string){
+    if(!/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(runId))throw new ApiError(400,'SYNTHETIC_FIXTURE_INVALID');
+    const runName=documents+'pgt_qa_runs/'+runId,r=await this.request('/documents/pgt_qa_runs/'+runId);this.check(r);const run=await r.json() as Doc;
+    if(run.fields.synthetic?.booleanValue!==true)throw new ApiError(403,'SYNTHETIC_RUN_REQUIRED');
+    if(run.fields.cleaned?.booleanValue)return {status:'SYNTHETIC_FIXTURE_CLEANED',resources:0};
+    const mails=['trainer','student','other'].map(role=>`pgt-dev-${runId}-${role}@example.test`),owned:Doc[]=[];
+    for(const mail of mails)owned.push(...await this.query('pgt_resources','owner',mail));
+    const ids=new Set(owned.flatMap(d=>{const match=text(d,'file').match(/^(?:plan|structure)_([0-9a-f-]{36})\.json$/);return match?[match[1]]:[];}));
+    const catalogId=await this.id('PGT/master_data/plans.json'),catalog=await this.head(catalogId);
+    let next:any;
+    if(catalog){next=await this.decode<any>(catalogId,catalog);
+      for(const p of next.plans){if(p.alumnos.some((mail:string)=>mails.includes(mail))){if(p.alumnos.some((mail:string)=>!mails.includes(mail)))throw new ApiError(409,'SYNTHETIC_SHARED_PLAN_NOT_CLEANED');ids.add(p.planId);}}
+    }
+    const otherPlans=await this.query('pgt_resources','kind','plan');
+    if(otherPlans.some(d=>!mails.includes(text(d,'owner'))&&ids.has(text(d,'file').slice(5,-5))))throw new ApiError(409,'SYNTHETIC_SHARED_PLAN_NOT_CLEANED');
+    const version=Array.from(crypto.getRandomValues(new Uint8Array(20)),v=>v.toString(16).padStart(2,'0')).join(''),writes:any[]=[];
+    for(const d of owned){if(d.fields.deleted?.booleanValue)continue;const fields={...d.fields,version:str(version),deleted:{booleanValue:true},parts:{integerValue:'0'},bytes:{integerValue:'0'},digest:str(await hex(new Uint8Array()))};delete (fields as any).inline;writes.push({update:{name:d.name,fields},currentDocument:{updateTime:d.updateTime}});}
+    if(catalog&&next&&ids.size){
+      next={...next,revision:next.revision+1,updatedAt:new Date().toISOString(),plans:next.plans.filter((p:any)=>!ids.has(p.planId)),deletedPlanIds:next.deletedPlanIds.filter((id:string)=>!ids.has(id))};
+      const bytes=new TextEncoder().encode(JSON.stringify(next));if(bytes.length>32768)throw new ApiError(409,'SYNTHETIC_CATALOG_REVIEW_REQUIRED');
+      writes.push({update:{name:catalog.name,fields:{...catalog.fields,version:str(version),inline:{bytesValue:encode(bytes)},bytes:{integerValue:String(bytes.length)},parts:{integerValue:'1'},digest:str(await hex(bytes))}},currentDocument:{updateTime:catalog.updateTime}});
+    }
+    writes.push({update:{name:runName,fields:{synthetic:{booleanValue:true},cleaned:{booleanValue:true}}},currentDocument:{updateTime:run.updateTime}});
+    writes.push({update:{name:documents+'pgt_changes/'+version,fields:{owner:str(''),kind:str('fixture-cleanup'),version:str(version)}},currentDocument:{exists:false}});
+    await this.commit(writes);return {status:'SYNTHETIC_FIXTURE_CLEANED',resources:owned.length};
   }
   async changes():Promise<Change[]>{
     const r=await this.request('/documents/pgt_changes?pageSize=100');this.check(r);const value=await r.json() as {documents?:Doc[]};
