@@ -6,7 +6,7 @@ El propietario declaró terminadas las pruebas de viabilidad el 13 de octubre de
 
 Código en dmda92/pgt-bjj-planner, frontend src/ y API worker/. Datos de negocio exclusivamente en dmda92/pgt-bjj-data, PRIVADO, bajo PGT/. No cambiar su visibilidad. Tokens solo en secretos del Worker; no en bundle, Git, logs ni Markdown. Nunca acceso genérico de API, rutas arbitrarias ni elevación desde payload del cliente. Persistencia auxiliar SQLite DO solo sesiones, límites y coordinación.
 
-Work no accede a Cloudflare ni configura o despliega. Solo propietario ejecuta deploy. Mantener Free; no pedir tarjeta. Usar JSON versionados con escrituras SHA condicionales y reintentos idempotentes; conflictos reales nunca se resuelven por último escritor. No eliminar cambios pendientes ni mezclar IndexedDB entre usuarios.
+Antecedente inicial (sustituido por la política vigente al final): Work no accedía a Cloudflare ni configuraba o desplegaba; solo el propietario ejecutaba deploy. Mantener Free; no pedir tarjeta. Usar JSON versionados con escrituras SHA condicionales y reintentos idempotentes; conflictos reales nunca se resuelven por último escritor. No eliminar cambios pendientes ni mezclar IndexedDB entre usuarios.
 
 Tras superar el gate, implementar domain/application/infrastructure/ui. Fuente única de técnicas: posiciones a trabajar mínimos.json. No inventar, normalizar ni reconstruir order; arrays determinan orden y UUID son exclusivos de cada alumno. Generador puro: prioridades existentes ascendentes, primera/segunda, luego alternar retroceder 1 y avanzar 2 circularmente; completar todas las técnicas de cada pasada antes de avanzar. Continuidad entre sesiones, ejercicios y tiempos configurados por competición; dos ciclos y duración (2T+C)N+D(N-1). Proteger siempre snapshots de sesiones <= hoy y torneos <= hoy, según Europe/Madrid. Descripciones y comentarios cambian por UUID solo en sesiones > hoy de planes activos, sin regenerar la distribución; persistir fuentes y planes con SHA, versiones idempotentes y recuperación. Recálculo estructural pendiente de las decisiones de `docs/ANALISIS_CAMBIOS_ESTRUCTURALES.md`; no activarlo sin resolverlas. Distinguir desasignación de borrado entero.
 
@@ -26,9 +26,9 @@ Decisión vigente (14/10/2026), apartado 12: planes de solo lectura para partici
 
 Corrección 14/10/2026 apartado 13: eliminar bootstrap de propietario y clave especial de alta de entrenador. Primer entrenador configurado manualmente en GitHub privado. ALLOWED_ORIGINS enumera orígenes exactos; configuración de Worker con dominio real, no ejemplo. PROBE_ADMIN_KEY solo permanece para viabilidad heredada; no usarlo en AppApi. Peso validado antes de guardar localmente y en servidor; preservar pendientes previos.
 
-Autorización CI/CD del propietario (14/10/2026): preparar GitHub Actions para validar y publicar Worker + PWA en cada push a main, con secretos Actions configurados manualmente y activación CLOUDFLARE_DEPLOY_ENABLED=true. Sustituye la obligación anterior de ejecutar deploy manual por cada versión. Work no accede al panel Cloudflare ni establece secretos. Workflow .github/workflows/cloudflare.yml, guía docs/CI_CD.md; serializar producción, verificar HEAD y no duplicar Workers Builds. Conservar datos, nombre/bindings/migración y secretos existentes.
+Antecedente CI/CD del propietario (14/10/2026), subordinado a la política vigente al final y sin autorización nueva para PRO: preparar GitHub Actions para validar y publicar Worker + PWA en cada push a main, con secretos Actions configurados manualmente y activación CLOUDFLARE_DEPLOY_ENABLED=true. Sustituye la obligación anterior de ejecutar deploy manual por cada versión. Work no accede al panel Cloudflare ni establece secretos. Workflow .github/workflows/cloudflare.yml, guía docs/CI_CD.md; serializar producción, verificar HEAD y no duplicar Workers Builds. Conservar datos, nombre/bindings/migración y secretos existentes.
 
-Límites JSON vigentes (apartado 15, 14/10/2026): constantes src/domain/json-limits.ts, 4 MiB por documento, envoltorio AppApi +64 KiB y 100.000 unidades UTF-16 por descripción/comentario. No truncar/borrar automáticamente. Errores identifican archivo y bytes sin contenido ni rutas privadas. Contents object + blob inmutable por SHA para lectura >1 MB; nunca URLs arbitrarias. Mantener dirty/checkpoints tras fallos. Guía docs/JSON_SIZE_LIMITS.md. Verificar Actions y el paso efectivo de deploy después de subir a main.
+Límites JSON vigentes (apartado 15, 14/10/2026): constantes src/domain/json-limits.ts, 4 MiB por documento, envoltorio AppApi +64 KiB y 100.000 unidades UTF-16 por descripción/comentario. No truncar/borrar automáticamente. Errores identifican archivo y bytes sin contenido ni rutas privadas. Contents object + blob inmutable por SHA para lectura >1 MB; nunca URLs arbitrarias. Mantener dirty/checkpoints tras fallos. Guía docs/JSON_SIZE_LIMITS.md. Antecedente de validación: verificar Actions y el paso efectivo de deploy solo durante una promoción a main expresamente autorizada conforme a la política vigente.
 
 ### PDF: requisito vigente de sesiones largas
 
@@ -145,3 +145,45 @@ PDF: nombre de posición y pasada, seguido de Prioridad N en 7,5 pt frente a 10 
 Corrección por incidencia del propietario: antes el alta/asignación solo actualizaba índices y los snapshots iniciales dependían de sincronizar cada alumno, por lo que no aparecían en el panel. Al guardar competición/participantes, crear únicamente planes inexistentes de participantes nuevos, con fuentes autorizadas, CAS create-only y concurrencia máxima 4. Compartir esa creación con la restauración habitual; nunca regenerar ni sobrescribir snapshots existentes. Comprobar catálogo para no conservar una creación que fue desasignada durante la operación. Catálogo sin técnicas o plan demasiado grande conservan avisos recuperables, sin planes vacíos.
 
 GET training-day sigue siendo de lectura de planes/derivados. POST training-day, exclusivo de entrenador, prepara los snapshots que falten para asignaciones relevantes y devuelve el mismo informe; permite reparar altas anteriores sin esperar login del alumno. Los índices de estructura siguen perezosos y vinculados a SHA. UI consulta GET al entrar/cambiar fecha/Actualizar entrenamientos y usa POST solo si el informe señala planes pendientes; las consultas normales no consumen el presupuesto de escrituras. Conserva caché offline. Guardar competición/asignación/borrado invalida trainerDays solo de ese actor y una generación de peticiones evita que respuestas previas vuelvan a escribir caché antigua. Sustituye para esta recuperación la prohibición previa de crear snapshots al consultar el panel, sin extender autorización a recalcular planes existentes. Sin datos de negocio en DO ni cambios en permisos o algoritmo.
+
+## Política obligatoria de ramas, entornos y despliegues
+
+Política vigente del propietario (19/10/2026). Sustituye las instrucciones anteriores incompatibles de creación de ramas, pushes, despliegue manual/automático y autorizaciones, también en documentación histórica. Los antecedentes se conservan; no conceden permisos operativos actuales. Esta política no autoriza modificar ahora el workflow PRO ni desplegar producción.
+
+### Ramas y promoción selectiva
+
+- `main` representa exclusivamente producción autorizada, está protegida y es la base de TODAS las nuevas `feature/*`, salvo excepción expresa del propietario. Las features NO nacen de `develop` por defecto.
+- `develop` es integración y pruebas DEV, recibe features mediante PR y despliega automáticamente solo DEV cuando el CI/CD esté configurado y habilitado. Puede contener funcionalidades no autorizadas para PRO; nunca debe desplegar PRO.
+- Ningún agente realiza commits o pushes directos a `main` o `develop`, ni fusiona en `main` sin autorización expresa y específica del propietario. Respetar protecciones sin eludirlas: no force push, excepciones ni cambios directos como atajos.
+- Flujo: actualizar referencias remotas; comprobar `main`; crear `feature/<nombre>` desde el `main` actual y verificar su SHA base; implementar solo el alcance solicitado; probar; abrir PR feature → develop; integrar únicamente con las condiciones siguientes; probar en DEV; esperar autorización expresa de promoción; preparar PR selectiva a main; revisar diff completo y pruebas antes de fusionar.
+- La promoción es por funcionalidad, nunca por rama de integración. Nunca abrir una PR general develop → main ni fusionar todo develop para promocionar una funcionalidad. Si develop contiene A/B/C, promover B debe excluir A/C.
+- Preferir PR desde la feature original a main si historial y diff son limpios. Si incorpora develop u otras funcionalidades, crear rama limpia desde main actualizado y trasladar solo cambios/commits autorizados, con cherry-pick cuando proceda. Comprobar dependencias, no asumir independencia. Detener promoción si no puede garantizarse el alcance del diff.
+- Tras promover, comprobar relación main/develop/features pendientes e incorporar correcciones exclusivas de PRO necesarias a develop mediante PR/procedimiento controlado; no hacer push directo.
+- No merges/rebases indiscriminados: decidir si actualizar desde main o incorporar dependencias concretas. No incorporar todo develop por comodidad. Resolver conflictos preservando cambios de terceros. Si cambia el alcance de una PR, revisar otra vez el diff y repetir pruebas afectadas.
+
+### Autorizaciones
+
+Work puede leer/analizar, crear features, modificar código/documentación dentro del alcance, probar, crear commits de trabajo, abrir PR a develop, revisar CI y preparar DEV.
+
+Work puede integrar en develop únicamente si el propietario ha autorizado previamente tanto el alcance como su integración DEV, las validaciones obligatorias pasan, no hay conflictos/dependencias pendientes ni cambios fuera de alcance. Respetar cualquier orden de detenerse antes del merge.
+
+Sin autorización expresa y específica del propietario, ningún agente puede fusionar en main, desplegar PRO, modificar Worker PRO, Durable Objects, SQLite, bindings, migraciones, secretos, permisos o mecanismos de despliegue de producción, alterar datos reales ni provocar indirectamente un deploy PRO. Una autorización de desarrollo, corrección, integración o despliegue DEV nunca autoriza producción. Los cambios DEV nunca deben alterar recursos PRO. Ante incertidumbre de entorno o alcance, detenerse y preguntar.
+
+### Entornos y secretos
+
+| Destino | Rama | Worker | Configuración | Sesiones |
+| --- | --- | --- | --- | --- |
+| PRO | main | pgt-github-probe | wrangler.jsonc | SECURITY / ProbeSecurity de PRO |
+| DEV | develop | pgt-github-probe-dev | wrangler.dev.jsonc | namespace y SQLite propios de DEV |
+
+DEV sirve frontend y API desde su Worker y usa exclusivamente usuarios de prueba. Temporalmente ambos usan dmda92/pgt-bjj-data privado por decisión expresa: esto NO autoriza tocar datos de alumnos reales. No introducir Firebase ni migraciones de datos sin otro encargo. La separación de sesiones no implica aislamiento de datos de negocio.
+
+Secretos nunca en código, ejemplos con valores reales, documentación, bundles o logs. No reutilizar credenciales PRO sin identificar/documentar permisos y obtener autorización. Guía operativa DEV: `docs/DEV_ENVIRONMENT.md`.
+
+Antes de CADA despliegue comprobar Worker, configuración Wrangler, rama, cuenta, bindings y destino. La autorización DEV no autoriza PRO. La tarea inicial feature/dev-environment termina con PR hacia develop, SIN merge automático ni primer despliegue DEV.
+
+### Comprobaciones obligatorias de inicio y cierre
+
+Al iniciar: identificar rama actual y entorno afectado; clasificar desarrollo/integración DEV/promoción PRO; confirmar feature nacida de main; leer reglas aplicables de AGENTS.md; verificar alcance autorizado antes de modificar archivos.
+
+Al cerrar: documentar pruebas ejecutadas y resultados, archivos modificados, origen/destino de PR, revisión del diff, recursos externos afectados, ausencia de operaciones PRO cuando corresponda y riesgos/pasos manuales pendientes. Antes de cualquier PR a main revisar TODO el diff y confirmar que contiene exclusivamente cambios autorizados.

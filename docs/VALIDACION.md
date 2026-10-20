@@ -1,5 +1,7 @@
 # PGT — validación de la aplicación · 13/10/2026
 
+Corrección del gate DEV de recuperación (19/10/2026): ver `docs/CI_RECOVERY_DATES.md`. Fixtures temporales de prueba; no cambia producto ni despliegues. Resultados en la PR de corrección.
+
 ## Estado y evidencia
 
 El propietario dio por terminada la prueba de viabilidad tras confirmar en el Worker desplegado: acceso al repositorio privado, altas de prueba, login, lectura/escritura/actualización de JSON, revisiones, UNCHANGED_NO_COMMIT, aislamiento 403, conflictos 409, borrado/recreación y sincronización móvil→ordenador. El 401 tras logout se comportó como rechazo de sesión. Esta aceptación autoriza desarrollar la aplicación; no equivale a aceptación remota de la nueva UI.
@@ -209,3 +211,7 @@ Nuevos participantes en día (16/10/2026): regresión API crea competición y as
 
 
 Título de Mis técnicas (16/10/2026): cambio exclusivo del encabezado a «Tu juego, técnica a técnica». npm test (117 pruebas), typecheck, build, check:worker, test:runtime y test:browser completados correctamente. Pruebas locales con datos sintéticos; sin cambios de comportamiento.
+
+## Preparación DEV (19/10/2026)
+
+Informe separado en `docs/DEV_ENVIRONMENT.md`: unitarias 117/117, tipos/build/Worker/performance y dry-run DEV correctos; runtime falla en fixture temporal preexistente reproducido en main y navegador bloqueado por instalación Chromium. No se despliega ni se opera sobre PRO. No considerar completa la validación hasta resolver los pendientes.
