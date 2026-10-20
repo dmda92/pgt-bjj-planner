@@ -42,3 +42,13 @@ CI remoto [39450761182](https://github.com/dmda92/pgt-bjj-planner/actions/runs/3
 7. Documentos definitivos de esquema/índices, costes medidos, operación/migración, cutover futuro y rollback; solo existe propuesta inicial de arquitectura.
 
 La fase inicial está preparada para revisión; no es una migración terminada. La PR debe permanecer borrador y no integrarse/desplegarse hasta completar las fases restantes y la configuración manual indicada en FIRESTORE_CONFIGURACION_DEV.md.
+
+## Actualización de infraestructura — 20/10/2026 22:27 UTC
+
+Las filas y gates anteriores describen la fase inicial. Estado posterior: PR #6 head `019559d` con CI completo correcto [39507649879](https://github.com/dmda92/pgt-bjj-planner/actions/runs/39507649879): **141 pruebas** (incluye las 14 regresiones congeladas), tipos, frontend, Worker, runtime SQLite, runtime de diagnóstico, navegador/PDF, rendimiento y dry-run DEV. Los archivos del generador/continuidad/recálculo y los fixtures originales no se han modificado.
+
+Diagnóstico desplegado selectivamente mediante PR #7–#9, todas feature → develop, sin importar develop en las features. Integración actual develop `fbc71dc`; [39507963337](https://github.com/dmda92/pgt-bjj-planner/actions/runs/39507963337) terminó success, incluido despliegue y conexión **real** Firestore: proyecto `pgt-bjj-dev`, `(default)`, `europe-west1`, STANDARD/FIRESTORE_NATIVE; OAuth2 de la cuenta DEV; CRUD sintético, CAS obsoleto rechazado HTTP 400, acceso anónimo GET/PATCH rechazado y borrado confirmado 404. Evidencia completa y límites en [FIRESTORE_PREFLIGHT_DEV.md](FIRESTORE_PREFLIGHT_DEV.md).
+
+El gate 1 queda parcialmente resuelto: conexión/metadatos/operaciones verificadas; Spark/rol IAM confirmados por el propietario. Falta revisar las reglas completas publicadas, que el rol de datos no puede leer. Los gates 2–7 de implementación, fragmentación/transacciones, migrador, caché, canal y dos clientes siguen pendientes. El despliegue actual es del diagnóstico y la aplicación anterior; no afirmar que Firestore ya sea la fuente de verdad de negocio.
+
+main permanece `3b8125c`; no hay cambios del Worker/configuración/workflow PRO, ni lectura/copia/migración de datos reales. Solo documentos sintéticos de diagnóstico en DEV.

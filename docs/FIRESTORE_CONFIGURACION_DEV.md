@@ -53,3 +53,9 @@ No configurar un segundo build en Workers Builds/Pages: DEV seguirá publicando 
 Comunicar únicamente: base `(default)` disponible, Standard/Native, ubicación, Spark/Blaze actual, nombre de la cuenta de servicio DEV y que el secreto `FIRESTORE_SERVICE_ACCOUNT_JSON` está cargado en `pgt-github-probe-dev`. Nunca enviar clave, token OAuth ni contraseñas de pruebas.
 
 Después: implementar adaptadores/dominio de persistencia, emulador/integración, migrador sintético, canal WebSocket, caché y rechazo offline; verificar en dos contextos/roles; integrar por PR a develop y ejecutar despliegue DEV. No afirmar tiempo real ni equivalencia end-to-end antes de esas pruebas. Si no puede proporcionarse esta configuración, mantener el punto de parada de la sección 3 del plan técnico.
+
+## Verificación posterior — 20/10/2026 22:27 UTC
+
+El propietario completó los pasos de base, identidad y secreto. La conexión remota ya ha verificado `(default)`, `europe-west1`, Standard/Native, la identidad `pgt-worker-dev` y operaciones CRUD/CAS sintéticas con limpieza. Evidencia: [FIRESTORE_PREFLIGHT_DEV.md](FIRESTORE_PREFLIGHT_DEV.md), Actions 39507963337. No hace falta crear otra clave ni modificar secretos o permisos.
+
+**Único dato manual pendiente para cerrar el gate de seguridad:** abrir Firebase `pgt-bjj-dev` → Firestore Database → `(default)` → Rules; copiar el texto completo de las reglas publicadas y confirmar que corresponde a la versión publicada, sin cambios pendientes. Las reglas son configuración, no claves privadas. No elevar la cuenta runtime para obtenerlas. Si existe una regla distinta del deny-all de la sección 4, revisarla antes de cambiarla. No aplicar nada en `pgt-bjj-pro`.
