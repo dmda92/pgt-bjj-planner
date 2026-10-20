@@ -54,3 +54,19 @@ test('Directory order is stable by logical name, independent of Firestore hashed
  for(const name of ['pgt-dev-z@example.test','pgt-dev-a@example.test','pgt-dev-m@example.test'])await s.write('PGT/users_data/'+name+'/user_data.json',{fixture:true},null);
  assert.deepEqual((await s.list('PGT/users_data')).map(v=>v.name),['pgt-dev-a@example.test','pgt-dev-m@example.test','pgt-dev-z@example.test']);
 });
+
+test('Network read retries are bounded; commits are never replayed and runtime limits stay explicit',async()=>{
+ const f=await firestoreFixture();let failures=1,attempts=0;
+ const s=new FirestoreStorage(f.env,async(url,init)=>{
+  if(url.includes('firestore.googleapis.com')){attempts++;if(failures-->0)throw new DOMException('deadline','TimeoutError');}
+  return f.transport(url,init);
+ });
+ assert.equal(await s.read(path),null);assert.equal(attempts,2);
+ const limited=new FirestoreStorage(f.env,async(url,init)=>{if(url.includes('firestore.googleapis.com'))throw Error('Too many subrequests.');return f.transport(url,init);});
+ await assert.rejects(limited.read(path),/FIRESTORE_SUBREQUEST_LIMIT/);
+ const timeouts=new FirestoreStorage(f.env,async(url,init)=>{if(url.includes('firestore.googleapis.com'))throw new DOMException('deadline','TimeoutError');return f.transport(url,init);});
+ await assert.rejects(timeouts.read(path),/FIRESTORE_NETWORK_TIMEOUT/);
+ const prior=await s.write(path,{n:1},null);let commits=0;
+ const writer=new FirestoreStorage(f.env,async(url,init)=>{if(url.endsWith('/documents:commit')){commits++;throw Error('network');}return f.transport(url,init);});
+ await assert.rejects(writer.write(path,{n:2},prior),/FIRESTORE_NETWORK_RETRY/);assert.equal(commits,1);assert.deepEqual((await s.read(path))?.data,{n:1});
+});

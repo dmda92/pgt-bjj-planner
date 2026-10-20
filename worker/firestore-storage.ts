@@ -33,10 +33,23 @@ export class FirestoreStorage implements CloudStorageProvider {
   }
   async request(path:string,init:RequestInit={}){
     const token=await this.identity.token();
-    let r:Response;
-    try{r=await this.transport(root+path,{...init,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},redirect:'manual',signal:AbortSignal.timeout(20000)});}
-    catch{throw new ApiError(503,'FIRESTORE_NETWORK_RETRY');}
-    return r;
+    const readOnly=(!init.method||init.method==='GET')||['/documents:runQuery','/documents:batchGet'].includes(path);
+    for(let attempt=0;;attempt++){
+      try{
+        const r=await this.transport(root+path,{...init,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},redirect:'manual',signal:AbortSignal.timeout(20000)});
+        // Finish the network body before the next operation, including Commit
+        // acknowledgements and 404s whose callers do not parse a response body.
+        const response=new Response(await r.arrayBuffer(),{status:r.status,headers:r.headers});
+        if(readOnly&&attempt===0&&[502,503,504].includes(response.status))continue;
+        return response;
+      }catch(error){
+        const message=error instanceof Error?error.message:'';
+        if(/too many subrequests/i.test(message))throw new ApiError(503,'FIRESTORE_SUBREQUEST_LIMIT');
+        if(/different request|request.*context|context.*request/i.test(message))throw new ApiError(503,'FIRESTORE_REQUEST_CONTEXT');
+        if(readOnly&&attempt===0)continue;
+        throw new ApiError(503,error instanceof Error&&['TimeoutError','AbortError'].includes(error.name)?'FIRESTORE_NETWORK_TIMEOUT':'FIRESTORE_NETWORK_RETRY');
+      }
+    }
   }
   private check(r:Response){
     if(r.status===429)throw new ApiError(429,'FIRESTORE_RATE_LIMIT',60);
