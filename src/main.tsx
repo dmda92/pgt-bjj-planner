@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 20857)
-Total output lines: 1809
-
 import {onlinePresentation} from './application/online-presentation.ts';
 import {OnlineDraft} from './application/online-draft.ts';
 import {ownTrainingDay} from "./domain/own-training-day.ts";
@@ -624,7 +621,396 @@ function App() {
                               className="secondary"
                               onClick={() =>
                                 void saveTech({
-                                 …4857 tokens truncated…                          ),
+                                  ...techniques,
+                                  positions: techniques.positions.map((v) =>
+                                    v.id === p.id
+                                      ? {
+                                          ...v,
+                                          tecnicas: [
+                                            ...v.tecnicas,
+                                            {
+                                              id: crypto.randomUUID(),
+                                              tipo: "Nueva técnica",
+                                              descripcion_del_alumno: "",
+                                            },
+                                          ],
+                                        }
+                                      : v,
+                                  ),
+                                })
+                              }
+                            >
+                              Añadir técnica
+                            </button>
+                            <button
+                              className="subtle"
+                              disabled={techniques.positions.indexOf(p) === 0}
+                              onClick={() =>
+                                void saveTech({
+                                  ...techniques,
+                                  positions: move(
+                                    techniques.positions,
+                                    techniques.positions.indexOf(p),
+                                    techniques.positions.indexOf(p) - 1,
+                                  ),
+                                })
+                              }
+                            >
+                              Subir posición
+                            </button>
+                            <button
+                              className="danger"
+                              onClick={() => {
+                                if (
+                                  confirm(
+                                    "¿Eliminar la posición y sus técnicas? Se recalcularán las sesiones futuras de tus planes activos; el histórico se conserva.",
+                                  )
+                                )
+                                  void saveTech({
+                                    ...techniques,
+                                    positions: techniques.positions.filter(
+                                      (v) => v.id !== p.id,
+                                    ),
+                                  });
+                              }}
+                            >
+                              Eliminar posición
+                            </button>
+                          </div>
+                          </div>
+                        </details>
+                      ))}
+                  </div>
+                  <button onClick={()=>{
+                    const id=crypto.randomUUID();
+                    setExpandedPositions(previous=>new Set([...previous,id]));
+                    void saveTech({...techniques,positions:[...techniques.positions,{id,posicion:"Nueva posición",prioridad:1,tecnicas:[]}]});
+                  }}>
+                    Añadir posición
+                  </button>
+                </>
+              )}
+              {tab === "plans" && (
+                <section>
+                  <OwnTrainingDay key={client.identity!.mail} plans={plans} owner={client.identity!.mail} />
+                  <section className="own-complete-plans" aria-label="Planes completos">
+                  <div className="section-head">
+                    <div>
+                      <h2>Planes completos</h2>
+                      <p>
+                        Las sesiones pasadas y la de hoy conservan sus textos.
+                        Las futuras reciben las descripciones y comentarios
+                        actualizados.
+                      </p>
+                    </div>
+                  </div>
+                  {!plans.length && (
+                    <div className="empty">
+                      Tu entrenador puede asignarte una competición. Sincroniza
+                      para recibirla.
+                    </div>
+                  )}
+                  {plans.length > 0 && <>
+                    <label>Mi plan
+                      <select aria-label="Mi plan" value={selectedOwnPlan ? ownPlanId : ""} onChange={e => setOwnPlanId(e.target.value)}>
+                        <option value="">Selecciona un plan</option>
+                        {plans.map(plan => <option key={plan.planId} value={plan.planId}>Torneo · {plan.fecha_torneo}</option>)}
+                      </select>
+                    </label>
+                    {selectedOwnPlan
+                      ? <PlanView key={selectedOwnPlan.planId} plan={selectedOwnPlan} run={run} />
+                      : <p className="muted">Selecciona un plan para consultar sus sesiones.</p>}
+                  </>}
+                  </section>
+                </section>
+              )}
+              {tab === "profile" && profile && (
+                <ProfileView
+                  profile={profile}
+                  sha={entries.find((e) => e.key === "profile")?.sha || null}
+                  trainer={Boolean(trainer)}
+                  onDirty={setProfileUnsaved}
+                  run={run}
+                />
+              )}
+              {tab === "trainer" && trainer && (
+                <section
+                  className="trainer-dashboard"
+                  aria-label="Dashboard del entrenador"
+                >
+                  <div className="dashboard-heading">
+                    <div>
+                      <h2>
+                        {trainerSection === "team"
+                          ? "Tu equipo"
+                          : trainerSection === "competitions"
+                            ? "Competiciones"
+                            : trainerSection === "coverage" ? "Cobertura por alumno" : "Entrenamiento del día"}
+                      </h2>
+                      <p>
+                        Consulta el repertorio de cada alumno y organiza sus
+                        próximos torneos.
+                      </p>
+                    </div>
+                    <a
+                      className="action-link"
+                      href="#competition-create"
+                      onClick={() => {setTrainerSection("competitions");setCompetitionSection("create");}}
+                    >
+                      Crear competición
+                    </a>
+                  </div>
+                  <div
+                    className="trainer-sections"
+                    role="group"
+                    aria-label="Áreas del entrenador"
+                  >
+                    {[
+                      ["team", "Equipo"],
+                      ["competitions", "Competiciones"],
+                      ["coverage", "Cobertura por alumno"],
+                      ["day", "Entrenamiento del día"],
+                    ].map(([key, title]) => (
+                      <button
+                        key={key}
+                        className={
+                          trainerSection === key ? "selected" : "secondary"
+                        }
+                        aria-pressed={trainerSection === key}
+                        onClick={() => setTrainerSection(key)}
+                      >
+                        {title}
+                      </button>
+                    ))}
+                  </div>
+                  {["team","competitions"].includes(trainerSection) && (
+                    <dl
+                      className="dashboard-overview"
+                      aria-label="Resumen del equipo"
+                    >
+                      <div>
+                        <dt>Alumnos registrados</dt>
+                        <dd>
+                          {catalog
+                            ? students.filter(
+                                (s) => s.profile.perfil === "alumno",
+                              ).length
+                            : "—"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Competiciones creadas</dt>
+                        <dd>{catalog ? catalog.data.plans.length : "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>Asignaciones a competición</dt>
+                        <dd>
+                          {catalog
+                            ? catalog.data.plans.reduce(
+                                (n, c) => n + c.alumnos.length,
+                                0,
+                              )
+                            : "—"}
+                        </dd>
+                      </div>
+                    </dl>
+                  )}
+                  {trainerSection === "team" && (
+                    <div className="team-workspace">
+                      <section
+                        className="roster"
+                        aria-label="Listado de alumnos"
+                      >
+                        <div className="roster-heading">
+                          <h3>Equipo</h3>
+                          <button
+                            className="subtle"
+                            disabled={busy}
+                            onClick={() => void run(trainers)}
+                          >
+                            Actualizar
+                          </button>
+                        </div>
+                        <label className="search-label">
+                          Buscar alumnos
+                          <input
+                            type="search"
+                            placeholder="Nombre o correo…"
+                            value={studentSearch}
+                            onChange={(e) => setStudentSearch(e.target.value)}
+                          />
+                        </label>
+                        <div className="student-grid">
+                          {students
+                            .filter((s) =>
+                              (
+                                s.profile.mail +
+                                " " +
+                                s.profile.nombre +
+                                " " +
+                                s.profile.apellidos
+                              )
+                                .toLowerCase()
+                                .includes(studentSearch.toLowerCase()),
+                            )
+                            .map((s) => (
+                              <button
+                                key={s.profile.mail}
+                                className={`student-card ${selectedStudent === s.profile.mail ? "student-selected" : ""}`}
+                                aria-pressed={
+                                  selectedStudent === s.profile.mail
+                                }
+                                onClick={() => selectStudent(s.profile.mail)}
+                              >
+                                <span
+                                  className="student-avatar"
+                                  aria-hidden="true"
+                                >
+                                  {(s.profile.nombre || s.profile.mail)
+                                    .slice(0, 1)
+                                    .toUpperCase()}
+                                </span>
+                                <span className="student-info">
+                                  <strong>
+                                    {s.profile.nombre
+                                      ? `${s.profile.nombre} ${s.profile.apellidos || ""}`
+                                      : s.profile.mail}
+                                  </strong>
+                                  <span>
+                                    {s.profile.cinturon ||
+                                      "Sin cinturón indicado"}{" "}
+                                    · {s.profile.perfil}
+                                  </span>
+                                </span>
+                              </button>
+                            ))}
+                        </div>
+                        {catalog &&
+                          !students.some((s) =>
+                            `${s.profile.mail} ${s.profile.nombre} ${s.profile.apellidos}`
+                              .toLowerCase()
+                              .includes(studentSearch.toLowerCase()),
+                          ) && (
+                            <p className="roster-empty">
+                              {studentSearch
+                                ? "No hay coincidencias. Prueba con otro nombre o correo."
+                                : "Todavía no hay usuarios registrados."}
+                            </p>
+                          )}
+                        {!catalog && (
+                          <p className="roster-empty">
+                            {busy
+                              ? "Cargando equipo…"
+                              : "Pulsa Actualizar para cargar el equipo."}
+                          </p>
+                        )}
+                      </section>
+                      <div className="student-workspace">
+                        {studentLoading && (
+                          <section className="student-placeholder student-loading" role="status" aria-live="polite" aria-label="Cargando alumno">
+                            <span className="loading-spinner" aria-hidden="true" />
+                            <div className="student-loading-copy"><h3>Cargando alumno</h3><p>Preparando sus técnicas y planes…</p></div>
+                          </section>
+                        )}
+                        {studentLoadFailed && !studentLoading && (
+                          <section className="student-placeholder">
+                            <h3>No se pudo cargar la información del alumno.</h3>
+                            <button onClick={() => selectStudent(selectedStudent)}>Reintentar carga</button>
+                          </section>
+                        )}
+                        {!selectedStudent && (
+                          <section className="student-placeholder">
+                            <SectionIcon name="techniques" />
+                            <h3>Trabaja el juego de cada alumno.</h3>
+                            <p>
+                              Selecciona a alguien del equipo para consultar sus
+                              técnicas, escribir comentarios y revisar sus
+                              planes.
+                            </p>
+                            <p className="placeholder-detail">
+                              Las descripciones son del alumno. Tus comentarios
+                              se guardan por separado.
+                            </p>
+                          </section>
+                        )}
+                        {student && (
+                          <TrainerStudent
+                            key={student.profile.data.mail}
+                            snapshot={student}
+                            section={studentSection}
+                            refreshing={studentRefreshing}
+                            planId={studentPlanId}
+                            choosePlan={(id)=>selectStudent(selectedStudent,"plans",false,id)}
+                            changeSection={(section) => selectStudent(selectedStudent,section)}
+                            run={run}
+                            reload={async () => {
+                              const sequence=studentSequence.current;
+                              const data=await client.trainerView(selectedStudent,studentSection,true,studentPlanId);
+                              if(sequence===studentSequence.current&&!client.locked)setStudent(data);
+                            }}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {trainerSection === "coverage" && (
+                    <TrainerPreparation students={students} run={run} />
+                  )}
+                  {trainerSection === "day" && <TrainerDay run={run} />}
+                  {catalog && trainerSection === "competitions" && (
+                    <div>
+                      <div className="trainer-sections" role="group" aria-label="Gestión de competiciones">
+                        <button className={competitionSection === "list" ? "selected" : "secondary"} aria-pressed={competitionSection === "list"} onClick={()=>setCompetitionSection("list")}>Listado</button>
+                        <button className={competitionSection === "create" ? "selected" : "secondary"} aria-pressed={competitionSection === "create"} onClick={()=>setCompetitionSection("create")}>Nueva competición</button>
+                      </div>
+                      {competitionSection === "create" && <CompetitionForm
+                        students={students}
+                        run={run}
+                        sha={catalog.sha}
+                        reload={async()=>{await trainers();setCompetitionSection("list");}}
+                      />}
+                      {competitionSection === "list" && <section
+                        className="competition-list"
+                        aria-label="Competiciones creadas"
+                      >
+                        <h3>Competiciones del equipo</h3>
+                        <label className="check"><input type="checkbox" checked={includePast} onChange={e=>setIncludePast(e.target.checked)}/>Incluir competiciones pasadas</label>
+                        {!listedCompetitions(catalog.data.plans,madridDate(),includePast).length && (
+                          <p className="competition-empty">
+                            No hay competiciones para este filtro.
+                          </p>
+                        )}
+                        {listedCompetitions(catalog.data.plans,madridDate(),includePast).map((c) => (
+                          <CompetitionCard key={c.planId} competition={c} students={students} sha={catalog.sha} run={run} reload={trainers} />
+                        ))}
+                      </section>}
+                    </div>
+                  )}
+                </section>
+              )}
+              <section className="backup">
+                <h3>Copia de seguridad</h3>
+                <button
+                  className="secondary"
+                  onClick={() =>
+                    void run(async () => {
+                      const data = await client.load();
+                      const blob = new Blob(
+                        [
+                          JSON.stringify(
+                            {
+                              schemaVersion: 1,
+                              mail: client.identity!.mail,
+                              unsavedTechniques:onlineMode ? onlineDraft.current?.value : undefined,
+                              legacyDrafts: onlineMode ? JSON.parse((await db.meta.get("legacy-drafts:"+client.identity!.mail))?.value||"null") : undefined,
+                              entries: data.map(({ key, data }) => ({
+                                key,
+                                data:onlineMode&&key==="techniques"&&onlineDraft.current?.value ? onlineDraft.current.value : data,
+                              })),
+                            },
+                            null,
+                            2,
+                          ),
                         ],
                         { type: "application/json" },
                       );
