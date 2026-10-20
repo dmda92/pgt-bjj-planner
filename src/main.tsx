@@ -1,3 +1,5 @@
+import {onlinePresentation} from './application/online-presentation.ts';
+import {OnlineDraft} from './application/online-draft.ts';
 import {ownTrainingDay} from "./domain/own-training-day.ts";
 import {Notifications} from "./ui-notifications.tsx";
 import {TrainerPreparation,TrainerDay,Loading} from "./ui-trainer-reports.tsx";
@@ -11,7 +13,7 @@ import {syncPresentation} from "./application/sync-presentation.ts";
 import type {TrainerView,TrainerSection} from "./application/trainer-cache.ts";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { client, type Snapshot } from "./application/client.ts";
+import { client, onlineMode, type Snapshot } from "./application/client.ts";
 import { db, type LocalEntry } from "./infrastructure/local.ts";
 import {
   now,
@@ -57,6 +59,7 @@ function SectionIcon({ name }: { name: string }) {
 function App() {
   const techniqueSaves = useRef<Promise<void>>(Promise.resolve());
   const pendingTechniqueSaves = useRef(0);
+  const onlineDraft=useRef<OnlineDraft<Techniques>|null>(null);
   const loadSequence = useRef(0);
   const studentSequence = useRef(0);
   const [entries, setEntries] = useState<LocalEntry[]>([]),
@@ -110,7 +113,7 @@ function App() {
       void client
         .load()
         .then((data) => {
-          if (client.identity?.mail === mail && !client.locked && pendingTechniqueSaves.current === 0 && sequence === loadSequence.current)
+          if (client.identity?.mail === mail && !client.locked && pendingTechniqueSaves.current === 0 && !onlineDraft.current?.hasDraft && sequence === loadSequence.current)
             setEntries(data);
         })
         .catch((e) => setError(e.message));
@@ -158,6 +161,7 @@ function App() {
     setError("");
     setBusy(true);
     try {
+      if(onlineMode&&!onlineDraft.current?.hasFailed)await onlineDraft.current?.flush();
       await techniqueSaves.current;
       await action();
       setVersion((v) => v + 1);
@@ -173,6 +177,20 @@ function App() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Prioridad no válida");
       return;
+    }
+    if(onlineMode){
+      if(!navigator.onLine){setError('Sin conexión. Las técnicas solo se pueden modificar con conexión.');return;}
+      if(!onlineDraft.current){
+        const mail=client.identity?.mail;
+        onlineDraft.current=new OnlineDraft(async(data,base)=>{
+          if(client.identity?.mail!==mail||client.locked)throw Error('Sesión cambiada');
+          await client.edit('techniques',data,base);
+          return client.lastConfirmedRevision.get('techniques')||base!;
+        },error=>setError(error instanceof Error?error.message:'No se pudo guardar'),()=>setVersion(v=>v+1));
+      }
+      onlineDraft.current.update(next,entries.find(e=>e.key==='techniques')?.sha||null);
+      setEntries(values=>values.map(e=>e.key==='techniques'?{...e,data:next,dirty:true}:e));
+      setVersion(v=>v+1);return;
     }
     const mail = client.identity?.mail;
     pendingTechniqueSaves.current++;
@@ -202,7 +220,7 @@ function App() {
   function selectStudent(mail:string,section:TrainerSection="techniques",force=false,planId="") {
     const sequence=++studentSequence.current,owner=client.identity?.mail;
     setSelectedStudent(mail);setStudentSection(section);setStudentPlanId(planId);
-    setStudent(null);setStudentLoading(true);setStudentLoadFailed(false);
+    if(!force)setStudent(null);setStudentLoading(true);setStudentLoadFailed(false);
     void (async()=>{
       const current=()=>sequence===studentSequence.current&&client.identity?.mail===owner&&!client.locked;
       let cached:TrainerView|undefined;
@@ -222,7 +240,17 @@ function App() {
     setStudents(data.users);
     setCatalog(await client.request("/api/app/catalog"));
   }
-  const syncState=syncPresentation(client.status,entries.some(e=>e.dirty)||pendingTechniqueSaves.current>0,entries.some(e=>e.key.startsWith("plan:")&&Boolean((e.data as TrainingPlan).structuralUpdateError)),profileUnsaved);
+  useEffect(()=>{
+    if(!onlineMode)return;
+    const refresh=()=>{
+      if(!client.identity||client.locked)return;
+      if(trainer){void trainers().catch(e=>setError(e.message));if(selectedStudent)selectStudent(selectedStudent,studentSection,true,studentPlanId);}
+      setVersion(v=>v+1);
+    };
+    window.addEventListener('pgt-live-update',refresh);return()=>window.removeEventListener('pgt-live-update',refresh);
+  },[trainer,selectedStudent,studentSection,studentPlanId]);
+  useEffect(()=>{if(!active){onlineDraft.current?.discard();onlineDraft.current=null;}},[Boolean(active)]);
+  const syncState=(onlineMode?onlinePresentation:syncPresentation)(client.status,entries.some(e=>e.dirty)||pendingTechniqueSaves.current>0,entries.some(e=>e.key.startsWith("plan:")&&Boolean((e.data as TrainingPlan).structuralUpdateError)),profileUnsaved);
   return (
     <div className={`shell ${active ? "signed-in" : "signed-out"}`}>
       <a className="skip-link" href="#main-content">
@@ -335,15 +363,16 @@ function App() {
                 </div>
                 <div className="sync">
                   <span role="status" className={syncState.success ? "sync-success" : undefined}>{client.status === "Sincronizando…" && <span className="loading-spinner" aria-hidden="true" />}{syncState.text}</span>
-                  <button
+                  {!onlineMode&&<button
                     disabled={busy}
                     onClick={() => void run(() => client.sync())}
                   >
                     Sincronizar
-                  </button>
+                  </button>}
                 </div>
               </section>
 
+              {onlineMode&&onlineDraft.current?.hasFailed&&<section role="alert" className="conflict"><p>El borrador de técnicas no se ha guardado. No se enviará al recuperar la conexión.</p><button onClick={()=>void onlineDraft.current?.retry().catch(e=>setError(e.message))}>Reintentar guardado</button><button onClick={()=>{if(confirm('¿Descartar este borrador y cargar la versión actual?')){onlineDraft.current?.discard();void client.sync().catch(e=>setError(e.message));}}}>Revisar versión actual</button></section>}
               {entries
                 .filter((e) => e.conflicts.length)
                 .map((e) => (
@@ -972,6 +1001,8 @@ function App() {
                             {
                               schemaVersion: 1,
                               mail: client.identity!.mail,
+                              unsavedTechniques:onlineMode ? onlineDraft.current?.value : undefined,
+                              legacyDrafts: onlineMode ? JSON.parse((await db.meta.get("legacy-drafts:"+client.identity!.mail))?.value||"null") : undefined,
                               entries: data.map(({ key, data }) => ({
                                 key,
                                 data,
@@ -1003,7 +1034,7 @@ function App() {
                           throw Error("La copia pertenece a otro alumno");
                         if (
                           !confirm(
-                            "Se importará como cambios locales pendientes, sin sobrescribir GitHub automáticamente.",
+                            onlineMode ? "Se guardarán el perfil y las técnicas de esta copia en el servidor. Los planes son de solo lectura." : "Se importará como cambios locales pendientes, sin sobrescribir GitHub automáticamente.",
                           )
                         )
                           return;
@@ -1166,11 +1197,13 @@ function ProfileView({
 }) {
   const [draft, setDraft] = useState(() => profileDraft(profile));
   const [weightInvalid,setWeightInvalid]=useState("");
+  const draftBase = useRef(sha);
   const previous = useRef(profileDraft(profile));
   useEffect(() => {
     const incoming = profileDraft(profile);
     const baseline = previous.current;
     setDraft((current) => refreshProfileDraft(current, baseline, incoming));
+    if(JSON.stringify(draft)===JSON.stringify(baseline))draftBase.current=sha;
     previous.current = incoming;
   }, [profile]);
   useEffect(()=>{
@@ -1205,7 +1238,7 @@ function ProfileView({
               fecha_nacimiento: String(f.get("fecha")) || null,
               peso: weightValue(String(f.get("peso"))),
               cinturon: String(f.get("cinturon")) as Profile["cinturon"],
-            }),
+            },onlineMode ? draftBase.current : undefined).then(()=>{draftBase.current=client.lastConfirmedRevision.get("profile")||sha;}),
           );
         }}
       >

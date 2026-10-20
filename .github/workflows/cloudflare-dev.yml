@@ -51,12 +51,18 @@ jobs:
         run: npm run test:runtime
       - name: DEV Firestore diagnostic runtime (isolated)
         run: node scripts/test-firestore-preflight-runtime.mjs
+      - name: DEV Firestore application and realtime runtime (isolated)
+        run: node scripts/test-firestore-app-runtime.mjs
       - name: Install Chromium
         run: npx --no-install playwright install --with-deps chromium
       - name: Browser and offline PDF tests
         run: npm run test:browser
       - name: Trainer performance regression
         run: npm run test:performance
+      - name: Build and verify online DEV frontend with two browsers (isolated)
+        run: |
+          VITE_PERSISTENCE=firestore-dev npm run build
+          node scripts/test-firestore-online-browser.mjs
       - name: Validate DEV configuration and bundle (offline)
         run: |
           node scripts/check-dev-config.mjs
@@ -73,6 +79,7 @@ jobs:
       cancel-in-progress: false
     env:
       VITE_API_BASE_URL: ''
+      VITE_PERSISTENCE: 'firestore-dev'
       CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: 'false'
       WRANGLER_SEND_METRICS: 'false'
     steps:
@@ -86,6 +93,8 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: node scripts/check-dev-config.mjs
+      - name: Install Chromium for live DEV verification
+        run: npx --no-install playwright install --with-deps chromium
       - name: Check current develop HEAD and deploy DEV only
         env:
           GH_TOKEN: ${{ github.token }}
@@ -117,5 +126,8 @@ jobs:
             const report = await preflight.json();
             console.log(JSON.stringify(report));
             if (!preflight.ok || report.status !== 'FIRESTORE_DEV_CONNECTION_VERIFIED') throw new Error('DEV Firestore preflight failed');
+            const qa = spawnSync(process.execPath, ['scripts/test-firestore-dev-live.mjs'], {stdio:'inherit',env:process.env});
+            if (qa.error) throw qa.error;
+            if (qa.status !== 0) process.exit(qa.status ?? 1);
           }
           JS

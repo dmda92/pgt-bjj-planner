@@ -59,3 +59,7 @@ El fallo CAS de los dos despliegues anteriores no se reprodujo con esta revisió
 **Pendiente manual para cerrar el gate de seguridad:** el propietario debe abrir Firebase → proyecto `pgt-bjj-dev` → Firestore Database → `(default)` → Rules y proporcionar el texto completo de las reglas actualmente publicadas (sin credenciales), confirmando que no tiene cambios pendientes de publicar. La cuenta runtime tiene rol de datos y no se le elevarán permisos para leer la fuente de reglas. El rechazo anónimo del UUID de prueba no prueba todas las rutas ni permisos de usuarios autenticados. Si las reglas difieren del deny-all documentado, revisar antes de publicar cambios; no tocar PRO.
 
 El backend de negocio Firestore y el canal entre dispositivos siguen pendientes de implementación y QA. No se declara terminada la migración ni probado el tiempo real. La PR #6 conserva el trabajo completo y permanece borrador.
+
+## Gate cerrado por configuración aportada por propietario
+
+El propietario proporcionó en el chat las reglas completas deny-all (`allow read, write: if false` para `/{document=**}`) de Firestore DEV. Se incorporan como referencia en `firestore.dev.rules`. Junto al diagnóstico remoto anterior se cierra la preparación de infraestructura y se continúa implementación de negocio. No se ha vuelto a publicar ni alterado ninguna regla cloud; la procedencia del texto es el propietario, no una lectura administrativa desde la cuenta runtime.
