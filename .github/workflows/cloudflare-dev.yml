@@ -10,11 +10,11 @@ on:
 permissions:
   contents: read
 
-# Never interrupt an upload in progress. Old pending develop runs may be superseded.
+# Supersede obsolete PR validation only; never interrupt a develop upload.
 # The head check below also prevents rerunning an old SHA over newer DEV.
 concurrency:
   group: pgt-cloudflare-dev-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   validate:
@@ -59,11 +59,37 @@ jobs:
         run: npm run test:browser
       - name: Trainer performance regression
         run: npm run test:performance
-      - name: Build and verify online DEV frontend with two browsers (isolated)
-        run: |
-          VITE_PERSISTENCE=firestore-dev npm run build
-          node scripts/test-firestore-online-browser.mjs
       - name: Validate DEV configuration and bundle (offline)
+        run: |
+          node scripts/check-dev-config.mjs
+          npx --no-install wrangler deploy --config wrangler.dev.jsonc --dry-run --outdir .worker-dev-build
+
+  validate-online:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CI: 'true'
+      VITE_API_BASE_URL: ''
+      VITE_PERSISTENCE: 'firestore-dev'
+      CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: 'false'
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Install Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Online DEV frontend and Firestore protocol in isolated browsers
+        run: node scripts/test-firestore-online-browser.mjs
+      - name: Verify online DEV bundle configuration
         run: |
           node scripts/check-dev-config.mjs
           npx --no-install wrangler deploy --config wrangler.dev.jsonc --dry-run --outdir .worker-dev-build
@@ -80,7 +106,7 @@ jobs:
           retention-days: 7
 
   deploy-dev:
-    needs: validate
+    needs: [validate, validate-online]
     if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/develop' && vars.DEV_DEPLOY_ENABLED == 'true'
     environment: development
     runs-on: ubuntu-latest
