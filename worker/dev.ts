@@ -1,3 +1,4 @@
+import {WorkerEntrypoint} from 'cloudflare:workers';
 import type {Transport} from './firestore-auth.ts';
 import {ApiError,fingerprint,opaqueToken,jsonBody,onlyFields} from './security.ts';
 import {DomainRepositories} from './structured/repositories.ts';
@@ -7,8 +8,21 @@ import {seedStructuredQA,cleanStructuredQA} from './structured/qa.ts';
 import {StructuredAppApi} from './structured/application.ts';
 import type {Profile} from '../src/domain/models.ts';
 import {authorizePreflight,firestorePreflight,requireDev,PreflightFailure,type PreflightEnv} from './firestore-preflight.ts';
-export interface DevEnv extends PreflightEnv {SECURITY:DurableObjectNamespace;ASSETS:Fetcher;GITHUB_DATA_TOKEN:string;ALLOWED_ORIGINS:string}
+export interface DevEnv extends PreflightEnv {SECURITY:DurableObjectNamespace;ASSETS:Fetcher;FIRESTORE_IO:Fetcher;GITHUB_DATA_TOKEN:string;ALLOWED_ORIGINS:string}
 export default {fetch(request:Request,env:DevEnv){return new URL(request.url).pathname.startsWith('/api/')?env.SECURITY.get(env.SECURITY.idFromName('github-probe')).fetch(request):env.ASSETS.fetch(request);}};
+/** Internal service entrypoint only; the public default handler never routes here.
+ * A fresh Worker invocation owns each Google HTTP call, rather than the shared
+ * Durable Object I/O context. Identity and permissions remain in the caller. */
+export class FirestoreIO extends WorkerEntrypoint<DevEnv> {
+  async fetch(request:Request):Promise<Response>{
+    requireDev(this.env);
+    const url=new URL(request.url),database='/v1/projects/pgt-bjj-dev/databases/(default)/documents';
+    const firestore=url.hostname==='firestore.googleapis.com'&&(url.pathname===database||url.pathname.startsWith(database+'/')||url.pathname===database+':commit'||url.pathname===database+':runQuery'||url.pathname===database+':listCollectionIds');
+    const oauth=url.hostname==='oauth2.googleapis.com'&&url.pathname==='/token';
+    if(url.protocol!=='https:'||url.port||url.username||url.password||(!firestore&&!oauth)||!['GET','POST'].includes(request.method))return Response.json({error:'DEV_TRANSPORT_DESTINATION_FORBIDDEN'},{status:403});
+    return fetch(request,{redirect:'manual'});
+  }
+}
 // Same local class name/binding as the existing DEV SQLite namespace. PRO keeps
 // worker/index.ts as entrypoint and does not import this DEV-only implementation.
 export class ProbeSecurity {
@@ -18,7 +32,7 @@ export class ProbeSecurity {
   private cloud:()=>DomainRepositories;
   constructor(state:DurableObjectState,env:DevEnv){
     let cloud:DomainRepositories|undefined;
-    const provider=()=>cloud||(cloud=new DomainRepositories(env));
+    const provider=()=>cloud||(cloud=new DomainRepositories(env,(url,init)=>env.FIRESTORE_IO.fetch(url,init)));
     this.devEnv=env;this.devState=state;this.cloud=provider;
   }
   fetch(request:Request):Promise<Response>{

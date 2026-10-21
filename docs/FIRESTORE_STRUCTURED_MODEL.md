@@ -1,6 +1,6 @@
 # Modelo documental nativo y administración de DEV
 
-Destino fijo: pgt-bjj-dev/(default), Standard/Native, europe-west1, Spark. API única en pgt-github-probe-dev. Reglas de acceso directo continúan deny-all. Credencial OAuth de servicio nunca llega al navegador. Producción y repositorio privado original: ninguna escritura autorizada.
+Destino fijo: pgt-bjj-dev/(default), Standard/Native, europe-west1, Spark. API única en pgt-github-probe-dev. El binding interno FIRESTORE_IO apunta a la entrada FirestoreIO de ese mismo Worker DEV: transporta exclusivamente llamadas Google a la base DEV y OAuth, sin ruta pública, redirecciones ni acceso a PRO. Cada llamada sale desde su propia invocación Worker; el Durable Object conserva sesiones, permisos y coordinación. Reglas de acceso directo continúan deny-all. Credencial OAuth de servicio nunca llega al navegador. Producción y repositorio privado original: ninguna escritura autorizada.
 
 ## Colecciones y campos
 

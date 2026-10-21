@@ -52,3 +52,12 @@ PR #14 integrada en develop 09d838a0f967b1052eb6e82add60453577581c62. Actions [3
 Inventario final real: settings 2 documentos, technique_catalog 55 documentos; cero legado, QA, documentos de prueba u huérfanos. Catálogo original 17 posiciones/36 técnicas, mismas huellas publicadas en la sección anterior. Producción permaneció fuera de alcance.
 
 El informe también registró cuatro errores FIRESTORE_SUBREQUEST_LIMIT recuperados por GET. Por ello el éxito funcional no se considera aún aceptación de estabilidad. Se prepara una consulta Firestore nativa por revisión que reúne sus tablas hijas inmediatas, en lugar de una consulta por cada tabla. Mantiene documentos, orden, CAS y publicación atómica; también reduce consultas al retirar revisiones. La prueba aislada comprueba alcance, caché e invalidación y el gate real pasa a rechazar cualquier FIRESTORE_SUBREQUEST_LIMIT, aunque el cliente lo recupere. Pendiente nueva integración DEV y resultado real de esta corrección.
+
+
+## Contexto I/O de Durable Objects
+
+PR #15 integrada y desplegada desde develop f49a29656e7c43154a9b7b90e7b0adc1993e7443, Actions [39597010564](https://github.com/dmda92/pgt-bjj-planner/actions/runs/39597010564), Worker f31cd780-b0af-4c4b-bca2-9dba6df88ff8. Google real aceptó la consulta nativa; todos los escenarios funcionales pasaron, pero el gate estricto rechazó un FIRESTORE_SUBREQUEST_LIMIT en training-day. Limpieza e inventario final satisfactorios (settings 2, catálogo 55, cero legado/QA/huérfanos).
+
+La reducción de consultas por sí sola no aísla el presupuesto del contexto I/O compartido por solicitudes concurrentes al mismo Durable Object. Corrección preparada: entrada interna FirestoreIO, enlazada exclusivamente al mismo Worker DEV; cada llamada Google pertenece a una invocación Worker independiente. El DO conserva autorización, sesiones, CAS y coordinación; el servicio no expone rutas públicas, permite solo OAuth y la base fija DEV, y bloquea redirecciones. No requiere secretos ni servicios PRO ni cambia cuotas o planes. Se añade una ráfaga de doce lecturas simultáneas con más de cincuenta llamadas externas en total, y rechazo previo al transporte de destinos ajenos a DEV. Pendiente aceptación real.
+
+Referencias: https://developers.cloudflare.com/changelog/post/2026-08-28-durable-objects-dynamic-workers-limit/ , https://developers.cloudflare.com/workers/runtime-apis/bindings/service-bindings/ y https://developers.cloudflare.com/workers/platform/limits/ .
