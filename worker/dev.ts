@@ -1,6 +1,6 @@
 import {DurableObject} from 'cloudflare:workers';
 import {SessionReplica,sessionKey,type SessionChange} from './structured/session-store.ts';
-import {privateTransport,type PrivateIOBinding} from './structured/private-io.ts';
+import {privateTransport,privateExecutor,type PrivateIOBinding,type RealtimeSession,type RealtimeChange} from './structured/private-io.ts';
 import {ApiError,fingerprint,opaqueToken,jsonBody,onlyFields} from './security.ts';
 import {DomainRepositories} from './structured/repositories.ts';
 import {DevMaintenance} from './structured/maintenance.ts';
@@ -23,10 +23,27 @@ export default {async fetch(request:Request,env:DevEnv){
  * Password KDF retains the DO CPU allowance. RPC returns materialized bytes,
  * never a response stream whose owner has already been disposed. */
 export class DomainIO extends DurableObject<DevEnv> {
+ private cloud?:DomainRepositories;
+ private repositories(){return this.cloud ||= new DomainRepositories(this.env,privateTransport(this.env.DOMAIN_IO,this.env.DEV_BUILD_SHA||'local'));}
+ async realtime(sessions:RealtimeSession[]){
+  requireDev(this.env);const cloud=this.repositories();cloud.beginOperation();
+  try{
+   await cloud.collectRetired();const changes=await cloud.changes(),actors=[];
+   for(const {sessionHash,session} of sessions){
+    if(!session)continue;const record=await cloud.read<Profile>({kind:'user',mail:session.mail});
+    if(record?.data.pwd&&session.role===record.data.perfil&&session.pwdFingerprint===await fingerprint(record.data.pwd))actors.push({sessionHash,mail:session.mail,role:record.data.perfil});
+   }
+   return {build:this.env.DEV_BUILD_SHA||'local',changes,actors};
+  }finally{cloud.endOperation();}
+ }
+ async acknowledge(changes:RealtimeChange[]){
+  requireDev(this.env);if(changes.some(c=>!/^realtime_events\/[^/]+$/.test(c.name)))throw new ApiError(400,'REALTIME_ACK_SCOPE_INVALID');
+  const cloud=this.repositories();cloud.beginOperation();try{await cloud.acknowledge(changes);}finally{cloud.endOperation();}
+ }
  manifest(){requireDev(this.env);return {build:this.env.DEV_BUILD_SHA||'local',revision:RUNTIME_REVISION};}
  async run(request:Request,entries:[string,unknown][]){
   requireDev(this.env);
-  const sessions=new SessionReplica(entries),cloud=new DomainRepositories(this.env,privateTransport(this.env.DOMAIN_IO,this.env.DEV_BUILD_SHA||'local'));cloud.beginOperation();
+  const sessions=new SessionReplica(entries),cloud=this.repositories();cloud.beginOperation();
   try{
    let response:Response,stage='DOMAIN_START';
    try{response=await new StructuredAppApi(sessions,cloud,undefined,value=>stage=value).handle(request,new URL(request.url));}
@@ -52,17 +69,15 @@ export class ProbeSecurity {
   private preflight:Promise<Response>|undefined;
   private devState:DurableObjectState;
   private cloud:()=>DomainRepositories;
-  private resetCloud:()=>void;
   constructor(state:DurableObjectState,env:DevEnv){
     let cloud:DomainRepositories|undefined;
     const provider=()=>cloud||(cloud=new DomainRepositories(env,privateTransport(env.DOMAIN_IO,env.DEV_BUILD_SHA||'local')));
-    this.resetCloud=()=>{cloud=undefined;};
     this.devEnv=env;this.devState=state;this.cloud=provider;
   }
   async fetch(request:Request):Promise<Response>{
     const path=new URL(request.url).pathname;
     if(path==='/api/dev/runtime'&&request.method==='GET'){
-      requireDev(this.devEnv);const domain=await this.devEnv.DOMAIN_IO.get(this.devEnv.DOMAIN_IO.newUniqueId()).manifest();return Response.json({project:'pgt-bjj-dev',worker:'pgt-github-probe-dev',build:this.devEnv.DEV_BUILD_SHA||'local',domainBuild:domain.build,revision:RUNTIME_REVISION},{headers:{'Cache-Control':'no-store'}});
+      requireDev(this.devEnv);const domain=await privateExecutor(this.devEnv.DOMAIN_IO).manifest();return Response.json({project:'pgt-bjj-dev',worker:'pgt-github-probe-dev',build:this.devEnv.DEV_BUILD_SHA||'local',domainBuild:domain.build,revision:RUNTIME_REVISION},{headers:{'Cache-Control':'no-store'}});
     }
     const response=path==='/api/dev/firestore-preflight'?await this.check(request):await this.serial(()=>path.startsWith('/api/dev/')?this.fixture(request):this.online(request));
     return stamped(response,'X-PGT-Coordinator-Build',this.devEnv.DEV_BUILD_SHA||'local');
@@ -70,7 +85,7 @@ export class ProbeSecurity {
   private serial<T>(action:()=>Promise<T>):Promise<T>{
     // Gate incoming events rather than carrying their I/O across a shared
     // promise chain. Memoized reads exist only for this single event.
-    return this.devState.blockConcurrencyWhile(async()=>{this.resetCloud();const store=this.cloud();store.beginOperation();try{return await action();}finally{store.endOperation();}});
+    return this.devState.blockConcurrencyWhile(async()=>{const store=this.cloud();store.beginOperation();try{return await action();}finally{store.endOperation();}});
   }
   private async online(request:Request):Promise<Response>{
     const url=new URL(request.url),path=url.pathname;let operationStage='GUARD';
@@ -102,7 +117,7 @@ export class ProbeSecurity {
       try{
         operationStage='QUERY_RUN';
         const entries:[string,unknown][]=[...await this.devState.storage.list({prefix:'app-session:'}),...await this.devState.storage.list({prefix:'plan-update:'})];
-        const result=await this.devEnv.DOMAIN_IO.get(this.devEnv.DOMAIN_IO.newUniqueId()).run(request,entries);
+        const result=await privateExecutor(this.devEnv.DOMAIN_IO).run(request,entries);
         operationStage='QUERY_RESULT';
         if(result.build!==(this.devEnv.DEV_BUILD_SHA||'local'))throw new ApiError(503,'DOMAIN_BUILD_MISMATCH');
         const changes=result.changes;
@@ -150,23 +165,20 @@ export class ProbeSecurity {
     return new Response(null,{status:101,webSocket:client});
   }
   private async flush(){
-    await this.cloud().collectRetired();
-    const changes=await this.cloud().changes();
-    // Even no-op logout/role requests must revalidate existing subscriptions.
-    const actors=new Map<string,Awaited<ReturnType<ProbeSecurity['authorizeHash']>>|null>();
-    for(const ws of this.devState.getWebSockets()){
-      const attached=ws.deserializeAttachment();
-      if(!attached?.sessionHash){ws.close(4401,'SESSION_REVOKED');continue;}
-      let actor=actors.get(attached.sessionHash);
-      if(actor===undefined){
-        try{actor=await this.authorizeHash(attached.sessionHash);}catch(error){if(error instanceof ApiError&&error.status===401)actor=null;else throw error;}
-        actors.set(attached.sessionHash,actor);
-      }
+    // Batch the cloud reads near Firestore. Only authorization/event metadata
+    // crosses the coordinator RPC, and ACK still follows actual publication.
+    const sockets=this.devState.getWebSockets(),sessions:RealtimeSession[]=[],seen=new Set<string>();
+    for(const ws of sockets){const hash=ws.deserializeAttachment()?.sessionHash;if(hash&&!seen.has(hash)){seen.add(hash);sessions.push({sessionHash:hash,session:await this.devState.storage.get('app-session:'+hash)});}}
+    const io=privateExecutor(this.devEnv.DOMAIN_IO),snapshot=await io.realtime(sessions);
+    if(snapshot.build!==(this.devEnv.DEV_BUILD_SHA||'local'))throw new ApiError(503,'REALTIME_BUILD_MISMATCH');
+    const changes=snapshot.changes,actors=new Map(snapshot.actors.map(actor=>[actor.sessionHash,actor]));
+    for(const ws of sockets){
+      const attached=ws.deserializeAttachment(),actor=actors.get(attached?.sessionHash);
       if(!actor||actor.role!==attached.role){ws.close(4401,'SESSION_REVOKED');continue;}
       const relevant=changes.some(c=>!c.owner||actor.role==='entrenador'||c.owner===actor.mail);
       if(relevant)try{ws.send(JSON.stringify({type:'changed',id:changes.at(-1)!.version,own:changes.some(c=>!c.owner||c.owner===actor.mail)}));}catch{ws.close(1011,'RECONNECT');}
     }
-    await this.cloud().acknowledge(changes);
+    if(changes.length)await io.acknowledge(changes);
     // Drain bounded pages and expire tickets without retaining business in SQLite.
     if(changes.length===100)await this.devState.storage.setAlarm(Date.now()+1000);
     else await this.devState.storage.deleteAlarm();
