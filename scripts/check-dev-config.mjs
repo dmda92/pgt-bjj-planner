@@ -11,7 +11,7 @@ assert.deepEqual(config.durable_objects, {bindings:[{name:'SECURITY',class_name:
 // Local class binding: no script_name/environment/namespace ID referencing PRO.
 assert.deepEqual(config.migrations, [{tag:'github-probe-dev-v1',new_sqlite_classes:['ProbeSecurity']}]);
 assert.deepEqual(config.vars, {DATA_BRANCH:'main', FIRESTORE_PROJECT_ID:'pgt-bjj-dev', FIRESTORE_DATABASE_ID:'(default)', ALLOWED_ORIGINS:'https://pgt-github-probe-dev.david-dzm5.workers.dev'});
-assert.deepEqual(config.services,[{binding:'FIRESTORE_IO',service:'pgt-github-probe-dev',entrypoint:'FirestoreIO'}]);
+assert.deepEqual(config.services,[{binding:'DOMAIN_IO',service:'pgt-github-probe-dev',entrypoint:'DomainIO'}]);
 assert.equal(config.workers_dev, true);
 assert.equal(config.routes, undefined);
 assert.equal(config.route, undefined);

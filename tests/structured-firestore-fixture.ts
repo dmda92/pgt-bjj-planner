@@ -3,13 +3,13 @@ import {template} from './template-fixture.ts';
 import {DEV_DATABASE_NAME} from '../worker/firestore-auth.ts';
 const canonical=(v:any):any=>Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.entries(v).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>[k,canonical(v)])):v;
 export async function structuredFixture(){
- const original=await firestoreFixture(),docs=new Map<string,any>(),calls:{url:string;method:string}[]=[];let n=0,losePublication=false,failStaging=false;
+ const original=await firestoreFixture(),docs=new Map<string,any>(),calls:{url:string;method:string;invocation?:string}[]=[];let n=0,losePublication=false,failStaging=false;
  const prefix=DEV_DATABASE_NAME+'/documents/',base='https://firestore.googleapis.com/v1/'+DEV_DATABASE_NAME;
  const transport:typeof original.transport=async(url,init={})=>{
   if(url==='https://api.github.com/repos/dmda92/pgt-bjj-data/contents/PGT/master_data/tecnics_base.json?ref=main'&&!new Headers(init.headers).get('User-Agent'))return Response.json({message:'User-Agent required'},{status:403});
   if(url==='https://api.github.com/repos/dmda92/pgt-bjj-data/contents/PGT/master_data/tecnics_base.json?ref=main')return Response.json({type:'file',sha:'bfb542c79a086ad6f6e8a9cd5cff0efd2e46635e',encoding:'base64',content:Buffer.from(JSON.stringify(template)).toString('base64').match(/.{1,60}/g)!.join('\n')});
   if(!url.startsWith(base))return original.transport(url,init);
-  calls.push({url,method:init.method||'GET'});
+  calls.push({url,method:init.method||'GET',invocation:new Headers(init.headers).get('X-QA-IO-Invocation')||undefined});
   if(!new Headers(init.headers).get('Authorization'))return Response.json({error:{status:'PERMISSION_DENIED'}},{status:403});
   const parsed=new URL(url),path=decodeURIComponent(parsed.pathname.slice(('/v1/'+DEV_DATABASE_NAME).length));
   if(!path)return Response.json({name:DEV_DATABASE_NAME,locationId:'europe-west1',databaseEdition:'STANDARD',type:'FIRESTORE_NATIVE'});

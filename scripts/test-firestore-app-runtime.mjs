@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {build} from 'esbuild';
+import {readFile} from 'node:fs/promises';
 import WebSocket from 'ws';
 import {Miniflare,convertV4MiniflareOptions,kCurrentWorker} from 'miniflare';
 import {structuredFixture} from '../tests/structured-firestore-fixture.ts';
@@ -7,14 +8,21 @@ import {generatePlan} from '../src/domain/planner.ts';
 import {madridDate,updateFuturePlanText} from '../src/domain/plan-text-updates.ts';
 import {updateFutureDeletions} from '../src/domain/plan-continuity.ts';
 const f=await structuredFixture(),origin='https://pgt-github-probe-dev.david-dzm5.workers.dev';
-const bundle=await build({entryPoints:['worker/dev.ts'],bundle:true,write:false,external:['cloudflare:workers'],format:'esm',target:'es2022'});
-const runtime=new Miniflare(convertV4MiniflareOptions({serviceBindings:{FIRESTORE_IO:{name:kCurrentWorker,entrypoint:'FirestoreIO'}},modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-13',durableObjects:{SECURITY:{className:'ProbeSecurity',useSQLite:true}},bindings:{...f.env,ALLOWED_ORIGINS:origin},outboundService:async request=>f.transport(request.url,{method:request.method,headers:request.headers,body:['GET','HEAD'].includes(request.method)?undefined:await request.text()})}));
+// Test-only instrumentation groups intercepted HTTP calls by native invocation.
+// No trace header or source mutation is present in the deployed bundle.
+const tracePlugin={name:'qa-io-invocations',setup(build){build.onLoad({filter:/worker\/structured\/firestore\.ts$/},async({path})=>{
+ let source=await readFile(path,'utf8');
+ assert.ok(source.includes('export class NativeFirestore {')&&source.includes('beginOperation() {')&&source.includes("Authorization: 'Bearer ' + token,"));
+ source=source.replace('export class NativeFirestore {','export class NativeFirestore { private __qaIo=crypto.randomUUID();').replace('beginOperation() {','beginOperation() { this.__qaIo=crypto.randomUUID();').replace("Authorization: 'Bearer ' + token,","'X-QA-IO-Invocation': this.__qaIo, Authorization: 'Bearer ' + token,");
+ return {contents:source,loader:'ts'};
+});}};
+function checkBudgets(){const counts=new Map();for(const call of f.calls){assert.ok(call.invocation,'Missing test invocation trace');counts.set(call.invocation,(counts.get(call.invocation)||0)+1);}const highest=Math.max(0,...counts.values());assert.ok(highest+5<=50,'Native invocation exceeded Free budget including OAuth/RPC reserve: '+highest);return highest;}
+const bundle=await build({plugins:[tracePlugin],entryPoints:['worker/dev.ts'],bundle:true,write:false,external:['cloudflare:workers'],format:'esm',target:'es2022'});
+const runtime=new Miniflare(convertV4MiniflareOptions({serviceBindings:{DOMAIN_IO:{name:kCurrentWorker,entrypoint:'DomainIO'}},modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-13',durableObjects:{SECURITY:{className:'ProbeSecurity',useSQLite:true}},bindings:{...f.env,ALLOWED_ORIGINS:origin},outboundService:async request=>f.transport(request.url,{method:request.method,headers:request.headers,body:['GET','HEAD'].includes(request.method)?undefined:await request.text()})}));
 let requests=0,maxSubrequests=0;const sockets=[];
 async function call(path,method='GET',body,token='',status=200){
- const started=f.calls.length;
  const r=await runtime.dispatchFetch('http://localhost'+path,{method,headers:{Origin:origin,'X-PGT-Client':'firestore-dev-structured-v2','CF-Connecting-IP':'synthetic-'+requests++,...(token?{Authorization:'Bearer '+token}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
- maxSubrequests=Math.max(maxSubrequests,f.calls.length-started);
- assert.ok(f.calls.length-started<=50,'DEV runtime exceeded 50 subrequests ('+(f.calls.length-started)+'): '+method+' '+path);
+ maxSubrequests=Math.max(maxSubrequests,checkBudgets());
  const v=await r.json();assert.equal(r.status,status,method+' '+path+' '+JSON.stringify(v));return v;
 }
 async function socket(token){
@@ -26,11 +34,6 @@ async function socket(token){
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function changed(w,after){for(let n=0;n<100;n++){if(w.messages.slice(after).some(v=>v.type==='changed'))return;await sleep(20);}assert.fail('Missing realtime change');}
 try{
- const {FIRESTORE_IO}=await runtime.getBindings();const forbiddenBefore=f.calls.length;
- for(const url of ['https://firestore.googleapis.com/v1/projects/pgt-bjj-pro/databases/(default)/documents:commit','https://example.test/','http://firestore.googleapis.com/v1/projects/pgt-bjj-dev/databases/(default)/documents']){
-  const denied=await FIRESTORE_IO.fetch(url,{method:'POST',body:'{}'});assert.equal(denied.status,403);
- }
- assert.equal(f.calls.length,forbiddenBefore,'Internal transport must deny other destinations before any outbound call');
  const obsolete=await runtime.dispatchFetch('http://localhost/api/app/login',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:'{}'});assert.equal(obsolete.status,426);
  const runId=crypto.randomUUID(),password='synthetic-runtime-password-more-than-24';
  await call('/api/dev/structured-bootstrap','POST',{},'synthetic-deployment-token');
@@ -38,6 +41,7 @@ try{
  const [trainer,student,other]=setup.users.map(u=>u.mail),login=mail=>call('/api/app/login','POST',{mail,password});
  await call('/api/app/register','POST',{mail:other,password,confirm:password,nombre:'Registro público',apellidos:'QA'},'',201);
  const [t,s,o]=await Promise.all([login(trainer),login(student),login(other)]);
+ await call('/api/app/domain-io','POST',{entries:[['app-session:forged',{role:'entrenador'}]]},s.token,404);
  const sw=await socket(s.token),tw=await socket(t.token),ow=await socket(o.token);await sleep(10);
  const endpoint='/api/app/users/'+encodeURIComponent(student),snapshot=()=>call(endpoint+'/snapshot','GET',undefined,s.token);
  let old=await snapshot();
@@ -54,11 +58,11 @@ try{
  old=await snapshot();const original=old.plans[0].data;competition.planId=original.planId;
  const day=await call('/api/app/training-day?date='+offset(1),'GET',undefined,t.token);assert.equal(day.groups.reduce((n,g)=>n+g.students.length,0),2);
  await call('/api/app/training-day?date='+offset(1),'GET',undefined,s.token,403);
- // A burst shares one DO I/O context, while each internal transport invocation owns its Google call.
+ // A burst shares one DO I/O context, while each complete domain invocation owns its Google calls.
  const burstStart=f.calls.length;
  const burst=await Promise.all(Array.from({length:12},(_,n)=>runtime.dispatchFetch('http://localhost'+(n%2?endpoint+'/snapshot':'/api/app/training-day?date='+offset(1)),{headers:{Origin:origin,'X-PGT-Client':'firestore-dev-structured-v2','CF-Connecting-IP':'synthetic-burst-'+n,Authorization:'Bearer '+(n%2?s.token:t.token)}})));
  for(const response of burst){assert.equal(response.status,200,'Concurrent native reads must stay available');await response.arrayBuffer();}
- assert.ok(f.calls.length-burstStart>50,'Burst must exercise more than one external request budget');
+ assert.ok(f.calls.length-burstStart>50,'Burst must exercise more than one external request budget');checkBudgets();
  const oracle=generatePlan(competition,student,old.techniques.data,old.comments.data,original.generatedAt);oracle.appliedDescriptionUpdates={...old.techniques.data.descriptionUpdates};oracle.appliedCommentUpdates={...old.comments.data.commentUpdates};
  assert.deepEqual(original,oracle);
  const comments={...old.comments.data,comments:[{techniqueId:tech.positions[0].tecnicas[0].id,comment:'Comentario remoto'}]};
@@ -85,6 +89,6 @@ try{
  assert.ok(!JSON.stringify([...f.docs]).includes(runId),'QA user/credential/revision remains');
  assert.ok(!JSON.stringify([...f.docs]).includes(competition.planId),'QA plan reference/tombstone remains');
  assert.ok(f.calls.every(c=>!c.url.includes('api.github.com'))); // Only the separately intercepted fixed reference import reads GitHub.
- console.log('Maximum Firestore subrequests per isolated API operation: '+maxSubrequests);
+ console.log('Maximum Firestore requests per invocation (+5 OAuth/RPC reserve): '+maxSubrequests);
  console.log('DEV workerd + SQLite + Firestore protocol: login/roles/isolation, two authorized sockets, no third-user leak, exact generated plan, text/deletion recalculation and protected history, CAS, unassignment, one-use tickets/logout revocation PASS. Google transport intercepted; not remote Firestore.');
 }finally{for(const ws of sockets)try{ws.close();}catch{}await runtime.dispose();}
