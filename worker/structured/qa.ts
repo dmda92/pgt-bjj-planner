@@ -1,4 +1,4 @@
-import { ApiError, passwordHash } from '../security.ts';
+import { ApiError, passwordHash, passwordMatches } from '../security.ts';
 import { initialVersion, cloneTemplate, type Profile, type Template, type Catalog } from '../../src/domain/models.ts';
 import { DomainRepositories, type EntityRef } from './repositories.ts';
 export async function seedStructuredQA(repo: DomainRepositories, runId: string, password: string) {
@@ -69,4 +69,20 @@ export async function cleanStructuredQA(repo: DomainRepositories, runId: string)
     }
     await repo.db.deleteRows([marker]);
     return { status: 'SYNTHETIC_FIXTURE_CLEANED', resources: marker.data.resources || 12 };
+}
+
+/** Deployment-authenticated and restricted to the current synthetic run.
+ * Report booleans only, never a password, salt, hash or account contents. */
+export async function checkStructuredQA(repo:DomainRepositories,runId:string,password:string){
+    if(!/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(runId)||password.length<24||password.length>100)throw new ApiError(400,'SYNTHETIC_FIXTURE_INVALID');
+    const marker=await repo.db.get('qa_runs/'+runId,true);
+    if(marker?.data.purpose!=='isolated_browser_qa'||!marker.data.seedComplete||marker.data.cleaning)throw new ApiError(403,'SYNTHETIC_RUN_REQUIRED');
+    const users=[];
+    for(const role of ['trainer','student'] as const){
+        const mail=`pgt-dev-${runId}-${role}@example.test`,profile=await repo.db.get('users/'+mail,true),credentials=await repo.db.get('users/'+mail+'/private/credentials',true);
+        const hash=credentials?.data.passwordHash,hashFormatValid=typeof hash==='string'&&/^pbkdf2-sha256\$600000\$[A-Za-z0-9_-]{43}\$[A-Za-z0-9+/]{43}=$/.test(hash);
+        const restored=await repo.read<Profile>({kind:'user',mail},true);
+        users.push({role,profileExists:!!profile,credentialsExist:!!credentials,hashFormatValid,repositoryRestoresHash:!!hash&&restored?.data.pwd===hash,passwordMatches:hashFormatValid&&await passwordMatches(password,hash),profileRoleCorrect:profile?.data.perfil===(role==='trainer'?'entrenador':'alumno')});
+    }
+    return {status:'SYNTHETIC_CREDENTIALS_CHECKED',users};
 }

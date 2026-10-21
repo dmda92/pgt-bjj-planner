@@ -5,26 +5,33 @@ import {ApiError,fingerprint,opaqueToken,jsonBody,onlyFields} from './security.t
 import {DomainRepositories} from './structured/repositories.ts';
 import {DevMaintenance} from './structured/maintenance.ts';
 import {initializeReference} from './structured/reference-catalog.ts';
-import {seedStructuredQA,cleanStructuredQA} from './structured/qa.ts';
+import {seedStructuredQA,cleanStructuredQA,checkStructuredQA} from './structured/qa.ts';
 import {StructuredAppApi} from './structured/application.ts';
 import type {Profile} from '../src/domain/models.ts';
 import {authorizePreflight,firestorePreflight,requireDev,PreflightFailure,type PreflightEnv} from './firestore-preflight.ts';
-export interface DevEnv extends PreflightEnv {SECURITY:DurableObjectNamespace;DOMAIN_IO:PrivateIOBinding;ASSETS:Fetcher;GITHUB_DATA_TOKEN:string;ALLOWED_ORIGINS:string}
+const RUNTIME_REVISION="structured-credentials-check-20261021-v1";
+export interface DevEnv extends PreflightEnv {DEV_BUILD_SHA?:string;SECURITY:DurableObjectNamespace;DOMAIN_IO:PrivateIOBinding;ASSETS:Fetcher;GITHUB_DATA_TOKEN:string;ALLOWED_ORIGINS:string}
 const runtimeReason=(error:unknown)=>{const message=error instanceof Error?error.message:'';return /CPU|resource.*limit|exceed.*resource/i.test(message)?'RESOURCE_LIMIT':/serial|clone|transfer/i.test(message)?'SERIALIZATION':/disconnect|cancel/i.test(message)?'DISCONNECTED':/different request|I\/O.*context|I\/O on behalf/i.test(message)?'IO_CONTEXT':/loop limit|too many.*(worker|subrequest)/i.test(message)?'CALL_LIMIT':/entrypoint|binding|not.*function/i.test(message)?'BINDING':'RUNTIME';};
 const wireHeaders=(headers:Headers)=>{const result:[string,string][]=[];headers.forEach((value,key)=>result.push([key,value]));return result;};
-export default {fetch(request:Request,env:DevEnv){return new URL(request.url).pathname.startsWith('/api/')?env.SECURITY.get(env.SECURITY.idFromName('github-probe')).fetch(request):env.ASSETS.fetch(request);}};
+const stamped=(response:Response,name:string,build:string)=>{if(response.status===101)return response;const copy=new Response(response.body,{status:response.status,headers:response.headers});copy.headers.set(name,build);return copy;};
+export default {async fetch(request:Request,env:DevEnv){
+ if(!new URL(request.url).pathname.startsWith('/api/'))return env.ASSETS.fetch(request);
+ const response=await env.SECURITY.get(env.SECURITY.idFromName('github-probe')).fetch(request);
+ return stamped(response,'X-PGT-Worker-Build',env.DEV_BUILD_SHA||'local');
+}};
 /** Private ephemeral DOs: a fresh execution context, no SQLite/business cache.
  * Password KDF retains the DO CPU allowance. RPC returns materialized bytes,
  * never a response stream whose owner has already been disposed. */
 export class DomainIO extends DurableObject<DevEnv> {
+ manifest(){requireDev(this.env);return {build:this.env.DEV_BUILD_SHA||'local',revision:RUNTIME_REVISION};}
  async run(request:Request,entries:[string,unknown][]){
   requireDev(this.env);
-  const sessions=new SessionReplica(entries),cloud=new DomainRepositories(this.env,privateTransport(this.env.DOMAIN_IO));cloud.beginOperation();
+  const sessions=new SessionReplica(entries),cloud=new DomainRepositories(this.env,privateTransport(this.env.DOMAIN_IO,this.env.DEV_BUILD_SHA||'local'));cloud.beginOperation();
   try{
-   let response:Response;
-   try{response=await new StructuredAppApi(sessions,cloud).handle(request,new URL(request.url));}
-   catch(error){response=Response.json({error:error instanceof ApiError?error.message:'FIRESTORE_DOMAIN_'+runtimeReason(error),...(error instanceof ApiError&&error.size?{size:error.size}:{})},{status:error instanceof ApiError?error.status:503,headers:{'Cache-Control':'no-store'}});}
-   return {body:await response.arrayBuffer(),status:response.status,headers:wireHeaders(response.headers),changes:sessions.changes()};
+   let response:Response,stage='DOMAIN_START';
+   try{response=await new StructuredAppApi(sessions,cloud,undefined,value=>stage=value).handle(request,new URL(request.url));}
+   catch(error){response=Response.json({error:error instanceof ApiError?error.message:'FIRESTORE_DOMAIN_'+stage+'_'+runtimeReason(error),...(error instanceof ApiError&&error.size?{size:error.size}:{})},{status:error instanceof ApiError?error.status:503,headers:{'Cache-Control':'no-store'}});}
+   return {body:await response.arrayBuffer(),status:response.status,headers:wireHeaders(response.headers),changes:sessions.changes(),build:this.env.DEV_BUILD_SHA||'local'};
   }finally{cloud.endOperation();}
  }
  private outgoing=0;
@@ -35,7 +42,7 @@ export class DomainIO extends DurableObject<DevEnv> {
   if(!((url.origin==='https://firestore.googleapis.com'&&(url.pathname==='/v1/projects/pgt-bjj-dev/databases/(default)'||url.pathname.startsWith('/v1/projects/pgt-bjj-dev/databases/(default)/')))||(url.origin==='https://oauth2.googleapis.com'&&url.pathname==='/token')))throw new ApiError(403,'PRIVATE_IO_TARGET_FORBIDDEN');
   if(++this.outgoing>32)throw new ApiError(503,'PRIVATE_IO_BUDGET_EXCEEDED');
   const response=await fetch(input,{...init,redirect:'manual',signal:AbortSignal.timeout(20000)});
-  return {body:await response.arrayBuffer(),status:response.status,headers:wireHeaders(response.headers)};
+  return {body:await response.arrayBuffer(),status:response.status,headers:wireHeaders(response.headers),build:this.env.DEV_BUILD_SHA||'local'};
  }
 }
 // Same local class name/binding as the existing DEV SQLite namespace. PRO keeps
@@ -48,13 +55,17 @@ export class ProbeSecurity {
   private resetCloud:()=>void;
   constructor(state:DurableObjectState,env:DevEnv){
     let cloud:DomainRepositories|undefined;
-    const provider=()=>cloud||(cloud=new DomainRepositories(env,privateTransport(env.DOMAIN_IO)));
+    const provider=()=>cloud||(cloud=new DomainRepositories(env,privateTransport(env.DOMAIN_IO,env.DEV_BUILD_SHA||'local')));
     this.resetCloud=()=>{cloud=undefined;};
     this.devEnv=env;this.devState=state;this.cloud=provider;
   }
-  fetch(request:Request):Promise<Response>{
-    if(new URL(request.url).pathname==='/api/dev/firestore-preflight')return this.check(request);
-    return this.serial(()=>new URL(request.url).pathname.startsWith('/api/dev/')?this.fixture(request):this.online(request));
+  async fetch(request:Request):Promise<Response>{
+    const path=new URL(request.url).pathname;
+    if(path==='/api/dev/runtime'&&request.method==='GET'){
+      requireDev(this.devEnv);const domain=await this.devEnv.DOMAIN_IO.get(this.devEnv.DOMAIN_IO.newUniqueId()).manifest();return Response.json({project:'pgt-bjj-dev',worker:'pgt-github-probe-dev',build:this.devEnv.DEV_BUILD_SHA||'local',domainBuild:domain.build,revision:RUNTIME_REVISION},{headers:{'Cache-Control':'no-store'}});
+    }
+    const response=path==='/api/dev/firestore-preflight'?await this.check(request):await this.serial(()=>path.startsWith('/api/dev/')?this.fixture(request):this.online(request));
+    return stamped(response,'X-PGT-Coordinator-Build',this.devEnv.DEV_BUILD_SHA||'local');
   }
   private serial<T>(action:()=>Promise<T>):Promise<T>{
     // Gate incoming events rather than carrying their I/O across a shared
@@ -93,6 +104,7 @@ export class ProbeSecurity {
         const entries:[string,unknown][]=[...await this.devState.storage.list({prefix:'app-session:'}),...await this.devState.storage.list({prefix:'plan-update:'})];
         const result=await this.devEnv.DOMAIN_IO.get(this.devEnv.DOMAIN_IO.newUniqueId()).run(request,entries);
         operationStage='QUERY_RESULT';
+        if(result.build!==(this.devEnv.DEV_BUILD_SHA||'local'))throw new ApiError(503,'DOMAIN_BUILD_MISMATCH');
         const changes=result.changes;
         if(changes.some(change=>!sessionKey(change.key)))throw new ApiError(500,'PRIVATE_SESSION_KEY_INVALID');
         if(changes.length)await this.devState.storage.transaction(async transaction=>{for(const change of changes){if(change.deleted)await transaction.delete(change.key);else await transaction.put(change.key,change.value);}});
@@ -178,12 +190,13 @@ export class ProbeSecurity {
       if(path==='/api/dev/structured-maintenance')return Response.json(await new DevMaintenance(this.cloud().db,this.devState.storage).step(body));
       if(path==='/api/dev/structured-qa-runs'){onlyFields(body,[]);return Response.json({runs:(await this.cloud().db.list('qa_runs')).map(r=>({id:r.id,purpose:r.data.purpose}))});}
       if(path==='/api/dev/structured-bootstrap'){onlyFields(body,[]);const old=(await this.cloud().db.collectionIds()).filter(c=>['pgt_resources','pgt_changes','pgt_qa_runs'].includes(c));if(old.length)throw new ApiError(409,'LEGACY_CLEANUP_REQUIRED');const report=await initializeReference(this.cloud(),this.devEnv.GITHUB_DATA_TOKEN);await new DevMaintenance(this.cloud().db,this.devState.storage).ready();return Response.json(report);}
-      if(!['/api/dev/synthetic-fixture','/api/dev/synthetic-fixture-cleanup'].includes(path))throw new ApiError(404,'ENDPOINT_NOT_FOUND');
+      if(!['/api/dev/synthetic-fixture','/api/dev/synthetic-fixture-cleanup','/api/dev/synthetic-fixture-check'].includes(path))throw new ApiError(404,'ENDPOINT_NOT_FOUND');
       onlyFields(body,['runId','password']);if(typeof body.runId!=='string'||typeof body.password!=='string')throw new ApiError(400,'SYNTHETIC_FIXTURE_INVALID');
       await this.devState.storage.setAlarm(Date.now()+15000);
       try{
         let result;
-        if(new URL(request.url).pathname.endsWith('-cleanup')){
+        if(path.endsWith('-check'))result=await checkStructuredQA(this.cloud(),body.runId,body.password);
+        else if(new URL(request.url).pathname.endsWith('-cleanup')){
           result=await cleanStructuredQA(this.cloud(),body.runId);
           const mails=['trainer','student','other'].map(role=>`pgt-dev-${body.runId}-${role}@example.test`);
           for(const [key,session] of await this.devState.storage.list<{mail:string}>({prefix:'app-session:'}))if(mails.includes(session.mail))await this.devState.storage.delete(key);

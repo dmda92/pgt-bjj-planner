@@ -20,3 +20,10 @@ test('Unknown collections and documents modified after inventory stop destructiv
  const before=await walk(m,'inventory');const row=await db.get('pgt_resources/existing');await db.commit([db.update(row!.path,{kind:'changed'},row)]);
  await assert.rejects(walk(m,'delete',before.inventoryHash),/DEV_DOCUMENT_CHANGED/);assert.ok(await db.get('pgt_resources/existing'));
 });
+
+test('An empty legacy cleanup preserves current native users sessions and plan checkpoints',async()=>{
+ const f=await structuredFixture(),db=new NativeFirestore(f.env,f.transport),store=state(),maintenance=new DevMaintenance(db,store);
+ await store.put('app-session:existing',{mail:'existing@example.test'});await store.put('plan-update:existing:plan',{p:'current'});
+ const inventory=await walk(maintenance,'inventory');await walk(maintenance,'delete',inventory.inventoryHash);
+ assert.deepEqual(await store.get('app-session:existing'),{mail:'existing@example.test'});assert.deepEqual(await store.get('plan-update:existing:plan'),{p:'current'});
+});

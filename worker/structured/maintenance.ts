@@ -115,10 +115,12 @@ export class DevMaintenance {
             const remaining = (await this.db.collectionIds()).filter(c => legacy.has(c));
             if (remaining.length)
                 throw new ApiError(409, 'LEGACY_DOCUMENTS_REMAIN');
-            for (const [key] of await this.store.list({ prefix: 'app-session:' }))
-                await this.store.delete(key);
-            for (const [key] of await this.store.list({ prefix: 'plan-update:' }))
-                await this.store.delete(key);
+            // Only the actual removal of legacy data invalidates old sessions.
+            // Repeated empty checks must not log out native users.
+            if(Object.values(cursor.deleted).some(count=>count>0)){
+                for (const [key] of await this.store.list({ prefix: 'app-session:' }))await this.store.delete(key);
+                for (const [key] of await this.store.list({ prefix: 'plan-update:' }))await this.store.delete(key);
+            }
             for (const [key] of await this.store.list({ prefix: 'structured-cleanup-record:' }))
                 await this.store.delete(key);
             await this.store.delete('structured-cleanup-approved');
