@@ -1,5 +1,5 @@
 import { ApiError, passwordHash, passwordMatches } from '../security.ts';
-import { initialVersion, cloneTemplate, type Profile, type Template, type Catalog } from '../../src/domain/models.ts';
+import { initialVersion, cloneTemplate, type Profile, type Template, type Catalog, type Index } from '../../src/domain/models.ts';
 import { DomainRepositories, type EntityRef } from './repositories.ts';
 export async function seedStructuredQA(repo: DomainRepositories, runId: string, password: string) {
     if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(runId) || password.length < 24 || password.length > 100)
@@ -44,6 +44,7 @@ export async function cleanStructuredQA(repo: DomainRepositories, runId: string)
         const ids = new Set([...(marker.data.competitionIds || []), ...owned.map(c => c.planId)]);
         if (catalog.data.plans.some(c => ids.has(c.planId) && c.alumnos.some(m => !mails.includes(m))))
             throw new ApiError(409, 'SYNTHETIC_SHARED_PLAN_NOT_CLEANED');
+        if(catalog.data.plans.some(c=>ids.has(c.planId))||catalog.data.deletedPlanIds.some(id=>ids.has(id)))
         await repo.write({ kind: 'catalog' }, { ...catalog.data, revision: catalog.data.revision + 1, updatedAt: new Date().toISOString(), plans: catalog.data.plans.filter(c => !ids.has(c.planId)), deletedPlanIds: catalog.data.deletedPlanIds.filter(id => !ids.has(id)) }, catalog.sha);
     }
     let tasks = marker.data.pending as EntityRef[] | undefined;
@@ -66,6 +67,20 @@ export async function cleanStructuredQA(repo: DomainRepositories, runId: string)
         await repo.cleanupEntity(ref);
         await repo.db.commit([repo.db.update(marker.path, { ...marker.data, pending: tasks, cleaning: true, resources: marker.data.resources || tasks.length + 1 }, marker)]);
         return { status: 'SYNTHETIC_FIXTURE_CLEANING', remaining: tasks.length };
+    }
+    // A global deletion can project a QA tombstone into an unrelated user's
+    // index. Remove only IDs proven to belong to this run; preserve all others.
+    const ownedIds=new Set<string>(marker.data.competitionIds||[]);
+    if(ownedIds.size)for(const row of await repo.db.list('user_plan_assignments')){
+        if(mails.includes(row.id))continue;
+        const ref={kind:'assignment' as const,mail:row.id},current=await repo.read<Index>(ref,true);
+        if(!current)continue;
+        if(current.data.planIds.some(id=>ownedIds.has(id)))throw new ApiError(409,'SYNTHETIC_SHARED_PLAN_NOT_CLEANED');
+        const deleted=current.data.deletedPlanIds||[];
+        if(deleted.some(id=>ownedIds.has(id))){
+            await repo.write(ref,{...current.data,revision:current.data.revision+1,updatedAt:new Date().toISOString(),deletedPlanIds:deleted.filter(id=>!ownedIds.has(id))},current.sha);
+            return {status:'SYNTHETIC_FIXTURE_CLEANING',remaining:0};
+        }
     }
     await repo.db.deleteRows([marker]);
     return { status: 'SYNTHETIC_FIXTURE_CLEANED', resources: marker.data.resources || 12 };

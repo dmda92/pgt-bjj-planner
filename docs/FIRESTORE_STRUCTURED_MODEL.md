@@ -81,3 +81,7 @@ Estado operativo y bloqueo de Environment: [VALIDACION_FIRESTORE_STRUCTURED.md](
 ## Auditoría preventiva de fiabilidad
 
 Véase FIRESTORE_RELIABILITY_AUDIT.md. Cada documento se comprueba contra 1 MiB con el cálculo de tamaños nativos de Firebase, además del límite agregado de 4 MiB. Los inventarios siguen nextPageToken. Las lecturas fresh invalidan cachés del agregado y del transporte; las comprobaciones finales de catálogo vuelven a Google. revision_cleanup es exclusivamente coordinación de retirada, sin contenido funcional codificado. No editar manualmente activeRevision, entityCounts ni tareas de retirada.
+
+### Ubicación y publicación de eventos
+
+Los ejecutores privados y el transporte reciben locationHint=weur para aproximarse a Firestore europe-west1; Cloudflare lo trata como preferencia, no como garantía. La revalidación de sockets y lectura de outbox se agrupa cerca de la base, sin copiar negocio a SQLite. El coordinador publica primero y confirma después por CAS: una interrupción conserva la recuperación del outbox. Los tokens OAuth pueden conservarse en memoria hasta su expiración; las lecturas funcionales siguen acotadas a cada operación.

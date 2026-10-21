@@ -80,6 +80,11 @@ try{
  // Multiple active competitions must still fit the Free subrequest budget.
  for(let extra=1;extra<=4;extra++){const c=await call('/api/app/catalog','GET',undefined,t.token);await call('/api/app/competition','POST',{competition:{...competition,fecha_torneo:offset(20+extra),alumnos:[trainer]},sha:c.sha},t.token);}
  const multi=await call('/api/app/users/'+encodeURIComponent(trainer)+'/snapshot','GET',undefined,t.token);assert.equal(multi.plans.length,5);
+ // A Console role change has no outbox event: even an ordinary read must
+ // still revalidate all connected sessions before acknowledging changes.
+ const external=f.docs.get('projects/pgt-bjj-dev/databases/(default)/documents/users/'+other),previousRole=external.fields.perfil;
+ let externalClosed=false;ow.ws.on('close',()=>externalClosed=true);external.fields.perfil={stringValue:'entrenador'};
+ await call('/api/app/catalog','GET',undefined,t.token);for(let n=0;n<40&&!externalClosed;n++)await sleep(20);assert.ok(externalClosed||ow.ws.readyState>=2,'Direct Console role edit must revoke a stale subscription');external.fields.perfil=previousRole;
  for(let n=0;n<100;n++){const c=await call('/api/dev/synthetic-fixture-cleanup','POST',{runId,password},'synthetic-deployment-token');if(c.status==='SYNTHETIC_FIXTURE_CLEANED')break;assert.equal(c.status,'SYNTHETIC_FIXTURE_CLEANING');if(n===99)throw Error('QA cleanup did not finish');}
  await call('/api/app/students','GET',undefined,t.token,401);
  assert.ok(!JSON.stringify([...f.docs]).includes(runId),'QA user/credential/revision remains');
