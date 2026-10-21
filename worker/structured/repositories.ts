@@ -245,7 +245,9 @@ export class DomainRepositories {
             }
         }
         catch (e) {
-            const winner = await this.db.get(path).catch(() => null);
+            let winner: NativeRow | null;
+            try { winner = await this.db.get(path, true); }
+            catch { this.cache?.delete(path); throw e; } // An uncertain publication must never delete its possibly active revision.
             if (winner?.data.publicationId !== id) {
                 if (newGeneration)
                     await this.removeGeneration(newGeneration).catch(() => { });

@@ -52,3 +52,9 @@ test('A reader whose published revision is retired retries the new complete nati
  a.beginOperation();a.db.list=async path=>{if(path.startsWith(old+'/')){replacement ||= b.write(ref,next,version);await replacement;}return list(path);};
  assert.deepEqual((await a.read(ref))?.data,next);a.endOperation();
 });
+
+test('An unavailable publication verification never deletes a possibly active native revision',async()=>{
+ const f=await structuredFixture();let unavailable=0;const transport:typeof f.transport=async(url,init)=>{if(unavailable&&url.includes('/documents/user_techniques/')&&(!init?.method||init.method==='GET')){unavailable--;throw Error('temporary verification outage');}try{return await f.transport(url,init);}catch(e){if(String(init?.body).includes('publicationId'))unavailable=2;throw e;}};
+ const r=new DomainRepositories(f.env,transport),value=cloneTemplate(template),version=await r.write(ref,value,null);value.positions[0].posicion='Published despite lost ACK';f.losePublicationAck();await assert.rejects(r.write(ref,value,version));
+ assert.deepEqual((await r.read(ref))?.data,value);await r.cleanupEntity(ref);assert.ok(![...f.docs.keys()].some(k=>k.includes('/user_techniques/')));
+});

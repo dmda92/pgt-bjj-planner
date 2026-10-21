@@ -51,7 +51,7 @@ erDiagram
 
 Usuarios por correo normalizado y perfiles nativos; credenciales en documento privado separado. Colecciones de catálogo/repertorio con posiciones y técnicas explícitas, UUID y ordinales. Competiciones individuales con alumnos[] como única autoridad de inscripción. Planes por competición y participante; sesiones por fecha y ejercicios por ordinal; continuidad y comentarios tipados. Campos nativos, sin JSON funcional serializado, Base64, nombres de archivo ni IDs hash.
 
-Las revisiones publicadas de agregados grandes permiten staging y cambio CAS de la referencia activa: el límite histórico de 4 MiB no cabe en un solo documento Firestore de 1 MiB. Las revisiones contienen entidades nativas (posiciones/técnicas/sesiones/ejercicios), no fragmentos de bytes. Retirar revisiones antiguas con verificación/reintento de lectores concurrentes; no acumular basura. Las firmas derivadas del algoritmo siguen siendo cadenas porque así las define el dominio, no payloads serializados de persistencia.
+Las revisiones publicadas de agregados grandes permiten staging y cambio CAS de la referencia activa: el límite histórico de 4 MiB no cabe en un solo documento Firestore de 1 MiB. Las revisiones contienen entidades nativas (posiciones/técnicas/sesiones/ejercicios), no fragmentos de bytes. Retirar revisiones antiguas con verificación/reintento de lectores concurrentes; no acumular basura. La firma de ejercicios se representa como mapas nativos y se recompone al entrar en dominio; la huella hexadecimal del cursor permanece intacta.
 
 ## Edición de consola
 
