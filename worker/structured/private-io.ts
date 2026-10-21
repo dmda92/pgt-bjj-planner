@@ -8,7 +8,7 @@ export interface PrivateIOBinding {
  newUniqueId():DurableObjectId;
  get(id:DurableObjectId,options?:{locationHint:'weur'}):{
   manifest():Promise<{build:string;revision:string}>;
-  realtime(sessions:RealtimeSession[]):Promise<{build:string;changes:RealtimeChange[];actors:{sessionHash:string;mail:string;role:string}[]}>;
+  realtime(sessions:RealtimeSession[],recover?:boolean):Promise<{build:string;changes:RealtimeChange[];actors:{sessionHash:string;mail:string;role:string}[]}>;
   acknowledge(changes:RealtimeChange[]):Promise<void>;
   request(input:string,init:RequestInit):Promise<WireResponse>;
   run(request:Request,entries:[string,unknown][]):Promise<WireResponse&{changes:SessionChange[]}>;

@@ -1,3 +1,4 @@
+import {revisionOf} from './firestore.ts';
 import type {SessionStore} from './session-store.ts';
 import { readTrainingDay } from "./training-day.ts";
 import type { PlanIssue } from "../../src/domain/plan-issues.ts";
@@ -80,15 +81,18 @@ export class StructuredAppApi {
         return s;
     }
     private async createOnly(path: EntityRef, data: unknown) {
-        const exists = await this.repositories.read(path);
-        if (!exists)
+        const exists = await this.repositories.db.get(this.repositories.path(path));
+        if (!exists || exists.data.deleted)
             await this.repositories.write(path, data, null);
     }
     private async initialize(mail: string) {
-        const base = await this.repositories.read<Template>({ kind: "template" });
-        if (!base)
-            return reject(503, "OFFICIAL_TEMPLATE_REQUIRED");
-        await this.createOnly({ kind: "techniques", mail }, cloneTemplate(base.data));
+        const techniques={kind:'techniques' as const,mail};
+        const existing=await this.repositories.db.get(this.repositories.path(techniques));
+        if(!existing || existing.data.deleted){
+            const base=await this.repositories.read<Template>({kind:'template'});
+            if(!base)return reject(503,'OFFICIAL_TEMPLATE_REQUIRED');
+            await this.createOnly(techniques,cloneTemplate(base.data));
+        }
         await this.createOnly({ kind: "comments", mail }, {
             ...initialVersion(),
             comments: [],
@@ -380,21 +384,7 @@ export class StructuredAppApi {
         }
         if (route === "GET /api/app/students") {
             await this.trainer(request);
-            const users = [];
-            for (const entry of (await this.repositories.list({ kind: "users" })) || []) {
-                if (entry.kind !== "user")
-                    continue;
-                let mail: string;
-                try {
-                    mail = normalizedMail(entry.id);
-                }
-                catch {
-                    continue;
-                }
-                const p = await this.repositories.read<Profile>(userRef(mail));
-                if (p && !p.data.probeOnly)
-                    users.push({ profile: clean(p.data), sha: p.sha });
-            }
+            const users=await Promise.all((await this.repositories.profiles()).map(async p=>({profile:clean(p.data as Profile),sha:await revisionOf(p.updateTime)})));
             return respond({ users });
         }
         if (route === "POST /api/app/role") {

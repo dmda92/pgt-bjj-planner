@@ -46,3 +46,7 @@ Límites específicos DEV para el nuevo patrón de lecturas: 180 peticiones/IP/m
 PR #6 feature nacida de main → develop; CI valida regresiones de main y pruebas adicionales DEV. El build de despliegue DEV fija bandera online. Tras publicar, se ejecutan preflight remoto y `scripts/test-firestore-dev-live.mjs`, con tres contextos Chromium aislados (dos roles, escritorio/móvil emulado). Datos exclusivos de prueba. Informes no equivalen a dispositivos físicos o Safari. El pipeline falla si falla cualquiera; publicar un Worker no equivale a superar QA.
 
 El informe incluye muestras de autosave → render remoto, p50/p95 y límites. Objetivo inicial de auditoría ≤2 s, a contrastar con las medidas; umbral de fallo del ensayo 10 s incluyendo debounce y relecturas completas. Si supera 2 s, registrar resultado y optimizar antes de considerar cumplido ese objetivo. Cuotas/costes facturados no se consultan: revisar Firebase DEV → Usage para lecturas, escrituras y espacio tras el ensayo. Spark no permite gastos automáticos por superar cuota; no activar Blaze.
+
+## Política vigente de consumo (21/10/2026)
+
+La orden posterior del propietario sustituye el preflight y QA reales automáticos descritos arriba. Ver [FIRESTORE_CONSUMO_DEV.md](FIRESTORE_CONSUMO_DEV.md): validación aislada por defecto, runtime sin CRUD en deploy, cuota fiable previa y presupuesto completo 200/150/50 con hasta dos usuarios. No ejecutar los scripts históricos de inventario/limpieza: fallan cerrados. PR sin merge automático; Google y limpieza pospuestos mientras no exista cuota actual fiable.

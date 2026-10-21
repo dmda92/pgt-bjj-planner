@@ -7,6 +7,7 @@ import {structuredFixture} from './structured-firestore-fixture.ts';
 import {cloneTemplate,initialVersion} from '../src/domain/models.ts';
 import {cursorSignature} from '../src/domain/plan-continuity.ts';
 import {template} from './template-fixture.ts';
+const forceStaging=(data:any)=>{for(let n=0;n<451;n++)data.positions.push({id:crypto.randomUUID(),posicion:'Stage '+n,prioridad:1,tecnicas:[{id:crypto.randomUUID(),tipo:'Stage technique',descripcion_del_alumno:''}]});};
 const mail='structured@example.test',ref={kind:'techniques' as const,mail};
 test('Native user fields, separate secure hash, real role query, fresh CAS and no opaque business payloads',async()=>{
  const f=await structuredFixture(),r=new DomainRepositories(f.env,f.transport),profile={...initialVersion(),mail,perfil:'alumno',nombre:'Test',pwd:'pbkdf2-sha256$600000$test-salt$test-hash'};
@@ -23,13 +24,13 @@ test('Native repertoire >1 MiB retains Unicode, order, UUID, comments, checkpoin
  data.descriptionUpdates={[data.positions[0].tecnicas[0].id]:'unchanged-version'};data.deletionCatalog=[{id:data.positions[0].id,priority:1,techniques:data.positions[0].tecnicas.map(t=>t.id)}];
  assert.ok(new TextEncoder().encode(JSON.stringify(data)).length>1024*1024);let v=await r.write(ref,data,null);assert.deepEqual((await r.read(ref))?.data,data);
  const root=await r.db.get(r.path(ref)),old=root!.data.activeRevision.split('/').at(-1);
- data.positions[0].posicion+=' updated';v=await r.write(ref,data,v);assert.deepEqual((await r.read(ref))?.data,data);assert.ok(![...f.docs.keys()].some(k=>k.includes('/revisions/'+old)));
+ data.positions[0].posicion+=' updated';forceStaging(data);v=await r.write(ref,data,v);assert.deepEqual((await r.read(ref))?.data,data);assert.ok(![...f.docs.keys()].some(k=>k.includes('/revisions/'+old)));
  await r.remove(ref,v);assert.equal(await r.read(ref),null);assert.ok(![...f.docs.keys()].some(k=>k.includes('user_techniques/')));
 });
 test('Native generation publication resolves a lost ACK without replay; failed staging leaves the old entity and no orphan revision',async()=>{
  const f=await structuredFixture(),r=new DomainRepositories(f.env,f.transport),data=cloneTemplate(template);let v=await r.write(ref,data,null);
  data.positions[0].posicion='Confirmed';f.losePublicationAck();v=await r.write(ref,data,v);assert.equal((await r.read<any>(ref))?.data.positions[0].posicion,'Confirmed');
- const before=[...f.docs.keys()].sort();f.failStage();data.positions[0].posicion='Must not publish';await assert.rejects(r.write(ref,data,v));assert.deepEqual([...f.docs.keys()].sort(),before);assert.equal((await r.read<any>(ref))?.data.positions[0].posicion,'Confirmed');
+ const before=[...f.docs.keys()].sort();f.failStage();forceStaging(data);data.positions[0].posicion='Must not publish';await assert.rejects(r.write(ref,data,v));assert.deepEqual([...f.docs.keys()].sort(),before);assert.equal((await r.read<any>(ref))?.data.positions[0].posicion,'Confirmed');
 });
 test('Native plan roundtrips all frozen generated/recalculated references and cursor signatures without changing the domain',async()=>{
  const baseline=JSON.parse(readFileSync(new URL('./fixtures/firestore/domain-baseline.json',import.meta.url),'utf8'));
@@ -80,7 +81,7 @@ test('Fresh repository reads bypass both aggregate and native document/query cac
 });
 test('Confirmed publication succeeds when old-revision collection fails and durable retirement can recover',async()=>{
  const f=await structuredFixture(),r=new DomainRepositories(f.env,f.transport),value=cloneTemplate(template);const version=await r.write(ref,value,null);
- const remove=r.removeGeneration.bind(r);r.removeGeneration=async()=>{throw Error('cleanup unavailable');};value.positions[0].posicion='Commit confirmed';
+ const remove=r.removeGeneration.bind(r);r.removeGeneration=async()=>{throw Error('cleanup unavailable');};value.positions[0].posicion='Commit confirmed';forceStaging(value);
  const saved=await r.write(ref,value,version);assert.deepEqual((await r.read(ref))?.data,value);assert.ok(saved);
  assert.equal((await r.db.list('revision_cleanup')).length,1);r.removeGeneration=remove;
  await r.collectRetired();assert.equal((await r.db.list('revision_cleanup')).length,0);assert.equal((await r.db.list(r.path(ref)+'/revisions')).length,1);
@@ -103,4 +104,14 @@ test('Collection inventory follows page tokens and large batches are bounded',as
 test('Explicit private execution failures retain their diagnostic code rather than becoming network retries',async()=>{
  const f=await structuredFixture(),repo=new DomainRepositories(f.env,async(url,init)=>{if(url.includes('firestore.googleapis.com'))throw new ApiError(503,'PRIVATE_IO_BUILD_MISMATCH');return f.transport(url,init);});
  await assert.rejects(repo.read({kind:'user',mail:'missing@example.test'}),/PRIVATE_IO_BUILD_MISMATCH/);
+});
+
+test('Session packing preserves boundary order and falls back for boundaries without a session',async()=>{
+ const baseline=JSON.parse(readFileSync(new URL('./fixtures/firestore/domain-baseline.json',import.meta.url),'utf8'));
+ const original=baseline.fixtures.map((s:any)=>s.expected.generated).find((p:any)=>p.continuity?.boundaries.length>1);
+ assert.ok(original);const value=structuredClone(original);value.continuity.boundaries.reverse();
+ const f=await structuredFixture(),r=new DomainRepositories(f.env,f.transport),address={kind:'plan' as const,mail:value.mail,planId:value.planId};
+ const first=await r.write(address,value,null);assert.deepEqual((await r.read(address))!.data,value);
+ value.continuity.boundaries.push({...structuredClone(value.continuity.boundaries[0]),date:'1900-01-01'});
+ await r.write(address,value,first);assert.deepEqual((await r.read(address))!.data,value);
 });

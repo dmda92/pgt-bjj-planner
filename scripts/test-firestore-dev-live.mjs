@@ -11,6 +11,7 @@ const realOrigin='https://pgt-github-probe-dev.david-dzm5.workers.dev';
 const local=process.env.PGT_LOCAL_QA_ORIGIN;
 if(local&&!/^http:\/\/127\.0\.0\.1:\d+$/.test(local))throw Error('LOCAL_QA_TARGET_INVALID');
 const origin=local||realOrigin;
+if(!local)throw Error('FULL_SUITE_ISOLATED_ONLY_USE_BUDGETED_DEV_SMOKE');
 const expectedBuild=process.env.PGT_EXPECTED_DEV_BUILD||process.env.GITHUB_SHA;
 if(!local&&(process.env.GITHUB_REF!=='refs/heads/develop'||!process.env.CLOUDFLARE_API_TOKEN))throw Error('LIVE_QA_REQUIRES_AUTHORIZED_DEV_PIPELINE');
 const runId=crypto.randomUUID(),password=randomBytes(32).toString('base64url');

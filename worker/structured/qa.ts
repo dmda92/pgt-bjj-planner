@@ -63,8 +63,15 @@ export async function cleanStructuredQA(repo: DomainRepositories, runId: string)
         }
     }
     if (tasks.length) {
-        const ref = tasks.shift()!;
-        await repo.cleanupEntity(ref);
+        // Skip bounded absent candidates in one administrative operation. Old
+        // markers may name plan/mail combinations that were never generated;
+        // don't spend one authenticated request and marker write per absence.
+        for(let skipped=0;tasks.length&&skipped<8;skipped++){
+            const ref=tasks.shift()!,path=repo.path(ref),root=await repo.db.get(path);
+            if(!root && !(await repo.db.list(path+'/revisions')).length)continue;
+            await repo.cleanupEntity(ref);
+            break;
+        }
         await repo.db.commit([repo.db.update(marker.path, { ...marker.data, pending: tasks, cleaning: true, resources: marker.data.resources || tasks.length + 1 }, marker)]);
         return { status: 'SYNTHETIC_FIXTURE_CLEANING', remaining: tasks.length };
     }

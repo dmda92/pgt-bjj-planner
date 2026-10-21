@@ -25,10 +25,10 @@ export default {async fetch(request:Request,env:DevEnv){
 export class DomainIO extends DurableObject<DevEnv> {
  private cloud?:DomainRepositories;
  private repositories(){return this.cloud ||= new DomainRepositories(this.env,privateTransport(this.env.DOMAIN_IO,this.env.DEV_BUILD_SHA||'local'));}
- async realtime(sessions:RealtimeSession[]){
+ async realtime(sessions:RealtimeSession[],recover=false){
   requireDev(this.env);const cloud=this.repositories();cloud.beginOperation();
   try{
-   await cloud.collectRetired();const changes=await cloud.changes(),actors=[];
+   if(recover)await cloud.collectRetired();const changes=await cloud.changes(),actors=[];
    for(const {sessionHash,session} of sessions){
     if(!session)continue;const record=await cloud.read<Profile>({kind:'user',mail:session.mail});
     if(record?.data.pwd&&session.role===record.data.perfil&&session.pwdFingerprint===await fingerprint(record.data.pwd))actors.push({sessionHash,mail:session.mail,role:record.data.perfil});
@@ -125,7 +125,7 @@ export class ProbeSecurity {
         if(changes.length)await this.devState.storage.transaction(async transaction=>{for(const change of changes){if(change.deleted)await transaction.delete(change.key);else await transaction.put(change.key,change.value);}});
         operationStage='QUERY_RESPONSE';
         return new Response(result.body,{status:result.status,headers:result.headers});
-      }finally{await this.flush().catch(error=>console.warn('PGT_REALTIME_RETRY_SCHEDULED',error instanceof ApiError?error.message:'RUNTIME_ERROR')); }
+      }finally{await this.flush(request.method!=='GET').catch(error=>console.warn('PGT_REALTIME_RETRY_SCHEDULED',error instanceof ApiError?error.message:'RUNTIME_ERROR')); }
     }catch(error){const reason=runtimeReason(error);return Response.json({error:error instanceof ApiError?error.message:'FIRESTORE_DEV_UNAVAILABLE_'+operationStage+'_'+reason,...(error instanceof ApiError&&error.size?{size:error.size}:{})},{status:error instanceof ApiError?error.status:503,headers:{'Cache-Control':'no-store'}});}
   }
   private async limit(request:Request,path:string){
@@ -164,12 +164,12 @@ export class ProbeSecurity {
     await this.devState.storage.setAlarm(Date.now()+15000);
     return new Response(null,{status:101,webSocket:client});
   }
-  private async flush(){
+  private async flush(recover=false){
     // Batch the cloud reads near Firestore. Only authorization/event metadata
     // crosses the coordinator RPC, and ACK still follows actual publication.
     const sockets=this.devState.getWebSockets(),sessions:RealtimeSession[]=[],seen=new Set<string>();
     for(const ws of sockets){const hash=ws.deserializeAttachment()?.sessionHash;if(hash&&!seen.has(hash)){seen.add(hash);sessions.push({sessionHash:hash,session:await this.devState.storage.get('app-session:'+hash)});}}
-    const io=privateExecutor(this.devEnv.DOMAIN_IO),snapshot=await io.realtime(sessions);
+    const io=privateExecutor(this.devEnv.DOMAIN_IO),snapshot=await io.realtime(sessions,recover);
     if(snapshot.build!==(this.devEnv.DEV_BUILD_SHA||'local'))throw new ApiError(503,'REALTIME_BUILD_MISMATCH');
     const changes=snapshot.changes,actors=new Map(snapshot.actors.map(actor=>[actor.sessionHash,actor]));
     for(const ws of sockets){
@@ -184,7 +184,7 @@ export class ProbeSecurity {
     else await this.devState.storage.deleteAlarm();
     for(const [key,value] of await this.devState.storage.list<{expires:number}>({prefix:'ws-ticket:'}))if(value.expires<Date.now())await this.devState.storage.delete(key);
   }
-  async alarm(){return this.serial(async()=>{try{await this.flush();}catch{await this.devState.storage.setAlarm(Date.now()+60000);}});}
+  async alarm(){return this.serial(async()=>{try{await this.flush(true);}catch{await this.devState.storage.setAlarm(Date.now()+60000);}});}
   webSocketMessage(ws:WebSocket,_message:string|ArrayBuffer){
     // Server-only invalidations: no client messages can cause Firestore reads,
     // writes or an unbounded authentication loop while the socket is idle.
@@ -216,7 +216,7 @@ export class ProbeSecurity {
         }else result=await seedStructuredQA(this.cloud(),body.runId,body.password);
         return Response.json(result,{headers:{'Cache-Control':'no-store'}});
       }
-      finally{await this.flush().catch(()=>console.warn('PGT_REALTIME_RETRY_SCHEDULED'));}
+      finally{await this.flush(true).catch(()=>console.warn('PGT_REALTIME_RETRY_SCHEDULED'));}
     }catch(error){return Response.json({error:error instanceof ApiError?error.message:'SYNTHETIC_FIXTURE_FAILED'},{status:error instanceof ApiError?error.status:503});}
   }
   private async check(request:Request):Promise<Response>{

@@ -1,3 +1,4 @@
+import {FirestoreUsage} from './usage.ts';
 import { ApiError } from '../security.ts';
 import { FirestoreIdentity, DEV_DATABASE_NAME, type Transport } from '../firestore-auth.ts';
 import { requireDev, type PreflightEnv } from '../firestore-preflight.ts';
@@ -70,15 +71,23 @@ export class NativeFirestore {
     private identity: FirestoreIdentity;
     private reads?: Map<string, NativeRow | null>;
     private queries?: Map<string, NativeRow[]>;
+    private receipts=new Map<string,NativeRow>();
+    committed(path:string){return this.receipts.get(path);}
     beginOperation() { this.reads = new Map(); this.queries = new Map(); }
     endOperation() { this.reads = undefined; this.queries = undefined; }
-    invalidate() { this.reads?.clear(); this.queries?.clear(); }
+    invalidate(paths?:string[]) {
+        if(!paths){this.reads?.clear();this.queries?.clear();return;}
+        for(const key of this.reads?.keys()||[])if(paths.some(path=>key===path||key.startsWith(path+'/')))this.reads?.delete(key);
+        for(const key of this.queries?.keys()||[])if(paths.some(path=>key.startsWith(path+'|')||key.startsWith(path+'/')))this.queries?.delete(key);
+    }
     private transport: Transport;
-    constructor(env: PreflightEnv, transport: Transport = (url, init) => fetch(url, init)) { this.transport = transport; requireDev(env); this.identity = new FirestoreIdentity(env.FIRESTORE_SERVICE_ACCOUNT_JSON || '', transport); }
+    readonly usage:FirestoreUsage;
+    constructor(env: PreflightEnv, transport: Transport = (url, init) => fetch(url, init), usage = new FirestoreUsage()) { this.usage=usage; this.transport = transport; requireDev(env); this.identity = new FirestoreIdentity(env.FIRESTORE_SERVICE_ACCOUNT_JSON || '', transport); }
     async request(path: string, init: RequestInit = {}, readOnly = false) {
         const token = await this.identity.token();
         for (let n = 0;; n++) {
             try {
+                this.usage.totals.httpRequests++;
                 const r = await this.transport('https://firestore.googleapis.com/v1/' + DEV_DATABASE_NAME + path, { ...init, headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, redirect: 'manual', signal: AbortSignal.timeout(readOnly ? 10000 : 20000) });
                 const copy = new Response(await r.arrayBuffer(), { status: r.status, headers: r.headers });
                 if (readOnly && !n && [502, 503, 504].includes(copy.status))
@@ -95,28 +104,44 @@ export class NativeFirestore {
             }
         }
     }
-    check(r: Response) { if (r.status === 429)
-        throw new ApiError(429, 'FIRESTORE_RATE_LIMIT', 60); if (!r.ok)
-        throw new ApiError(503, 'FIRESTORE_SERVICE_' + r.status); }
+    async check(r: Response) {
+        if(r.status===429){
+            this.usage.totals.uncertainResponses++;
+            // Never log Google's free-text message, document names, tokens or
+            // consumer/project numbers. Only allowlisted quota classifications.
+            let dailyRead=false,dailyWrite=false,dailyDelete=false;
+            try{
+                const body=await r.clone().json() as any;
+                const text=JSON.stringify(body.error?.details||[])+' '+String(body.error?.message||'');
+                dailyRead=/daily.*read|read.*per day/i.test(text);
+                dailyWrite=/daily.*write|write.*per day/i.test(text);
+                dailyDelete=/daily.*delet|delet.*per day/i.test(text);
+            }catch{}
+            const quota=dailyRead?'DAILY_READ':dailyWrite?'DAILY_WRITE':dailyDelete?'DAILY_DELETE':'UNCLASSIFIED';
+            console.warn('PGT_FIRESTORE_429',quota);
+            throw new ApiError(429,'FIRESTORE_RATE_LIMIT'+(quota==='UNCLASSIFIED'?'':'_'+quota),60);
+        }
+        if(!r.ok)throw new ApiError(503,'FIRESTORE_SERVICE_'+r.status);
+    }
     private path(path: string) { if (!/^[A-Za-z0-9@._+\/-]+$/.test(path) || path.split('/').some(v => !v || v === '.' || v === '..'))
         throw new ApiError(400, 'ENTITY_REFERENCE_INVALID'); return path; }
     row(d: NativeDocument): NativeRow { const path = d.name.slice(prefix.length); return { id: path.slice(path.lastIndexOf('/') + 1), path, data: Object.fromEntries(Object.entries(d.fields || {}).filter(([k]) => !path.startsWith('pgt_resources/') || !['inline', 'payload'].includes(k)).map(([k, v]) => [k, unfield(v)])), updateTime: d.updateTime, exists: Boolean(d.fields) }; }
     async get(path: string, fresh = false) { if (!fresh && this.reads?.has(path))
-        return structuredClone(this.reads.get(path)!); const r = await this.request('/documents/' + this.path(path), {}, true); if (r.status === 404) {
+        return structuredClone(this.reads.get(path)!); this.usage.read(); const r = await this.request('/documents/' + this.path(path), {}, true); if (r.status === 404) {
         this.reads?.set(path, null);
         return null;
-    } this.check(r); const row = this.row(await r.json() as NativeDocument); this.reads?.set(path, row); return structuredClone(row); }
-    async page(path: string, pageToken = '', showMissing = false) { const q = new URLSearchParams({ pageSize: '200', ...(pageToken ? { pageToken } : {}), ...(showMissing ? { showMissing: 'true' } : {}) }); const r = await this.request('/documents/' + this.path(path) + '?' + q, {}, true); this.check(r); const v = await r.json() as any; return { rows: (v.documents || []).map((d: NativeDocument) => this.row(d)) as NativeRow[], nextPageToken: v.nextPageToken as string | undefined }; }
+    } await this.check(r); const row = this.row(await r.json() as NativeDocument); this.reads?.set(path, row); return structuredClone(row); }
+    async page(path: string, pageToken = '', showMissing = false) { const limit=this.usage.queryLimit(); const q = new URLSearchParams({ pageSize: String(Math.min(200,limit??200)), ...(pageToken ? { pageToken } : {}), ...(showMissing ? { showMissing: 'true' } : {}) }); const r = await this.request('/documents/' + this.path(path) + '?' + q, {}, true); await this.check(r); const v = await r.json() as any; this.usage.query((v.documents||[]).length,limit); return { rows: (v.documents || []).map((d: NativeDocument) => this.row(d)) as NativeRow[], nextPageToken: v.nextPageToken as string | undefined }; }
     async list(path: string) { return this.query(path); }
-    async query(path: string, key?: string, value?: unknown) { const cacheKey = path + '|' + JSON.stringify([key, value]); if (this.queries?.has(cacheKey))
-        return structuredClone(this.queries.get(cacheKey)!); const parts = this.path(path).split('/'), collection = parts.pop()!, parent = parts.length ? '/' + parts.join('/') : ''; const r = await this.request('/documents' + parent + ':runQuery', { method: 'POST', body: JSON.stringify({ structuredQuery: { from: [{ collectionId: collection }], ...(key ? { where: { fieldFilter: { field: { fieldPath: key }, op: 'EQUAL', value: field(value) } } } : {}) } }) }, true); this.check(r); const rows = await r.json() as any[]; const result = rows.flatMap(v => v.document ? [this.row(v.document)] : []); this.queries?.set(cacheKey, result); for (const row of result)
+    async query(path: string, key?: string, value?: unknown, maxRows?:number) { const cacheKey = path + '|' + JSON.stringify([key, value,maxRows]); if (this.queries?.has(cacheKey))
+        return structuredClone(this.queries.get(cacheKey)!); const parts = this.path(path).split('/'), collection = parts.pop()!, parent = parts.length ? '/' + parts.join('/') : ''; const budgetLimit=this.usage.queryLimit(),limit=budgetLimit===undefined?maxRows:Math.min(maxRows??budgetLimit,budgetLimit); const r = await this.request('/documents' + parent + ':runQuery', { method: 'POST', body: JSON.stringify({ structuredQuery: { ...(limit!==undefined?{limit}:{}),from: [{ collectionId: collection }], ...(key ? { where: { fieldFilter: { field: { fieldPath: key }, op: 'EQUAL', value: field(value) } } } : {}) } }) }, true); await this.check(r); const rows = await r.json() as any[]; const result = rows.flatMap(v => v.document ? [this.row(v.document)] : []); this.usage.query(result.length,budgetLimit!==undefined&&(maxRows===undefined||budgetLimit<=maxRows)?budgetLimit:undefined); this.queries?.set(cacheKey, result); for (const row of result)
         this.reads?.set(row.path, row); return structuredClone(result); }
     /** One query reads every native entity table immediately below a revision. */
     async children(path:string){
         const cacheKey=path+'|*';if(this.queries?.has(cacheKey))return structuredClone(this.queries.get(cacheKey)!);
-        const r=await this.request('/documents/'+this.path(path)+':runQuery',{method:'POST',body:JSON.stringify({structuredQuery:{from:[{allDescendants:false}]}})},true);this.check(r);
+        const limit=this.usage.queryLimit(); const r=await this.request('/documents/'+this.path(path)+':runQuery',{method:'POST',body:JSON.stringify({structuredQuery:{...(limit!==undefined?{limit}:{}),from:[{allDescendants:false}]}})},true);await this.check(r);
         const result=((await r.json()) as any[]).flatMap(v=>v.document?[this.row(v.document)]:[]);
-        this.queries?.set(cacheKey,result);for(const row of result)this.reads?.set(row.path,row);return structuredClone(result);
+        this.usage.query(result.length,limit); this.queries?.set(cacheKey,result);for(const row of result)this.reads?.set(row.path,row);return structuredClone(result);
     }
     update(path: string, data: unknown, previous?: NativeRow | null) {
         const update={name:prefix+this.path(path),fields:fields(data as any)};
@@ -124,7 +149,7 @@ export class NativeFirestore {
         return {update,...(previous!==undefined?{currentDocument:previous?{updateTime:previous.updateTime}:{exists:false}}:{})};
     }
     deletion(row: NativeRow) { return { delete: prefix + this.path(row.path), ...(row.exists ? { currentDocument: { updateTime: row.updateTime } } : {}) }; }
-    async commit(writes: any[]) { if (!writes.length)
+    async commit(writes: any[]) { this.receipts.clear(); if (!writes.length)
         return; for (const w of writes) {
         const path = (w.update?.name || w.delete).slice(prefix.length);
         this.reads?.delete(path);
@@ -134,22 +159,23 @@ export class NativeFirestore {
             if (key.startsWith(collection + '|'))
                 this.queries?.delete(key);
     } if (new TextEncoder().encode(JSON.stringify({ writes })).length > 9 * 1024 * 1024)
-        throw new ApiError(413, 'NATIVE_TRANSACTION_TOO_LARGE'); const r = await this.request('/documents:commit', { method: 'POST', body: JSON.stringify({ writes }) }); if ([409, 412].includes(r.status))
+        throw new ApiError(413, 'NATIVE_TRANSACTION_TOO_LARGE'); this.usage.mutation(writes); const r = await this.request('/documents:commit', { method: 'POST', body: JSON.stringify({ writes }) }); if ([409, 412].includes(r.status))
         throw new ApiError(409, 'VERSION_CONFLICT'); if (r.status === 400) {
         const v = await r.json() as any;
         if (['FAILED_PRECONDITION', 'ALREADY_EXISTS', 'ABORTED'].includes(v.error?.status))
             throw new ApiError(409, 'VERSION_CONFLICT');
         throw new ApiError(503, 'NATIVE_COMMIT_REJECTED');
-    } this.check(r); const receipt = await r.json() as any; for (let i = 0; i < writes.length; i++) {
+    } await this.check(r); this.usage.confirmed(writes); const receipt = await r.json() as any; for (let i = 0; i < writes.length; i++) {
         const w = writes[i], time = receipt.writeResults?.[i]?.updateTime;
         if (w.update && typeof time === 'string') {
             const row = this.row({ ...w.update, updateTime: time });
+            this.receipts.set(row.path,row);
             this.reads?.set(row.path, row);
         }
     } return receipt; }
     async collectionIds(path = '') {
         const ids:string[]=[];let pageToken='';
-        do { const r=await this.request('/documents'+(path?'/'+this.path(path):'')+':listCollectionIds',{method:'POST',body:JSON.stringify({pageSize:1000,...(pageToken?{pageToken}:{})})},true);this.check(r);
+        do { this.usage.read(); const r=await this.request('/documents'+(path?'/'+this.path(path):'')+':listCollectionIds',{method:'POST',body:JSON.stringify({pageSize:1000,...(pageToken?{pageToken}:{})})},true);await this.check(r);
             const page=await r.json() as any;ids.push(...(page.collectionIds||[]));pageToken=page.nextPageToken||'';
         }while(pageToken);return ids;
     }
