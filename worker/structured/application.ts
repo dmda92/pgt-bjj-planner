@@ -1,3 +1,4 @@
+import type {SessionStore} from './session-store.ts';
 import { readTrainingDay } from "./training-day.ts";
 import type { PlanIssue } from "../../src/domain/plan-issues.ts";
 import { catalogOf, deletedUUIDs, updateFutureDeletions } from "../../src/domain/plan-continuity.ts";
@@ -37,12 +38,12 @@ async function concurrentMap<T, R>(values: T[], fn: (value: T) => Promise<R>, li
     return result;
 }
 export class StructuredAppApi {
-    constructor(privateStore: DurableObjectStorage, cloud: DomainRepositories, clock: () => Date = () => new Date()) {
+    constructor(privateStore: SessionStore, cloud: DomainRepositories, clock: () => Date = () => new Date()) {
         this.store = privateStore;
         this.repositories = cloud;
         this.clock = clock;
     }
-    private store: DurableObjectStorage;
+    private store: SessionStore;
     private repositories: DomainRepositories;
     private clock: () => Date;
     private async profile(mail: string) {
