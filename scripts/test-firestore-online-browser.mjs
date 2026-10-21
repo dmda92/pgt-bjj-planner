@@ -33,7 +33,7 @@ server.on('upgrade',(req,socket,head)=>{
  const upstream=connect(Number(runtimeURL.port),runtimeURL.hostname,()=>{
   const lines=[`${req.method} ${req.url} HTTP/1.1`];for(const [key,value] of Object.entries(req.headers))if(!['origin','host'].includes(key))lines.push(key+': '+value);
   lines.push('Host: '+runtimeURL.host,'Origin: '+devOrigin,'','');upstream.write(lines.join('\r\n'));if(head.length)upstream.write(head);socket.pipe(upstream).pipe(socket);
- });upstream.on('error',()=>socket.destroy());socket.on('close',()=>upstream.destroy());
+ });upstream.on('error',()=>socket.destroy());socket.on('error',()=>upstream.destroy());socket.on('close',()=>upstream.destroy());
 });
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 try{
