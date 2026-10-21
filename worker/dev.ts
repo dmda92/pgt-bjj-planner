@@ -1,3 +1,5 @@
+import {runMinimalSmoke} from './structured/minimal-smoke.ts';
+import {checkSmokeGate} from './structured/smoke-gate.ts';
 import {ExecutionBudget,budgetedFirestoreRequest,type BudgetSetup,type BudgetPhase} from './structured/execution-budget.ts';
 import {DurableObject} from 'cloudflare:workers';
 import {SessionReplica,sessionKey,type SessionChange} from './structured/session-store.ts';
@@ -34,10 +36,18 @@ export class DomainIO extends DurableObject<DevEnv> {
  }
  private budget(){requireDev(this.env);return new ExecutionBudget({transaction:action=>this.ctx.storage.transaction(tx=>action(tx))});}
  budgetOpen(setup:BudgetSetup){if(setup.build!==(this.env.DEV_BUILD_SHA||'local'))throw new ApiError(409,'FIRESTORE_TEST_BUILD_MISMATCH');return this.budget().open(setup);}
+ async budgetPrepareSmoke(setup:BudgetSetup){try{await this.budgetOpen(setup);return {ok:true};}catch(e){return {ok:false,status:e instanceof ApiError?e.status:503,error:e instanceof ApiError?e.message:'SMOKE_PREPARATION_FAILED'};}}
  budgetReserve(phase:BudgetPhase,request:{reads?:number;writes?:number;deletes?:number;queryCeiling?:number}){return this.budget().reserve(phase,request);}
  budgetSettle(id:string,actualReads?:number,uncertain=false){return this.budget().settle(id,actualReads,uncertain);}
  budgetStatus(){return this.budget().status();}
+ budgetClaimSmoke(){return this.budget().claimSmoke();}
  budgetClose(){return this.budget().close();}
+ async smoke(budget:GlobalBudgetContext){
+  requireDev(this.env);if(budget.build!==(this.env.DEV_BUILD_SHA||'local'))throw new ApiError(503,'SMOKE_BUILD_MISMATCH');const meter=budgetExecutor(this.env.DOMAIN_IO,budget.id),{runId}=await meter.budgetClaimSmoke();
+  const result=await runMinimalSmoke(phase=>this.repositories({...budget,phase}),runId);
+  let closed=false;try{await meter.budgetClose();closed=true;}catch{}
+  return {...result,budget:await meter.budgetStatus(),budgetClosed:closed,build:this.env.DEV_BUILD_SHA||'local'};
+ }
  async realtime(sessions:RealtimeSession[],recover=false,budget?:GlobalBudgetContext){
   requireDev(this.env);const cloud=this.repositories(budget);cloud.beginOperation();
   try{
@@ -67,6 +77,7 @@ export class DomainIO extends DurableObject<DevEnv> {
  private outgoing=0;
  async request(input:string,init:RequestInit={},budget?:GlobalBudgetContext){
   requireDev(this.env);
+  if(budget?.build&&budget.build!==(this.env.DEV_BUILD_SHA||'local'))throw new ApiError(503,'PRIVATE_IO_BUILD_MISMATCH');
   // This capability is private and cannot act as a generic HTTP proxy.
   const url=new URL(input);
   if(!((url.origin==='https://firestore.googleapis.com'&&(url.pathname==='/v1/projects/pgt-bjj-dev/databases/(default)'||url.pathname.startsWith('/v1/projects/pgt-bjj-dev/databases/(default)/')))||(url.origin==='https://oauth2.googleapis.com'&&url.pathname==='/token')))throw new ApiError(403,'PRIVATE_IO_TARGET_FORBIDDEN');
@@ -95,7 +106,7 @@ export class ProbeSecurity {
     if(path==='/api/dev/runtime'&&request.method==='GET'){
       requireDev(this.devEnv);const domain=await privateExecutor(this.devEnv.DOMAIN_IO).manifest();return Response.json({project:'pgt-bjj-dev',worker:'pgt-github-probe-dev',build:this.devEnv.DEV_BUILD_SHA||'local',domainBuild:domain.build,revision:RUNTIME_REVISION},{headers:{'Cache-Control':'no-store'}});
     }
-    const response=path==='/api/dev/firestore-preflight'?await this.check(request):await this.serial(()=>path.startsWith('/api/dev/')?this.fixture(request):this.online(request));
+    const response=path==='/api/dev/budget-smoke'?await this.smoke(request):path==='/api/dev/firestore-preflight'?await this.check(request):await this.serial(()=>path.startsWith('/api/dev/')?this.fixture(request):this.online(request));
     return stamped(response,'X-PGT-Coordinator-Build',this.devEnv.DEV_BUILD_SHA||'local');
   }
   private serial<T>(action:()=>Promise<T>):Promise<T>{
@@ -208,6 +219,29 @@ export class ProbeSecurity {
   }
   webSocketClose(ws:WebSocket,code:number){ws.close(code===1006?1000:code);}
   webSocketError(ws:WebSocket){ws.close(1011,'RECONNECT');}
+  private async smoke(request:Request){
+    try{
+      requireDev(this.devEnv);
+      if(request.method!=='POST')throw new ApiError(405,'METHOD_NOT_ALLOWED');
+      if(request.headers.get('Origin')!=='https://pgt-github-probe-dev.david-dzm5.workers.dev')throw new ApiError(403,'ORIGIN_FORBIDDEN');
+      await authorizePreflight(request,this.devEnv,(url,init)=>fetch(url,init));
+      const body=await jsonBody(request,32768);onlyFields(body,['quota','plan']);
+      const build=this.devEnv.DEV_BUILD_SHA;
+      const limits=checkSmokeGate(body.quota,body.plan,{build});
+      const plan=body.plan as {users:number;total:{reads:number;writes:number;deletes:number}};
+      if(plan.users!==1||plan.total.reads!==200||plan.total.writes!==150||plan.total.deletes!==50)throw new ApiError(409,'SMOKE_PLAN_NOT_MEASURED');
+      if(!this.devEnv.DOMAIN_IO.idFromName)throw new ApiError(503,'SMOKE_BINDING_UNAVAILABLE');
+      // One deterministic durable ledger per deployed build, never reset by rerun.
+      const id=this.devEnv.DOMAIN_IO.idFromName('controlled-smoke:'+build).toString(),meter=budgetExecutor(this.devEnv.DOMAIN_IO,id);
+      const prepared=await meter.budgetPrepareSmoke({project:'pgt-bjj-dev',build:build!,limits,cleanup:{reads:55,writes:0,deletes:47},expiresAt:Date.now()+5*60000,runId:crypto.randomUUID()});
+      if(!prepared.ok)return Response.json({error:prepared.error},{status:prepared.status||503,headers:{'Cache-Control':'no-store'}});
+      const actor=privateExecutor(this.devEnv.DOMAIN_IO);
+      if(!actor.smoke)throw new ApiError(503,'SMOKE_BINDING_UNAVAILABLE');
+      const result=await actor.smoke({id,phase:'scenario',build});
+      if(result.build!==build)throw new ApiError(503,'SMOKE_BUILD_MISMATCH');
+      return Response.json(result,{status:result.status==='DEV_MINIMAL_SMOKE_VERIFIED'&&result.cleanup.clean&&result.budgetClosed?200:503,headers:{'Cache-Control':'no-store'}});
+    }catch(error){return Response.json({error:error instanceof ApiError?error.message:'DEV_SMOKE_FAILED'},{status:error instanceof ApiError?error.status:503,headers:{'Cache-Control':'no-store'}});}
+  }
   private async fixture(request:Request){
     try{
       requireDev(this.devEnv);

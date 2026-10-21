@@ -4,13 +4,15 @@ import type {BudgetPhase,BudgetSetup,BudgetEndpoint} from './execution-budget.ts
 import type {SessionChange} from './session-store.ts';
 export type RealtimeSession={sessionHash:string;session?:{mail:string;pwdFingerprint:string;role?:string}};
 export type RealtimeChange={name:string;updateTime:string;owner:string;kind:string;version:string};
-export type GlobalBudgetContext={id:string;phase:BudgetPhase};
-type BudgetRPC={budgetOpen(setup:BudgetSetup):Promise<unknown>;budgetReserve:BudgetEndpoint['budgetReserve'];budgetSettle:BudgetEndpoint['budgetSettle'];budgetStatus():Promise<unknown>;budgetClose():Promise<unknown>};
+export type GlobalBudgetContext={id:string;phase:BudgetPhase;build?:string};
+type BudgetRPC={budgetPrepareSmoke(setup:BudgetSetup):Promise<{ok:boolean;status?:number;error?:string}>;budgetOpen(setup:BudgetSetup):Promise<unknown>;budgetReserve:BudgetEndpoint['budgetReserve'];budgetSettle:BudgetEndpoint['budgetSettle'];budgetStatus():Promise<unknown>;budgetClaimSmoke():Promise<{runId:string}>;budgetClose():Promise<unknown>};
 type WireResponse={build:string;body:ArrayBuffer;status:number;headers:[string,string][]};
 export interface PrivateIOBinding {
  newUniqueId():DurableObjectId;
+ idFromName?(name:string):DurableObjectId;
  idFromString?(id:string):DurableObjectId;
  get(id:DurableObjectId,options?:{locationHint:'weur'}):{
+  smoke?(budget:GlobalBudgetContext):Promise<any>;
   manifest():Promise<{build:string;revision:string}>;
   realtime(sessions:RealtimeSession[],recover?:boolean,budget?:GlobalBudgetContext):Promise<{build:string;changes:RealtimeChange[];actors:{sessionHash:string;mail:string;role:string}[]}>;
   acknowledge(changes:RealtimeChange[],budget?:GlobalBudgetContext):Promise<void>;
@@ -21,7 +23,7 @@ export interface PrivateIOBinding {
 export function budgetExecutor(binding:PrivateIOBinding,id:string):BudgetRPC{
  if(!/^[0-9a-f]{64}$/.test(id)||!binding.idFromString)throw new ApiError(400,'FIRESTORE_TEST_EXECUTOR_INVALID');
  const stub=binding.get(binding.idFromString(id),{locationHint:'weur'});
- for(const name of ['budgetOpen','budgetReserve','budgetSettle','budgetStatus','budgetClose'] as const)if(typeof stub[name]!=='function')throw new ApiError(503,'FIRESTORE_TEST_EXECUTOR_UNAVAILABLE');
+ for(const name of ['budgetPrepareSmoke','budgetOpen','budgetReserve','budgetSettle','budgetStatus','budgetClaimSmoke','budgetClose'] as const)if(typeof stub[name]!=='function')throw new ApiError(503,'FIRESTORE_TEST_EXECUTOR_UNAVAILABLE');
  return stub as BudgetRPC;
 }
 /** Rotate before the Free external-fetch budget, including OAuth and retries.

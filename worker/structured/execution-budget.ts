@@ -5,8 +5,8 @@ export type BudgetCost=Counts&{http:number;queries:number};
 export type BudgetReservation={id:string;phase:BudgetPhase;cost:BudgetCost;readLimit?:number};
 export interface BudgetKV {get<T>(key:string):Promise<T|undefined>;put<T>(key:string,value:T):Promise<unknown>}
 export interface BudgetStorage {transaction<T>(fn:(store:BudgetKV)=>Promise<T>):Promise<T>}
-export type BudgetSetup={project:'pgt-bjj-dev';build:string;limits:Counts;cleanup:Counts;expiresAt:number};
-type State=BudgetSetup&{spent:Record<BudgetPhase,BudgetCost>;held:BudgetReservation[];completed:string[];stopped:boolean;cleaning:boolean;closed:boolean};
+export type BudgetSetup={project:'pgt-bjj-dev';build:string;limits:Counts;cleanup:Counts;expiresAt:number;runId?:string};
+type State=BudgetSetup&{spent:Record<BudgetPhase,BudgetCost>;held:BudgetReservation[];completed:string[];stopped:boolean;cleaning:boolean;closed:boolean;smokeStarted?:boolean};
 const empty=():BudgetCost=>({reads:0,writes:0,deletes:0,http:0,queries:0});
 const dims=['reads','writes','deletes'] as const;
 const key='firestore-test-execution-budget-v1';
@@ -29,8 +29,13 @@ export class ExecutionBudget {
    await store.put(key,state);return this.summary(state);
   });
  }
- private summary(s:State){return {project:s.project,build:s.build,limits:s.limits,cleanupReserve:s.cleanup,spent:s.spent,held:s.held.reduce((a,r)=>add(a,r.cost),empty()),inFlight:s.held.length,stopped:s.stopped,cleaning:s.cleaning,closed:s.closed,estimateOnly:true};}
+ private summary(s:State){return {project:s.project,build:s.build,runId:s.runId,smokeStarted:!!s.smokeStarted,limits:s.limits,cleanupReserve:s.cleanup,spent:s.spent,held:s.held.reduce((a,r)=>add(a,r.cost),empty()),inFlight:s.held.length,stopped:s.stopped,cleaning:s.cleaning,closed:s.closed,estimateOnly:true};}
  async status(){return this.storage.transaction(async store=>{const state=await store.get<State>(key);if(!state)fail('EXECUTION_NOT_STARTED');return this.summary(state!);});}
+ async claimSmoke(){return this.storage.transaction(async store=>{
+  const s=await store.get<State>(key);if(!s||!s.runId||!/^([0-9a-f]{8}-[0-9a-f-]{27})$/.test(s.runId))fail('SMOKE_NOT_PREPARED');
+  if(s!.smokeStarted||s!.closed||s!.stopped||s!.cleaning||Date.now()>s!.expiresAt)fail('SMOKE_ALREADY_STARTED');
+  s!.smokeStarted=true;await store.put(key,s!);return {runId:s!.runId};
+ });}
  async reserve(phase:BudgetPhase,request:{writes?:number;deletes?:number;reads?:number;queryCeiling?:number},now=Date.now()):Promise<BudgetReservation>{
   if(!['scenario','cleanup'].includes(phase))fail('PHASE_INVALID');
   for(const value of Object.values(request))if(typeof value!=='number'||!Number.isSafeInteger(value)||value<0)fail('COST_INVALID');
