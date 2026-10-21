@@ -215,3 +215,8 @@ Título de Mis técnicas (16/10/2026): cambio exclusivo del encabezado a «Tu ju
 ## Preparación DEV (19/10/2026)
 
 Informe separado en `docs/DEV_ENVIRONMENT.md`: unitarias 117/117, tipos/build/Worker/performance y dry-run DEV correctos; runtime falla en fixture temporal preexistente reproducido en main y navegador bloqueado por instalación Chromium. No se despliega ni se opera sobre PRO. No considerar completa la validación hasta resolver los pendientes.
+
+
+### Firestore estructurado DEV — 21/10/2026
+
+165 pruebas unitarias y validaciones locales obligatorias satisfactorias. Chromium histórico y online aislado satisfactorios en Actions. Despliegue rechazado por la política de ramas del Environment development; limpieza, catálogo e integración real todavía pendientes. Informe, evidencias, límites y configuración necesaria: [VALIDACION_FIRESTORE_STRUCTURED.md](VALIDACION_FIRESTORE_STRUCTURED.md).

@@ -1,0 +1,104 @@
+{
+  "status": "FIRESTORE_LOCAL_BROWSER_QA_VERIFIED",
+  "googleTransport": "INTERCEPTED",
+  "project": "pgt-bjj-dev",
+  "database": "(default)",
+  "worker": "pgt-github-probe-dev",
+  "commit": "d1ae7e7add4753545a9a654c45860a9727484fed",
+  "runId": "3027046b-23b2-4109-bca0-376ec58df1e4",
+  "synthetic": true,
+  "contexts": 3,
+  "roles": [
+    "entrenador",
+    "alumno",
+    "alumno"
+  ],
+  "samplesMs": [
+    942,
+    934,
+    935,
+    933,
+    935,
+    935,
+    931,
+    930,
+    929,
+    934,
+    932,
+    938
+  ],
+  "p50Ms": 934,
+  "p95Ms": 942,
+  "latencyIncludes": "700ms autosave debounce + Worker commit + WebSocket + authorized re-read + render",
+  "checks": [
+    "New student receives the exact reference names, priorities, technique types and array order",
+    "Public UI registration, profile persistence, privilege injection denied, role grant/revoke, invalidated session and fresh trainer authentication",
+    "12 real UI autosaves -> trainer without refresh",
+    "Failed online draft exported; one failed attempt; explicit retry required",
+    "Student cross-user and trainer endpoints denied",
+    "Exact full generated plan equals existing domain oracle",
+    "PDF exported in browser from native persisted plan",
+    "Automatic training-day update after assignment",
+    "Automatic comment reception and exact future text update",
+    "Exact deletion recalculation and protected past/today",
+    "Stale write rejected",
+    "Offline mutation rejected; reconnect reloads authoritative state",
+    "Automatic unassignment removal",
+    "Logout revokes subscription and tickets"
+  ],
+  "httpTestCalls": 30,
+  "clientNetwork": {
+    "requests": 170,
+    "mutations": 36,
+    "snapshots": 57,
+    "websocketMessages": 45,
+    "failedResponses": [
+      {
+        "status": 403,
+        "path": "/api/app/role"
+      },
+      {
+        "status": 401,
+        "path": "/api/app/users/:user/snapshot"
+      },
+      {
+        "status": 401,
+        "path": "/api/app/realtime-ticket"
+      },
+      {
+        "status": 401,
+        "path": "/api/app/users/:user/snapshot"
+      },
+      {
+        "status": 401,
+        "path": "/api/app/students"
+      },
+      {
+        "status": 403,
+        "path": "/api/app/users/:user/snapshot"
+      },
+      {
+        "status": 403,
+        "path": "/api/app/students"
+      },
+      {
+        "status": 409,
+        "path": "/api/app/users/:user/techniques"
+      },
+      {
+        "status": 401,
+        "path": "/api/app/realtime-ticket"
+      },
+      {
+        "status": 401,
+        "path": "/api/app/users/:user/snapshot"
+      },
+      {
+        "status": 401,
+        "path": "/api/app/realtime-ticket"
+      }
+    ]
+  },
+  "limits": "Chromium desktop and mobile viewport, not physical devices or Safari; billing counters not queried",
+  "fixtureCleanup": true
+}

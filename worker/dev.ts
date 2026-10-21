@@ -1,27 +1,29 @@
-import legacy,{ProbeSecurity as LegacySecurity,type Env} from './index.ts';
+import type {Transport} from './firestore-auth.ts';
 import {ApiError,fingerprint,opaqueToken,jsonBody,onlyFields} from './security.ts';
-import {FirestoreStorage} from './firestore-storage.ts';
-import {seedSynthetic} from './dev-fixtures.ts';
-import {AppApi} from './application.ts';
+import {DomainRepositories} from './structured/repositories.ts';
+import {DevMaintenance} from './structured/maintenance.ts';
+import {initializeReference} from './structured/reference-catalog.ts';
+import {seedStructuredQA,cleanStructuredQA} from './structured/qa.ts';
+import {StructuredAppApi} from './structured/application.ts';
 import type {Profile} from '../src/domain/models.ts';
 import {authorizePreflight,firestorePreflight,requireDev,PreflightFailure,type PreflightEnv} from './firestore-preflight.ts';
-export interface DevEnv extends Env,PreflightEnv {}
-export default legacy;
+export interface DevEnv extends PreflightEnv {SECURITY:DurableObjectNamespace;ASSETS:Fetcher;GITHUB_DATA_TOKEN:string;ALLOWED_ORIGINS:string}
+export default {fetch(request:Request,env:DevEnv){return new URL(request.url).pathname.startsWith('/api/')?env.SECURITY.get(env.SECURITY.idFromName('github-probe')).fetch(request):env.ASSETS.fetch(request);}};
 // Same local class name/binding as the existing DEV SQLite namespace. PRO keeps
 // worker/index.ts as entrypoint and does not import this DEV-only implementation.
-export class ProbeSecurity extends LegacySecurity {
+export class ProbeSecurity {
   private devEnv:DevEnv;
   private preflight:Promise<Response>|undefined;
   private devState:DurableObjectState;
-  private cloud:()=>FirestoreStorage;
+  private cloud:()=>DomainRepositories;
   constructor(state:DurableObjectState,env:DevEnv){
-    let cloud:FirestoreStorage|undefined;
-    const provider=()=>cloud||(cloud=new FirestoreStorage(env));
-    super(state,env,provider);this.devEnv=env;this.devState=state;this.cloud=provider;
+    let cloud:DomainRepositories|undefined;
+    const provider=()=>cloud||(cloud=new DomainRepositories(env));
+    this.devEnv=env;this.devState=state;this.cloud=provider;
   }
-  override fetch(request:Request):Promise<Response>{
+  fetch(request:Request):Promise<Response>{
     if(new URL(request.url).pathname==='/api/dev/firestore-preflight')return this.check(request);
-    return this.serial(()=>['/api/dev/synthetic-fixture','/api/dev/synthetic-fixture-cleanup'].includes(new URL(request.url).pathname)?this.fixture(request):this.online(request));
+    return this.serial(()=>new URL(request.url).pathname.startsWith('/api/dev/')?this.fixture(request):this.online(request));
   }
   private serial<T>(action:()=>Promise<T>):Promise<T>{
     // Gate incoming events rather than carrying their I/O across a shared
@@ -35,7 +37,9 @@ export class ProbeSecurity extends LegacySecurity {
       const origin=request.headers.get('Origin');
       if(origin!==null&&origin!=='https://pgt-github-probe-dev.david-dzm5.workers.dev')throw new ApiError(403,'ORIGIN_FORBIDDEN');
       if(!path.startsWith('/api/app/'))throw new ApiError(404,'ENDPOINT_NOT_FOUND');
-      if(!['GET','HEAD','OPTIONS'].includes(request.method)&&request.headers.get('X-PGT-Client')!=='firestore-dev-v1')throw new ApiError(426,'CLIENT_UPDATE_REQUIRED');
+      if(!['GET','HEAD','OPTIONS'].includes(request.method)&&request.headers.get('X-PGT-Client')!=='firestore-dev-structured-v2')throw new ApiError(426,'CLIENT_UPDATE_REQUIRED');
+      if(await this.devState.storage.get('structured-maintenance-active'))throw new ApiError(503,'DEV_MAINTENANCE_IN_PROGRESS');
+      if(!(await this.cloud().db.get('settings/schema'))?.data.model)throw new ApiError(503,'ORIGINAL_CATALOG_INITIALIZATION_REQUIRED');
       await this.limit(request,path);
       if(path==='/api/app/realtime'&&request.method==='GET')return await this.open(request,url);
       if(path==='/api/app/realtime-ticket'&&request.method==='POST'){
@@ -53,7 +57,7 @@ export class ProbeSecurity extends LegacySecurity {
       // Schedule before the first possible commit: the Firestore outbox remains
       // recoverable even if the isolate dies between commit and publication.
       await this.devState.storage.setAlarm(Date.now()+15000);
-      try{return await new AppApi(this.devState.storage,this.cloud()).handle(request,url);}finally{await this.flush().catch(error=>console.warn('PGT_REALTIME_RETRY_SCHEDULED',error instanceof ApiError?error.message:'RUNTIME_ERROR')); }
+      try{return await new StructuredAppApi(this.devState.storage,this.cloud()).handle(request,url);}finally{await this.flush().catch(error=>console.warn('PGT_REALTIME_RETRY_SCHEDULED',error instanceof ApiError?error.message:'RUNTIME_ERROR')); }
     }catch(error){return Response.json({error:error instanceof ApiError?error.message:'FIRESTORE_DEV_UNAVAILABLE',...(error instanceof ApiError&&error.size?{size:error.size}:{})},{status:error instanceof ApiError?error.status:503,headers:{'Cache-Control':'no-store'}});}
   }
   private async limit(request:Request,path:string){
@@ -69,10 +73,10 @@ export class ProbeSecurity extends LegacySecurity {
     return this.authorizeHash(await fingerprint(token));
   }
   private async authorizeHash(sessionHash:string){
-    const session=await this.devState.storage.get<{mail:string;pwdFingerprint:string}>('app-session:'+sessionHash);
+    const session=await this.devState.storage.get<{mail:string;pwdFingerprint:string;role?:string}>('app-session:'+sessionHash);
     if(!session)throw new ApiError(401,'SESSION_REVOKED');
-    const record=await this.cloud().read<Profile>(`PGT/users_data/${session.mail}/user_data.json`);
-    if(!record?.data.pwd||session.pwdFingerprint!==await fingerprint(record.data.pwd))throw new ApiError(401,'SESSION_REVOKED');
+    const record=await this.cloud().read<Profile>({kind:'user',mail:session.mail});
+    if(!record?.data.pwd||session.role!==record.data.perfil||session.pwdFingerprint!==await fingerprint(record.data.pwd))throw new ApiError(401,'SESSION_REVOKED');
     return {sessionHash,mail:session.mail,role:record.data.perfil};
   }
   private async open(request:Request,url:URL){
@@ -128,17 +132,21 @@ export class ProbeSecurity extends LegacySecurity {
       if(request.method!=='POST')throw new ApiError(405,'METHOD_NOT_ALLOWED');
       if(request.headers.get('Origin')!=='https://pgt-github-probe-dev.david-dzm5.workers.dev')throw new ApiError(403,'ORIGIN_FORBIDDEN');
       await authorizePreflight(request,this.devEnv,(url,init)=>fetch(url,init));
-      const body=await jsonBody(request,1024);onlyFields(body,['runId','password']);
-      if(typeof body.runId!=='string'||typeof body.password!=='string')throw new ApiError(400,'SYNTHETIC_FIXTURE_INVALID');
+      const body=await jsonBody(request,256*1024),path=new URL(request.url).pathname;
+      if(path==='/api/dev/structured-maintenance')return Response.json(await new DevMaintenance(this.cloud().db,this.devState.storage).step(body));
+      if(path==='/api/dev/structured-qa-runs'){onlyFields(body,[]);return Response.json({runs:(await this.cloud().db.list('qa_runs')).map(r=>({id:r.id,purpose:r.data.purpose}))});}
+      if(path==='/api/dev/structured-bootstrap'){onlyFields(body,[]);const old=(await this.cloud().db.collectionIds()).filter(c=>['pgt_resources','pgt_changes','pgt_qa_runs'].includes(c));if(old.length)throw new ApiError(409,'LEGACY_CLEANUP_REQUIRED');const report=await initializeReference(this.cloud(),this.devEnv.GITHUB_DATA_TOKEN);await new DevMaintenance(this.cloud().db,this.devState.storage).ready();return Response.json(report);}
+      if(!['/api/dev/synthetic-fixture','/api/dev/synthetic-fixture-cleanup'].includes(path))throw new ApiError(404,'ENDPOINT_NOT_FOUND');
+      onlyFields(body,['runId','password']);if(typeof body.runId!=='string'||typeof body.password!=='string')throw new ApiError(400,'SYNTHETIC_FIXTURE_INVALID');
       await this.devState.storage.setAlarm(Date.now()+15000);
       try{
         let result;
         if(new URL(request.url).pathname.endsWith('-cleanup')){
-          result=await this.cloud().cleanupSynthetic(body.runId);
+          result=await cleanStructuredQA(this.cloud(),body.runId);
           const mails=['trainer','student','other'].map(role=>`pgt-dev-${body.runId}-${role}@example.test`);
           for(const [key,session] of await this.devState.storage.list<{mail:string}>({prefix:'app-session:'}))if(mails.includes(session.mail))await this.devState.storage.delete(key);
           for(const mail of mails)for(const key of (await this.devState.storage.list({prefix:'plan-update:'+mail+':'})).keys())await this.devState.storage.delete(key);
-        }else result=await seedSynthetic(this.cloud(),body.runId,body.password);
+        }else result=await seedStructuredQA(this.cloud(),body.runId,body.password);
         return Response.json(result,{headers:{'Cache-Control':'no-store'}});
       }
       finally{await this.flush().catch(()=>console.warn('PGT_REALTIME_RETRY_SCHEDULED'));}

@@ -16,3 +16,8 @@ assert.equal(config.routes, undefined);
 assert.equal(config.route, undefined);
 assert.equal(config.env, undefined);
 console.log('DEV target, origin, assets and local SQLite DO binding verified. No remote operations.');
+
+const devWorkflow=readFileSync('.github/workflows/cloudflare-dev.yml','utf8');
+assert.ok(!devWorkflow.includes('feature/'),'Feature branches must never deploy directly to DEV');
+assert.ok(devWorkflow.includes("github.ref == 'refs/heads/develop'"),'DEV deployment must require develop');
+assert.ok(devWorkflow.includes("process.env.GITHUB_REF !== 'refs/heads/develop'"),'Runtime deployment guard must require develop');

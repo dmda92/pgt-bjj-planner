@@ -1,8 +1,9 @@
+// Historical characterization fixture only; superseded by native reference initialization.
 import {validateProfile,validateTechniques,validatePlan,validateCompetition,validateVersion,cloneTemplate,type Profile,type Techniques,type Comments,type Catalog,type Index,type TrainingPlan} from '../src/domain/models.ts';
 import {MAX_JSON_BYTES} from '../src/domain/json-limits.ts';
-import {DEV_PROJECT} from './firestore-auth.ts';
-import {hex} from './firestore-storage.ts';
-import type {CloudStorageProvider} from './storage.ts';
+import {DEV_PROJECT} from '../worker/firestore-auth.ts';
+import {hex} from './legacy-file-store.ts';
+import type {CloudStorageProvider} from '../worker/storage.ts';
 export interface MigrationRecord {path:string;data:unknown}
 /** Only an explicit local synthetic export is accepted in this DEV execution.
  * No GitHub export, cloud discovery or actual user data is read by this tool. */
