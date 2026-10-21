@@ -23,7 +23,7 @@ export async function structuredFixture(){
   }
   if(path.endsWith(':listCollectionIds')){const parent=DEV_DATABASE_NAME+path.slice(0,-':listCollectionIds'.length);return Response.json({collectionIds:[...new Set([...docs.keys()].filter(k=>k.startsWith(parent+'/')).map(k=>k.slice(parent.length+1).split('/')[0]))]});}
   if(path.endsWith(':runQuery')){const parent=DEV_DATABASE_NAME+path.slice(0,-':runQuery'.length),q=JSON.parse(String(init.body)).structuredQuery,f=q.where?.fieldFilter;
-   return Response.json([...docs.values()].filter(d=>d.name.startsWith(parent+'/'+q.from[0].collectionId+'/')&&d.name.split('/').length===parent.split('/').length+2&&(!f||JSON.stringify(d.fields[f.field.fieldPath])===JSON.stringify(f.value))).map(document=>({document})).reverse());}
+   return Response.json([...docs.values()].filter(d=>d.name.startsWith(parent+'/')&&(!q.from[0].collectionId||d.name.startsWith(parent+'/'+q.from[0].collectionId+'/'))&&d.name.split('/').length===parent.split('/').length+2&&(!f||JSON.stringify(d.fields[f.field.fieldPath])===JSON.stringify(f.value))).map(document=>({document})).reverse());}
   const name=DEV_DATABASE_NAME+path;
   if((path.slice('/documents/'.length).split('/').length%2)===1){
    const direct=[...docs.values()].filter(d=>d.name.startsWith(name+'/')&&d.name.split('/').length===name.split('/').length+1);

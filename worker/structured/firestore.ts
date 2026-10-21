@@ -103,6 +103,13 @@ export class NativeFirestore {
     async query(path: string, key?: string, value?: unknown) { const cacheKey = path + '|' + JSON.stringify([key, value]); if (this.queries?.has(cacheKey))
         return structuredClone(this.queries.get(cacheKey)!); const parts = this.path(path).split('/'), collection = parts.pop()!, parent = parts.length ? '/' + parts.join('/') : ''; const r = await this.request('/documents' + parent + ':runQuery', { method: 'POST', body: JSON.stringify({ structuredQuery: { from: [{ collectionId: collection }], ...(key ? { where: { fieldFilter: { field: { fieldPath: key }, op: 'EQUAL', value: field(value) } } } : {}) } }) }, true); this.check(r); const rows = await r.json() as any[]; const result = rows.flatMap(v => v.document ? [this.row(v.document)] : []); this.queries?.set(cacheKey, result); for (const row of result)
         this.reads?.set(row.path, row); return structuredClone(result); }
+    /** One query reads every native entity table immediately below a revision. */
+    async children(path:string){
+        const cacheKey=path+'|*';if(this.queries?.has(cacheKey))return structuredClone(this.queries.get(cacheKey)!);
+        const r=await this.request('/documents/'+this.path(path)+':runQuery',{method:'POST',body:JSON.stringify({structuredQuery:{from:[{allDescendants:false}]}})},true);this.check(r);
+        const result=((await r.json()) as any[]).flatMap(v=>v.document?[this.row(v.document)]:[]);
+        this.queries?.set(cacheKey,result);for(const row of result)this.reads?.set(row.path,row);return structuredClone(result);
+    }
     update(path: string, data: unknown, previous?: NativeRow | null) { return { update: { name: prefix + this.path(path), fields: fields(data as any) }, ...(previous !== undefined ? { currentDocument: previous ? { updateTime: previous.updateTime } : { exists: false } } : {}) }; }
     deletion(row: NativeRow) { return { delete: prefix + this.path(row.path), ...(row.exists ? { currentDocument: { updateTime: row.updateTime } } : {}) }; }
     async commit(writes: any[]) { if (!writes.length)
@@ -110,6 +117,7 @@ export class NativeFirestore {
         const path = (w.update?.name || w.delete).slice(prefix.length);
         this.reads?.delete(path);
         const collection = path.slice(0, path.lastIndexOf('/'));
+        this.queries?.delete(collection.slice(0,collection.lastIndexOf('/'))+'|*');
         for (const key of this.queries?.keys() || [])
             if (key.startsWith(collection + '|'))
                 this.queries?.delete(key);
