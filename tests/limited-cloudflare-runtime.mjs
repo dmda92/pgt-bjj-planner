@@ -4,8 +4,8 @@ import {readFile} from 'node:fs/promises';
  * Also force the existing JS PBKDF2 fallback used when native iteration limits apply. */
 export const limitedRuntimePlugin={name:'actual-do-budgets',setup(build){
  build.onLoad({filter:/worker\/dev\.ts$/},async({path})=>{
-  let source=await readFile(path,'utf8');const target='const response=await fetch(input,{...init,redirect:';assert.ok(source.includes(target));
-  source=source.replace(target,"const headers=new Headers(init.headers);headers.set('X-QA-IO-Invocation',this.ctx.id.toString());const response=await fetch(input,{...init,headers,redirect:");
+  let source=await readFile(path,'utf8');const target="const send=(url:string,options:RequestInit)=>fetch(url,{...options,redirect:'manual',signal:AbortSignal.timeout(20000)});";assert.ok(source.includes(target));
+  source=source.replace(target,"const send=(url:string,options:RequestInit)=>{const headers=new Headers(options.headers);headers.set('X-QA-IO-Invocation',this.ctx.id.toString());return fetch(url,{...options,headers,redirect:'manual',signal:AbortSignal.timeout(20000)});};");
   return {contents:source,loader:'ts'};
  });
  build.onLoad({filter:/worker\/security\.ts$/},async({path})=>{

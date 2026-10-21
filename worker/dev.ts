@@ -1,6 +1,9 @@
+import {runMinimalSmoke} from './structured/minimal-smoke.ts';
+import {checkSmokeGate} from './structured/smoke-gate.ts';
+import {ExecutionBudget,budgetedFirestoreRequest,type BudgetSetup,type BudgetPhase} from './structured/execution-budget.ts';
 import {DurableObject} from 'cloudflare:workers';
 import {SessionReplica,sessionKey,type SessionChange} from './structured/session-store.ts';
-import {privateTransport,privateExecutor,type PrivateIOBinding,type RealtimeSession,type RealtimeChange} from './structured/private-io.ts';
+import {privateTransport,privateExecutor,budgetExecutor,type GlobalBudgetContext,type PrivateIOBinding,type RealtimeSession,type RealtimeChange} from './structured/private-io.ts';
 import {ApiError,fingerprint,opaqueToken,jsonBody,onlyFields} from './security.ts';
 import {DomainRepositories} from './structured/repositories.ts';
 import {DevMaintenance} from './structured/maintenance.ts';
@@ -19,16 +22,36 @@ export default {async fetch(request:Request,env:DevEnv){
  const response=await env.SECURITY.get(env.SECURITY.idFromName('github-probe')).fetch(request);
  return stamped(response,'X-PGT-Worker-Build',env.DEV_BUILD_SHA||'local');
 }};
-/** Private ephemeral DOs: a fresh execution context, no SQLite/business cache.
+/** Private domain DOs: fresh execution contexts without a business cache.
+ * A dedicated test-meter instance stores only transactional budget metadata.
  * Password KDF retains the DO CPU allowance. RPC returns materialized bytes,
  * never a response stream whose owner has already been disposed. */
 export class DomainIO extends DurableObject<DevEnv> {
  private cloud?:DomainRepositories;
- private repositories(){return this.cloud ||= new DomainRepositories(this.env,privateTransport(this.env.DOMAIN_IO,this.env.DEV_BUILD_SHA||'local'));}
- async realtime(sessions:RealtimeSession[]){
-  requireDev(this.env);const cloud=this.repositories();cloud.beginOperation();
+ private cloudBudgetKey='';
+ private repositories(budget?:GlobalBudgetContext){
+  const key=budget?budget.id+':'+budget.phase:'ordinary';
+  if(key!==this.cloudBudgetKey){this.cloud=undefined;this.cloudBudgetKey=key;}
+  return this.cloud ||= new DomainRepositories(this.env,privateTransport(this.env.DOMAIN_IO,this.env.DEV_BUILD_SHA||'local',budget));
+ }
+ private budget(){requireDev(this.env);return new ExecutionBudget({transaction:action=>this.ctx.storage.transaction(tx=>action(tx))});}
+ budgetOpen(setup:BudgetSetup){if(setup.build!==(this.env.DEV_BUILD_SHA||'local'))throw new ApiError(409,'FIRESTORE_TEST_BUILD_MISMATCH');return this.budget().open(setup);}
+ async budgetPrepareSmoke(setup:BudgetSetup){try{await this.budgetOpen(setup);return {ok:true};}catch(e){return {ok:false,status:e instanceof ApiError?e.status:503,error:e instanceof ApiError?e.message:'SMOKE_PREPARATION_FAILED'};}}
+ budgetReserve(phase:BudgetPhase,request:{reads?:number;writes?:number;deletes?:number;queryCeiling?:number}){return this.budget().reserve(phase,request);}
+ budgetSettle(id:string,actualReads?:number,uncertain=false){return this.budget().settle(id,actualReads,uncertain);}
+ budgetStatus(){return this.budget().status();}
+ budgetClaimSmoke(){return this.budget().claimSmoke();}
+ budgetClose(){return this.budget().close();}
+ async smoke(budget:GlobalBudgetContext){
+  requireDev(this.env);if(budget.build!==(this.env.DEV_BUILD_SHA||'local'))throw new ApiError(503,'SMOKE_BUILD_MISMATCH');const meter=budgetExecutor(this.env.DOMAIN_IO,budget.id),{runId}=await meter.budgetClaimSmoke();
+  const result=await runMinimalSmoke(phase=>this.repositories({...budget,phase}),runId);
+  let closed=false;try{await meter.budgetClose();closed=true;}catch{}
+  return {...result,budget:await meter.budgetStatus(),budgetClosed:closed,build:this.env.DEV_BUILD_SHA||'local'};
+ }
+ async realtime(sessions:RealtimeSession[],recover=false,budget?:GlobalBudgetContext){
+  requireDev(this.env);const cloud=this.repositories(budget);cloud.beginOperation();
   try{
-   await cloud.collectRetired();const changes=await cloud.changes(),actors=[];
+   if(recover)await cloud.collectRetired();const changes=await cloud.changes(),actors=[];
    for(const {sessionHash,session} of sessions){
     if(!session)continue;const record=await cloud.read<Profile>({kind:'user',mail:session.mail});
     if(record?.data.pwd&&session.role===record.data.perfil&&session.pwdFingerprint===await fingerprint(record.data.pwd))actors.push({sessionHash,mail:session.mail,role:record.data.perfil});
@@ -36,14 +59,14 @@ export class DomainIO extends DurableObject<DevEnv> {
    return {build:this.env.DEV_BUILD_SHA||'local',changes,actors};
   }finally{cloud.endOperation();}
  }
- async acknowledge(changes:RealtimeChange[]){
+ async acknowledge(changes:RealtimeChange[],budget?:GlobalBudgetContext){
   requireDev(this.env);if(changes.some(c=>!/^realtime_events\/[^/]+$/.test(c.name)))throw new ApiError(400,'REALTIME_ACK_SCOPE_INVALID');
-  const cloud=this.repositories();cloud.beginOperation();try{await cloud.acknowledge(changes);}finally{cloud.endOperation();}
+  const cloud=this.repositories(budget);cloud.beginOperation();try{await cloud.acknowledge(changes);}finally{cloud.endOperation();}
  }
  manifest(){requireDev(this.env);return {build:this.env.DEV_BUILD_SHA||'local',revision:RUNTIME_REVISION};}
- async run(request:Request,entries:[string,unknown][]){
+ async run(request:Request,entries:[string,unknown][],budget?:GlobalBudgetContext){
   requireDev(this.env);
-  const sessions=new SessionReplica(entries),cloud=this.repositories();cloud.beginOperation();
+  const sessions=new SessionReplica(entries),cloud=this.repositories(budget);cloud.beginOperation();
   try{
    let response:Response,stage='DOMAIN_START';
    try{response=await new StructuredAppApi(sessions,cloud,undefined,value=>stage=value).handle(request,new URL(request.url));}
@@ -52,13 +75,17 @@ export class DomainIO extends DurableObject<DevEnv> {
   }finally{cloud.endOperation();}
  }
  private outgoing=0;
- async request(input:string,init:RequestInit={}){
+ async request(input:string,init:RequestInit={},budget?:GlobalBudgetContext){
   requireDev(this.env);
+  if(budget?.build&&budget.build!==(this.env.DEV_BUILD_SHA||'local'))throw new ApiError(503,'PRIVATE_IO_BUILD_MISMATCH');
   // This capability is private and cannot act as a generic HTTP proxy.
   const url=new URL(input);
   if(!((url.origin==='https://firestore.googleapis.com'&&(url.pathname==='/v1/projects/pgt-bjj-dev/databases/(default)'||url.pathname.startsWith('/v1/projects/pgt-bjj-dev/databases/(default)/')))||(url.origin==='https://oauth2.googleapis.com'&&url.pathname==='/token')))throw new ApiError(403,'PRIVATE_IO_TARGET_FORBIDDEN');
   if(++this.outgoing>32)throw new ApiError(503,'PRIVATE_IO_BUDGET_EXCEEDED');
-  const response=await fetch(input,{...init,redirect:'manual',signal:AbortSignal.timeout(20000)});
+  const send=(url:string,options:RequestInit)=>fetch(url,{...options,redirect:'manual',signal:AbortSignal.timeout(20000)});
+  const response=budget&&url.origin==='https://firestore.googleapis.com'
+    ?await budgetedFirestoreRequest(budgetExecutor(this.env.DOMAIN_IO,budget.id),budget.phase,input,init,send)
+    :await send(input,init);
   return {body:await response.arrayBuffer(),status:response.status,headers:wireHeaders(response.headers),build:this.env.DEV_BUILD_SHA||'local'};
  }
 }
@@ -79,7 +106,7 @@ export class ProbeSecurity {
     if(path==='/api/dev/runtime'&&request.method==='GET'){
       requireDev(this.devEnv);const domain=await privateExecutor(this.devEnv.DOMAIN_IO).manifest();return Response.json({project:'pgt-bjj-dev',worker:'pgt-github-probe-dev',build:this.devEnv.DEV_BUILD_SHA||'local',domainBuild:domain.build,revision:RUNTIME_REVISION},{headers:{'Cache-Control':'no-store'}});
     }
-    const response=path==='/api/dev/firestore-preflight'?await this.check(request):await this.serial(()=>path.startsWith('/api/dev/')?this.fixture(request):this.online(request));
+    const response=path==='/api/dev/budget-smoke'?await this.smoke(request):path==='/api/dev/firestore-preflight'?await this.check(request):await this.serial(()=>path.startsWith('/api/dev/')?this.fixture(request):this.online(request));
     return stamped(response,'X-PGT-Coordinator-Build',this.devEnv.DEV_BUILD_SHA||'local');
   }
   private serial<T>(action:()=>Promise<T>):Promise<T>{
@@ -125,7 +152,7 @@ export class ProbeSecurity {
         if(changes.length)await this.devState.storage.transaction(async transaction=>{for(const change of changes){if(change.deleted)await transaction.delete(change.key);else await transaction.put(change.key,change.value);}});
         operationStage='QUERY_RESPONSE';
         return new Response(result.body,{status:result.status,headers:result.headers});
-      }finally{await this.flush().catch(error=>console.warn('PGT_REALTIME_RETRY_SCHEDULED',error instanceof ApiError?error.message:'RUNTIME_ERROR')); }
+      }finally{await this.flush(request.method!=='GET').catch(error=>console.warn('PGT_REALTIME_RETRY_SCHEDULED',error instanceof ApiError?error.message:'RUNTIME_ERROR')); }
     }catch(error){const reason=runtimeReason(error);return Response.json({error:error instanceof ApiError?error.message:'FIRESTORE_DEV_UNAVAILABLE_'+operationStage+'_'+reason,...(error instanceof ApiError&&error.size?{size:error.size}:{})},{status:error instanceof ApiError?error.status:503,headers:{'Cache-Control':'no-store'}});}
   }
   private async limit(request:Request,path:string){
@@ -164,12 +191,12 @@ export class ProbeSecurity {
     await this.devState.storage.setAlarm(Date.now()+15000);
     return new Response(null,{status:101,webSocket:client});
   }
-  private async flush(){
+  private async flush(recover=false){
     // Batch the cloud reads near Firestore. Only authorization/event metadata
     // crosses the coordinator RPC, and ACK still follows actual publication.
     const sockets=this.devState.getWebSockets(),sessions:RealtimeSession[]=[],seen=new Set<string>();
     for(const ws of sockets){const hash=ws.deserializeAttachment()?.sessionHash;if(hash&&!seen.has(hash)){seen.add(hash);sessions.push({sessionHash:hash,session:await this.devState.storage.get('app-session:'+hash)});}}
-    const io=privateExecutor(this.devEnv.DOMAIN_IO),snapshot=await io.realtime(sessions);
+    const io=privateExecutor(this.devEnv.DOMAIN_IO),snapshot=await io.realtime(sessions,recover);
     if(snapshot.build!==(this.devEnv.DEV_BUILD_SHA||'local'))throw new ApiError(503,'REALTIME_BUILD_MISMATCH');
     const changes=snapshot.changes,actors=new Map(snapshot.actors.map(actor=>[actor.sessionHash,actor]));
     for(const ws of sockets){
@@ -184,7 +211,7 @@ export class ProbeSecurity {
     else await this.devState.storage.deleteAlarm();
     for(const [key,value] of await this.devState.storage.list<{expires:number}>({prefix:'ws-ticket:'}))if(value.expires<Date.now())await this.devState.storage.delete(key);
   }
-  async alarm(){return this.serial(async()=>{try{await this.flush();}catch{await this.devState.storage.setAlarm(Date.now()+60000);}});}
+  async alarm(){return this.serial(async()=>{try{await this.flush(true);}catch{await this.devState.storage.setAlarm(Date.now()+60000);}});}
   webSocketMessage(ws:WebSocket,_message:string|ArrayBuffer){
     // Server-only invalidations: no client messages can cause Firestore reads,
     // writes or an unbounded authentication loop while the socket is idle.
@@ -192,6 +219,29 @@ export class ProbeSecurity {
   }
   webSocketClose(ws:WebSocket,code:number){ws.close(code===1006?1000:code);}
   webSocketError(ws:WebSocket){ws.close(1011,'RECONNECT');}
+  private async smoke(request:Request){
+    try{
+      requireDev(this.devEnv);
+      if(request.method!=='POST')throw new ApiError(405,'METHOD_NOT_ALLOWED');
+      if(request.headers.get('Origin')!=='https://pgt-github-probe-dev.david-dzm5.workers.dev')throw new ApiError(403,'ORIGIN_FORBIDDEN');
+      await authorizePreflight(request,this.devEnv,(url,init)=>fetch(url,init));
+      const body=await jsonBody(request,32768);onlyFields(body,['quota','plan']);
+      const build=this.devEnv.DEV_BUILD_SHA;
+      const limits=checkSmokeGate(body.quota,body.plan,{build});
+      const plan=body.plan as {users:number;total:{reads:number;writes:number;deletes:number}};
+      if(plan.users!==1||plan.total.reads!==200||plan.total.writes!==150||plan.total.deletes!==50)throw new ApiError(409,'SMOKE_PLAN_NOT_MEASURED');
+      if(!this.devEnv.DOMAIN_IO.idFromName)throw new ApiError(503,'SMOKE_BINDING_UNAVAILABLE');
+      // One deterministic durable ledger per deployed build, never reset by rerun.
+      const id=this.devEnv.DOMAIN_IO.idFromName('controlled-smoke:'+build).toString(),meter=budgetExecutor(this.devEnv.DOMAIN_IO,id);
+      const prepared=await meter.budgetPrepareSmoke({project:'pgt-bjj-dev',build:build!,limits,cleanup:{reads:55,writes:0,deletes:47},expiresAt:Date.now()+5*60000,runId:crypto.randomUUID()});
+      if(!prepared.ok)return Response.json({error:prepared.error},{status:prepared.status||503,headers:{'Cache-Control':'no-store'}});
+      const actor=privateExecutor(this.devEnv.DOMAIN_IO);
+      if(!actor.smoke)throw new ApiError(503,'SMOKE_BINDING_UNAVAILABLE');
+      const result=await actor.smoke({id,phase:'scenario',build});
+      if(result.build!==build)throw new ApiError(503,'SMOKE_BUILD_MISMATCH');
+      return Response.json(result,{status:result.status==='DEV_MINIMAL_SMOKE_VERIFIED'&&result.cleanup.clean&&result.budgetClosed?200:503,headers:{'Cache-Control':'no-store'}});
+    }catch(error){return Response.json({error:error instanceof ApiError?error.message:'DEV_SMOKE_FAILED'},{status:error instanceof ApiError?error.status:503,headers:{'Cache-Control':'no-store'}});}
+  }
   private async fixture(request:Request){
     try{
       requireDev(this.devEnv);
@@ -216,7 +266,7 @@ export class ProbeSecurity {
         }else result=await seedStructuredQA(this.cloud(),body.runId,body.password);
         return Response.json(result,{headers:{'Cache-Control':'no-store'}});
       }
-      finally{await this.flush().catch(()=>console.warn('PGT_REALTIME_RETRY_SCHEDULED'));}
+      finally{await this.flush(true).catch(()=>console.warn('PGT_REALTIME_RETRY_SCHEDULED'));}
     }catch(error){return Response.json({error:error instanceof ApiError?error.message:'SYNTHETIC_FIXTURE_FAILED'},{status:error instanceof ApiError?error.status:503});}
   }
   private async check(request:Request):Promise<Response>{

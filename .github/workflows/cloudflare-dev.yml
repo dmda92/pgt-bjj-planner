@@ -8,10 +8,15 @@ on:
   workflow_dispatch:
     inputs:
       operation:
-        description: 'Solo develop: verificar la versión vigente o desplegar y verificar'
+        description: 'Solo develop: verificar runtime, desplegar o smoke explícito con cuota'
         type: choice
-        options: [verify, deploy]
+        options: [verify, deploy, smoke]
         default: verify
+      quota_evidence:
+        description: 'Solo smoke: JSON de cuota actual fiable; vacío impide cualquier prueba real'
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -59,6 +64,10 @@ jobs:
         run: npm run test:runtime
       - name: DEV Firestore diagnostic runtime (isolated)
         run: node scripts/test-firestore-preflight-runtime.mjs
+      - name: Global Firestore test budget across private executors (isolated)
+        run: node scripts/test-execution-budget-runtime.mjs
+      - name: Budgeted minimal smoke and cleanup (isolated)
+        run: node scripts/test-minimal-smoke-runtime.mjs
       - name: DEV Firestore application and realtime runtime (isolated)
         run: node scripts/test-firestore-app-runtime.mjs
       - name: Install Chromium
@@ -139,14 +148,13 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: node scripts/check-dev-config.mjs
-      - name: Install Chromium for live DEV verification
-        run: npx --no-install playwright install --with-deps chromium
       - name: Deploy or verify the current authorized DEV version
         env:
           GH_TOKEN: ${{ github.token }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           EXPECTED_DEV_ACCOUNT_ID: ${{ vars.DEV_ACCOUNT_ID }}
+          PGT_DEV_QUOTA_EVIDENCE: ${{ inputs.quota_evidence || '' }}
           DEV_OPERATION: ${{ github.event_name == 'workflow_dispatch' && inputs.operation || 'deploy' }}
         shell: bash
         run: |
@@ -165,13 +173,13 @@ jobs:
           if ((await response.json()).object.sha !== process.env.GITHUB_SHA) {
             console.log('Skipping obsolete commit.');
           } else {
-            if(!['verify','deploy'].includes(process.env.DEV_OPERATION))throw new Error('Invalid DEV operation');
+            if(!['verify','deploy','smoke'].includes(process.env.DEV_OPERATION))throw new Error('Invalid DEV operation');
             const settings=await fetch(`https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/workers/scripts/pgt-github-probe-dev/settings`,{headers:{Authorization:`Bearer ${process.env.CLOUDFLARE_API_TOKEN}`}});
             let deployedBuild;
             if(settings.ok){const value=await settings.json();deployedBuild=value.result?.bindings?.find(binding=>binding.name==='DEV_BUILD_SHA')?.text;}
             // A rerun of a failed gate must verify the same live version, not
             // publish it again and change the conditions being diagnosed.
-            const verifyOnly=process.env.DEV_OPERATION==='verify'||deployedBuild===process.env.GITHUB_SHA;
+            const verifyOnly=process.env.DEV_OPERATION!=='deploy'||deployedBuild===process.env.GITHUB_SHA;
             let expectedBuild=verifyOnly?deployedBuild:process.env.GITHUB_SHA;
             if(verifyOnly){
               if(!/^[0-9a-f]{40}$/.test(expectedBuild||''))throw new Error('Deployed DEV build identity missing');
@@ -196,22 +204,15 @@ jobs:
               await new Promise(resolve=>setTimeout(resolve,2000));
             }
             if(!current)throw new Error('DEV_DEPLOYED_RUNTIME_BUILD_NOT_VERIFIED');
-            const preflight = await fetch('https://pgt-github-probe-dev.david-dzm5.workers.dev/api/dev/firestore-preflight', {
-              method: 'POST', headers: { Authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}`, Origin: 'https://pgt-github-probe-dev.david-dzm5.workers.dev' }, signal: AbortSignal.timeout(60000)
-            });
-            const report = await preflight.json();
-            console.log(JSON.stringify(report));
-            if (!preflight.ok || report.status !== 'FIRESTORE_DEV_CONNECTION_VERIFIED') throw new Error('DEV Firestore preflight failed');
-            const qaEnv = {...process.env,PGT_EXPECTED_DEV_BUILD:expectedBuild}; delete qaEnv.PGT_LOCAL_QA_ORIGIN;
-            const preparation=spawnSync(process.execPath,['scripts/prepare-structured-dev.mjs'],{stdio:'inherit',env:qaEnv});
-            if(preparation.error)throw preparation.error;
-            if(preparation.status!==0)process.exit(preparation.status??1);
-            const qa = spawnSync(process.execPath, ['scripts/test-firestore-dev-live.mjs'], {stdio:'inherit',env:qaEnv});
-            if (qa.error) throw qa.error;
-            const integrity=spawnSync(process.execPath,['scripts/verify-structured-dev.mjs'],{stdio:'inherit',env:qaEnv});
-            if(integrity.error)throw integrity.error;
-            if(integrity.status!==0)process.exit(integrity.status??1);
-            if (qa.status !== 0) process.exit(qa.status ?? 1);
+            // No preflight CRUD, inventory, bootstrap, cleanup or browser QA
+            // against Google in push/rerun/dispatch. Isolated jobs above cover
+            // the application. A real smoke requires a separate quota gate.
+            console.log('DEV_RUNTIME_VERIFIED_NO_FIRESTORE_TESTS');
+            if(process.env.DEV_OPERATION==='smoke'){
+              const smoke=spawnSync(process.execPath,['scripts/test-firestore-dev-smoke.mjs'],{stdio:'inherit',env:{...process.env,PGT_EXPECTED_DEV_BUILD:expectedBuild}});
+              if(smoke.error)throw smoke.error;
+              if(smoke.status!==0)process.exit(smoke.status??1);
+            }
           }
           JS
       - name: Save real DEV verification evidence
@@ -220,6 +221,7 @@ jobs:
         with:
           name: firestore-real-dev
           path: |
+            artifacts/firestore-dev-smoke.json
             artifacts/structured-dev-preparation.json
             artifacts/structured-dev-integrity.json
             artifacts/firestore-dev-live.json

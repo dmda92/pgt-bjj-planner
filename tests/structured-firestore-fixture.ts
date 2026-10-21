@@ -5,7 +5,7 @@ const canonical=(v:any):any=>Array.isArray(v)?v.map(canonical):v&&typeof v==='ob
 export async function structuredFixture(){
  const original=await firestoreFixture(),docs=new Map<string,any>(),calls:{url:string;method:string;invocation?:string}[]=[];let n=0,losePublication=false,failStaging=false;
  const prefix=DEV_DATABASE_NAME+'/documents/',base='https://firestore.googleapis.com/v1/'+DEV_DATABASE_NAME;
- const transport:typeof original.transport=async(url,init={})=>{
+ const simulate:typeof original.transport=async(url,init={})=>{
   if(url==='https://api.github.com/repos/dmda92/pgt-bjj-data/contents/PGT/master_data/tecnics_base.json?ref=main'&&!new Headers(init.headers).get('User-Agent'))return Response.json({message:'User-Agent required'},{status:403});
   if(url==='https://api.github.com/repos/dmda92/pgt-bjj-data/contents/PGT/master_data/tecnics_base.json?ref=main')return Response.json({type:'file',sha:'bfb542c79a086ad6f6e8a9cd5cff0efd2e46635e',encoding:'base64',content:Buffer.from(JSON.stringify(template)).toString('base64').match(/.{1,60}/g)!.join('\n')});
   if(!url.startsWith(base))return original.transport(url,init);
@@ -23,7 +23,7 @@ export async function structuredFixture(){
   }
   if(path.endsWith(':listCollectionIds')){const parent=DEV_DATABASE_NAME+path.slice(0,-':listCollectionIds'.length);return Response.json({collectionIds:[...new Set([...docs.keys()].filter(k=>k.startsWith(parent+'/')).map(k=>k.slice(parent.length+1).split('/')[0]))]});}
   if(path.endsWith(':runQuery')){const parent=DEV_DATABASE_NAME+path.slice(0,-':runQuery'.length),q=JSON.parse(String(init.body)).structuredQuery,f=q.where?.fieldFilter;
-   return Response.json([...docs.values()].filter(d=>d.name.startsWith(parent+'/')&&(!q.from[0].collectionId||d.name.startsWith(parent+'/'+q.from[0].collectionId+'/'))&&d.name.split('/').length===parent.split('/').length+2&&(!f||JSON.stringify(d.fields[f.field.fieldPath])===JSON.stringify(f.value))).map(document=>({document})).reverse());}
+   return Response.json([...docs.values()].filter(d=>d.name.startsWith(parent+'/')&&(!q.from[0].collectionId||d.name.startsWith(parent+'/'+q.from[0].collectionId+'/'))&&d.name.split('/').length===parent.split('/').length+2&&(!f||JSON.stringify(d.fields[f.field.fieldPath])===JSON.stringify(f.value))).slice(0,q.limit??Infinity).map(document=>({document})).reverse());}
   const name=DEV_DATABASE_NAME+path;
   if((path.slice('/documents/'.length).split('/').length%2)===1){
    const direct=[...docs.values()].filter(d=>d.name.startsWith(name+'/')&&d.name.split('/').length===name.split('/').length+1);
@@ -32,5 +32,20 @@ export async function structuredFixture(){
   }
   if(docs.has(name))return Response.json(docs.get(name));return Response.json({error:{code:404,status:'NOT_FOUND'}},{status:404});
  };
- return {env:{...original.env,GITHUB_DATA_TOKEN:'isolated-reference-fixture'},docs,calls,transport,losePublicationAck(){losePublication=true;},failStage(){failStaging=true;}};
+ const usage={httpRequests:0,queries:0,estimatedReads:0,attemptedWrites:0,attemptedDeletes:0};
+ const transport:typeof original.transport=async(url,init={})=>{
+  if(!url.startsWith(base))return simulate(url,init);
+  usage.httpRequests++;
+  if(url.endsWith('/documents:commit')){const writes=JSON.parse(String(init.body)).writes;usage.attemptedWrites+=writes.filter((w:any)=>w.update).length;usage.attemptedDeletes+=writes.filter((w:any)=>w.delete).length;}
+  const response=await simulate(url,init);
+  if(!url.endsWith('/documents:commit')){
+   const value=await response.clone().json() as any;
+   if(url.includes(':runQuery')){usage.queries++;usage.estimatedReads+=Math.max(1,value.filter((v:any)=>v.document).length);}
+   else if(url.includes(':listCollectionIds'))usage.estimatedReads++;
+   else if(value.documents){usage.queries++;usage.estimatedReads+=Math.max(1,value.documents.length);}
+   else if(url.includes('/documents/'))usage.estimatedReads++;
+  }
+  return response;
+ };
+ return {env:{...original.env,GITHUB_DATA_TOKEN:'isolated-reference-fixture'},docs,calls,transport,metrics:()=>({...usage}),losePublicationAck(){losePublication=true;},failStage(){failStaging=true;}};
 }
