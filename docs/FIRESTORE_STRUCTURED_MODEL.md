@@ -70,4 +70,10 @@ No existe listener de Firebase Console ni permiso web abierto. Los cambios funci
 
 La PR se deja abierta hacia develop. Para completar las pruebas sin fusionarla, el workflow DEV permite exactamente feature/firestore-structured-model además de develop, con la misma cuenta/Worker/proyecto y verificación de HEAD. Ninguna otra feature puede desplegar. Las validaciones se ejecutan antes de inventario/limpieza/carga/QA. No se modificó el workflow PRO.
 
-prepare-structured-dev.mjs inventaría y borra solo colecciones heredadas autorizadas, con metadatos de control SQLite, precondiciones y lotes acotados. Preserva colecciones nativas ajenas; colecciones desconocidas o documentos cambiados detienen ese borrado. Carga el catálogo fijo original y recupera únicamente QA interrumpida identificada. verify-structured-dev.mjs comprueba después la ausencia de legado, QA y padres huérfanos. Los informes no contienen contraseñas ni datos de usuarios originales. La fuente privada del catálogo no se copia al repositorio público.
+prepare-structured-dev.mjs inventaría y borra solo colecciones heredadas autorizadas, con metadatos de control SQLite, precondiciones y lotes acotados. Preserva colecciones nativas ajenas; colecciones desconocidas o documentos cambiados detienen ese borrado. Carga el catálogo fijo original y recupera únicamente QA interrumpida identificada. verify-structured-dev.mjs comprueba después la ausencia de legado, marcadores y documentos sintéticos nativos, y padres huérfanos. La limpieza contempla también revisiones interrumpidas cuyos planes estén identificados por el marcador QA. Los informes no contienen contraseñas ni datos de usuarios originales. La fuente privada del catálogo no se copia al repositorio público.
+
+## Primera cuenta de entrenador tras la limpieza
+
+Una vez completada la inicialización real en DEV: registrar una cuenta propia desde la aplicación, abrir **pgt-bjj-dev → Firestore → users → correo**, cambiar únicamente perfil de alumno a entrenador, y cerrar/abrir sesión. No se crea una cuenta administrativa con contraseña conocida ni se migran cuentas originales. Las tres identidades QA se eliminan al terminar el ensayo.
+
+Estado operativo y bloqueo de Environment: [VALIDACION_FIRESTORE_STRUCTURED.md](VALIDACION_FIRESTORE_STRUCTURED.md). La implementación preparada no equivale a una limpieza o carga remota ejecutada.

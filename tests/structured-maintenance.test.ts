@@ -10,7 +10,8 @@ test('Maintenance validates DEV, inventories nested and orphan legacy data, cond
  await assert.rejects(m.step({project:'pgt-bjj-pro',mode:'inventory'}));await assert.rejects(walk(m,'delete','invented'));
  const before=await walk(m,'inventory');assert.equal(before.counts.pgt_resources,3);assert.equal(before.orphans.pgt_resources,1);
  const after=await walk(m,'delete',before.inventoryHash);assert.equal(after.deleted.pgt_resources,3);assert.ok(![...f.docs.keys()].some(k=>k.includes('/pgt_resources/')));assert.ok(await db.get('settings/preserved'));
- const all=await walk(m,'inventory',undefined,'all');assert.equal(all.counts.settings,1);assert.deepEqual(all.orphans,{});
+ await db.commit([db.update('users/pgt-dev-00000000-0000-4000-8000-000000000001-student@example.test',{perfil:'alumno'},null)]);
+ const all=await walk(m,'inventory',undefined,'all');assert.equal(all.qaOwnedDocuments,1);assert.equal(all.counts.settings,1);assert.deepEqual(all.orphans,{});
 });
 test('Unknown collections and documents modified after inventory stop destructive work',async()=>{
  const f=await structuredFixture(),db=new NativeFirestore(f.env,f.transport),m=new DevMaintenance(db,state());

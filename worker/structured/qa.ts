@@ -49,9 +49,14 @@ export async function cleanStructuredQA(repo: DomainRepositories, runId: string)
     let tasks = marker.data.pending as EntityRef[] | undefined;
     if (!tasks) {
         tasks = [];
+        const knownPlanIds = new Set<string>(marker.data.competitionIds || []);
         for (const mail of mails) {
             for (const p of await repo.list({ kind: 'plans', mail }))
                 tasks.push({ kind: p.kind, mail, planId: p.id });
+            for (const planId of knownPlanIds)
+                for (const kind of ['plan', 'structure'] as const)
+                    if (!tasks.some(ref => ref.kind === kind && ref.mail === mail && ref.planId === planId))
+                        tasks.push({ kind, mail, planId });
             for (const kind of ['techniques', 'comments', 'assignment', 'user'] as const)
                 tasks.push({ kind, mail });
         }
@@ -59,7 +64,7 @@ export async function cleanStructuredQA(repo: DomainRepositories, runId: string)
     if (tasks.length) {
         const ref = tasks.shift()!;
         await repo.cleanupEntity(ref);
-        await repo.db.commit([repo.db.update(marker.path, { ...marker.data, pending: tasks, cleaning: true }, marker)]);
+        await repo.db.commit([repo.db.update(marker.path, { ...marker.data, pending: tasks, cleaning: true, resources: marker.data.resources || tasks.length + 1 }, marker)]);
         return { status: 'SYNTHETIC_FIXTURE_CLEANING', remaining: tasks.length };
     }
     await repo.db.deleteRows([marker]);

@@ -18,4 +18,12 @@ La QA de navegador cubre alta pública, catálogo recibido, perfil persistente, 
 
 ## Evidencia remota
 
-Pendiente de la primera ejecución de la feature. Sustituir este estado por los IDs y resultados efectivos al completarse, sin confundir publicación con despliegue.
+Commit validado: d1ae7e7add4753545a9a654c45860a9727484fed. Ejecución push [39582999031](https://github.com/dmda92/pgt-bjj-planner/actions/runs/39582999031): validate y validate-online satisfactorios. La ejecución PR [39583006598](https://github.com/dmda92/pgt-bjj-planner/actions/runs/39583006598) también pasó. Se conservan las evidencias aisladas en [evidence/structured-isolated-2026-10-21](evidence/structured-isolated-2026-10-21/firestore-local-browser.json): tres contextos Chromium, 12 cambios, p50 934 ms/p95 942 ms, PDF, permisos, autenticación y limpieza satisfactorios. **Google interceptado; estas medidas no son latencias de Firestore DEV.** Las capturas emparejadas contienen únicamente el texto sintético de la descripción, sin publicar el catálogo privado.
+
+El job deploy-dev fue rechazado antes de iniciar un runner. Anotación literal de GitHub: `Branch "feature/firestore-structured-model" is not allowed to deploy to development due to environment protection rules.` La segunda anotación indica `The deployment was rejected or didn't satisfy other protection rules.` No se ejecutó Wrangler ni se realizó inventario, limpieza, carga del catálogo o integración real de esta implementación.
+
+Configuración que falta: en Settings → Environments → development → Deployment branches and tags, permitir la rama exacta **feature/firestore-structured-model**, conservando las otras protecciones y develop. Después volver a ejecutar el workflow DEV de la feature actual. No cambiar el Environment de producción ni fusionar la PR para sortear esta protección. El conector GitHub de esta sesión no permite administrar esas reglas y el navegador no dispone de sesión autenticada. No se intentó eludir la restricción.
+
+Comprobación final antes de documentar el bloqueo: main permanece en 3b8125cb362f665f908e4028d54514f65f00459a y develop en f0080f89889503cdd25cc7d2f0b42f183c423b40. La PR #12 está abierta y sin conflictos; no se fusionó. **La tarea sigue pendiente de operaciones y aceptación reales en DEV.**
+
+Revisión adicional independiente: runtime con cinco planes activos simultáneos dentro del presupuesto de 50 subrequests por petición; limpieza física también de revisiones de planes interrumpidos conocidos por el marcador QA. El inventario final preparado detecta documentos sintéticos nativos además de marcadores QA y padres huérfanos. Estas comprobaciones adicionales siguen siendo aisladas hasta desbloquear el Environment.

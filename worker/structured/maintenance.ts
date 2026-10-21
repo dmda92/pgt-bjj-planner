@@ -21,6 +21,7 @@ type Cursor = {
     jobId: string;
     scope: 'legacy' | 'all';
     orphans: Record<string, number>;
+    qaOwnedDocuments: number;
 };
 /** Administrative bounded traversal. Only legacy collections can be deleted. */
 export class DevMaintenance {
@@ -45,7 +46,7 @@ export class DevMaintenance {
                 await this.store.put('structured-maintenance-active', true);
             }
             const roots = collections.filter(c => body.scope === 'all' && body.mode === 'inventory' || legacy.has(c));
-            cursor = { mode: body.mode, queue: roots.reverse().map(path => ({ type: 'collection', path })), counts: {}, deleted: {}, hash: '', manualDEVUsers: 0, syntheticUsers: 0, jobId: crypto.randomUUID(), scope: body.scope === 'all' ? 'all' : 'legacy', orphans: {} };
+            cursor = { mode: body.mode, queue: roots.reverse().map(path => ({ type: 'collection', path })), counts: {}, deleted: {}, hash: '', manualDEVUsers: 0, syntheticUsers: 0, jobId: crypto.randomUUID(), scope: body.scope === 'all' ? 'all' : 'legacy', orphans: {}, qaOwnedDocuments: 0 };
         }
         if (cursor.mode !== body.mode || !Array.isArray(cursor.queue) || cursor.queue.length > 10000)
             throw new ApiError(400, 'DEV_CURSOR_INVALID');
@@ -66,6 +67,12 @@ export class DevMaintenance {
                     throw new ApiError(409, 'UNKNOWN_LEGACY_SUBCOLLECTION');
                 if (cursor.mode === 'inventory') {
                     cursor.counts[root] = (cursor.counts[root] || 0) + (f.exists ? 1 : 0);
+                    if (cursor.scope === 'all' && native.has(root) && f.exists) {
+                        const qa = /pgt-dev-[0-9a-f-]{36}-(?:trainer|student|other)@example\.test/;
+                        const competition = root === 'competitions' ? await this.db.get(f.path) : null;
+                        if (qa.test(f.path) || competition?.data.alumnos?.some((mail: string) => qa.test(mail)))
+                            cursor.qaOwnedDocuments = (cursor.qaOwnedDocuments || 0) + 1;
+                    }
                     if (!f.exists && children.length)
                         cursor.orphans[root] = (cursor.orphans[root] || 0) + 1;
                     const row = root === 'pgt_resources' ? await this.db.get(f.path) : null;
@@ -116,7 +123,7 @@ export class DevMaintenance {
                 await this.store.delete(key);
             await this.store.delete('structured-cleanup-approved');
         }
-        return { project: DEV_PROJECT, mode: cursor.mode, done, cursor: done ? undefined : cursor, counts: cursor.counts, deleted: cursor.deleted, inventoryHash: cursor.hash, orphans: cursor.orphans, manualDEVTestRegistrations: cursor.manualDEVUsers, syntheticUsers: cursor.syntheticUsers, legacyCollectionsRemaining: done && cursor.mode === 'delete' ? [] : undefined };
+        return { project: DEV_PROJECT, mode: cursor.mode, done, cursor: done ? undefined : cursor, counts: cursor.counts, deleted: cursor.deleted, inventoryHash: cursor.hash, orphans: cursor.orphans, qaOwnedDocuments: cursor.qaOwnedDocuments || 0, manualDEVTestRegistrations: cursor.manualDEVUsers, syntheticUsers: cursor.syntheticUsers, legacyCollectionsRemaining: done && cursor.mode === 'delete' ? [] : undefined };
     }
     async ready() { await this.store.delete('structured-maintenance-active'); }
 }
