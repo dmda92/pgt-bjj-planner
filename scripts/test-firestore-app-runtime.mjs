@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {build} from 'esbuild';
-import {readFile} from 'node:fs/promises';
+import {limitedRuntimePlugin,limitedOutbound} from '../tests/limited-cloudflare-runtime.mjs';
 import WebSocket from 'ws';
 import {Miniflare,convertV4MiniflareOptions,kCurrentWorker} from 'miniflare';
 import {structuredFixture} from '../tests/structured-firestore-fixture.ts';
@@ -8,17 +8,10 @@ import {generatePlan} from '../src/domain/planner.ts';
 import {madridDate,updateFuturePlanText} from '../src/domain/plan-text-updates.ts';
 import {updateFutureDeletions} from '../src/domain/plan-continuity.ts';
 const f=await structuredFixture(),origin='https://pgt-github-probe-dev.david-dzm5.workers.dev';
-// Test-only instrumentation groups intercepted HTTP calls by native invocation.
-// No trace header or source mutation is present in the deployed bundle.
-const tracePlugin={name:'qa-io-invocations',setup(build){build.onLoad({filter:/worker\/structured\/firestore\.ts$/},async({path})=>{
- let source=await readFile(path,'utf8');
- assert.ok(source.includes('export class NativeFirestore {')&&source.includes('beginOperation() {')&&source.includes("Authorization: 'Bearer ' + token,"));
- source=source.replace('export class NativeFirestore {','export class NativeFirestore { private __qaIo=crypto.randomUUID();').replace('beginOperation() {','beginOperation() { this.__qaIo=crypto.randomUUID();').replace("Authorization: 'Bearer ' + token,","'X-QA-IO-Invocation': this.__qaIo, Authorization: 'Bearer ' + token,");
- return {contents:source,loader:'ts'};
-});}};
-function checkBudgets(){const counts=new Map();for(const call of f.calls){assert.ok(call.invocation,'Missing test invocation trace');counts.set(call.invocation,(counts.get(call.invocation)||0)+1);}const highest=Math.max(0,...counts.values());assert.ok(highest+5<=50,'Native invocation exceeded Free budget including OAuth/RPC reserve: '+highest);return highest;}
-const bundle=await build({plugins:[tracePlugin],entryPoints:['worker/dev.ts'],bundle:true,write:false,external:['cloudflare:workers'],format:'esm',target:'es2022'});
-const runtime=new Miniflare(convertV4MiniflareOptions({serviceBindings:{DOMAIN_IO:{name:kCurrentWorker,entrypoint:'DomainIO'}},modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-13',durableObjects:{SECURITY:{className:'ProbeSecurity',useSQLite:true}},bindings:{...f.env,ALLOWED_ORIGINS:origin},outboundService:async request=>f.transport(request.url,{method:request.method,headers:request.headers,body:['GET','HEAD'].includes(request.method)?undefined:await request.text()})}));
+const outbound=limitedOutbound(f.transport);
+function checkBudgets(){const highest=Math.max(0,...outbound.counts.values());assert.ok(highest<=32);return highest;}
+const bundle=await build({plugins:[limitedRuntimePlugin],entryPoints:['worker/dev.ts'],bundle:true,write:false,external:['cloudflare:workers'],format:'esm',target:'es2022'});
+const runtime=new Miniflare(convertV4MiniflareOptions({modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-13',durableObjects:{SECURITY:{className:'ProbeSecurity',useSQLite:true},DOMAIN_IO:{className:'DomainIO',useSQLite:true}},bindings:{...f.env,ALLOWED_ORIGINS:origin},outboundService:request=>outbound.fetch(request)}));
 let requests=0,maxSubrequests=0;const sockets=[];
 async function call(path,method='GET',body,token='',status=200){
  const r=await runtime.dispatchFetch('http://localhost'+path,{method,headers:{Origin:origin,'X-PGT-Client':'firestore-dev-structured-v2','CF-Connecting-IP':'synthetic-'+requests++,...(token?{Authorization:'Bearer '+token}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
@@ -89,6 +82,6 @@ try{
  assert.ok(!JSON.stringify([...f.docs]).includes(runId),'QA user/credential/revision remains');
  assert.ok(!JSON.stringify([...f.docs]).includes(competition.planId),'QA plan reference/tombstone remains');
  assert.ok(f.calls.every(c=>!c.url.includes('api.github.com'))); // Only the separately intercepted fixed reference import reads GitHub.
- console.log('Maximum Firestore requests per invocation (+5 OAuth/RPC reserve): '+maxSubrequests);
+ console.log('Maximum actual outbound DO HTTP calls (OAuth included, forced PBKDF2 fallback): '+maxSubrequests);
  console.log('DEV workerd + SQLite + Firestore protocol: login/roles/isolation, two authorized sockets, no third-user leak, exact generated plan, text/deletion recalculation and protected history, CAS, unassignment, one-use tickets/logout revocation PASS. Google transport intercepted; not remote Firestore.');
 }finally{for(const ws of sockets)try{ws.close();}catch{}await runtime.dispose();}

@@ -148,7 +148,7 @@ export class StructuredAppApi {
             }
             const path: EntityRef = { kind: "plan", mail, planId: file.id };
             for (let attempt = 0; attempt < 3; attempt++) {
-                const current = await this.repositories.read<TrainingPlan>(path);
+                const current = await this.repositories.read<TrainingPlan>(path,attempt>0);
                 if (!current || current.data.mail !== mail)
                     return;
                 loaded.set(file.id, current);
@@ -156,7 +156,7 @@ export class StructuredAppApi {
                     await mark(current.sha);
                     return;
                 }
-                const [t, c] = attempt ? await Promise.all([this.repositories.read<Techniques>({ kind: "techniques", mail }), this.repositories.read<Comments>({ kind: "comments", mail })]) : [techniques, comments];
+                const [t, c] = attempt ? await Promise.all([this.repositories.read<Techniques>({ kind: "techniques", mail },true), this.repositories.read<Comments>({ kind: "comments", mail },true)]) : [techniques, comments];
                 if (!t || !c)
                     return;
                 const next = updateFuturePlanText(updateFutureDeletions(current.data, t.data, c.data, today), t.data, c.data, today);
@@ -262,7 +262,7 @@ export class StructuredAppApi {
         plan.appliedCommentUpdates = { ...notes.data.commentUpdates };
         try {
             const sha = await this.repositories.write(path, plan, null);
-            const current = await this.repositories.read<Catalog>({ kind: "catalog" });
+            const current = await this.repositories.read<Catalog>({ kind: "catalog" },true);
             if (!current?.data.plans.some(c => c.planId === id && c.alumnos.includes(mail)) || current.data.deletedPlanIds.includes(id)) {
                 const saved = await this.repositories.read<TrainingPlan>(path);
                 if (saved?.sha === sha)

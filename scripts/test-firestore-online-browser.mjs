@@ -1,3 +1,4 @@
+import {limitedRuntimePlugin,limitedOutbound} from '../tests/limited-cloudflare-runtime.mjs';
 import {createServer} from 'node:http';
 import {connect} from 'node:net';
 import {readFile} from 'node:fs/promises';
@@ -7,8 +8,9 @@ import {build} from 'esbuild';
 import {Miniflare,convertV4MiniflareOptions,kCurrentWorker} from 'miniflare';
 import {structuredFixture} from '../tests/structured-firestore-fixture.ts';
 const f=await structuredFixture(),devOrigin='https://pgt-github-probe-dev.david-dzm5.workers.dev';
-const bundle=await build({entryPoints:['worker/dev.ts'],bundle:true,write:false,external:['cloudflare:workers'],format:'esm',target:'es2022'});
-const runtime=new Miniflare(convertV4MiniflareOptions({serviceBindings:{DOMAIN_IO:{name:kCurrentWorker,entrypoint:'DomainIO'}},modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-13',durableObjects:{SECURITY:{className:'ProbeSecurity',useSQLite:true}},bindings:{...f.env,ALLOWED_ORIGINS:devOrigin},outboundService:async r=>f.transport(r.url,{method:r.method,headers:r.headers,body:['GET','HEAD'].includes(r.method)?undefined:await r.text()})}));
+const outbound=limitedOutbound(f.transport);
+const bundle=await build({plugins:[limitedRuntimePlugin],entryPoints:['worker/dev.ts'],bundle:true,write:false,external:['cloudflare:workers'],format:'esm',target:'es2022'});
+const runtime=new Miniflare(convertV4MiniflareOptions({modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-13',durableObjects:{SECURITY:{className:'ProbeSecurity',useSQLite:true},DOMAIN_IO:{className:'DomainIO',useSQLite:true}},bindings:{...f.env,ALLOWED_ORIGINS:devOrigin},outboundService:async r=>f.transport(r.url,{method:r.method,headers:r.headers,body:['GET','HEAD'].includes(r.method)?undefined:await r.text()})}));
 const runtimeURL=await runtime.ready;
 const connections=new Set();
 const server=createServer(async(req,res)=>{
