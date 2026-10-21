@@ -8,7 +8,10 @@ async function traverse(mode,scope='legacy',inventoryHash){let cursor,result;for
 const completeInventory=await traverse('inventory','all');console.log(JSON.stringify({phase:'complete_inventory',counts:completeInventory.counts,orphans:completeInventory.orphans}));
 const inventory=await traverse('inventory');
 console.log(JSON.stringify({phase:'legacy_inventory',counts:inventory.counts,orphans:inventory.orphans,manualDEVTestRegistrations:inventory.manualDEVTestRegistrations,syntheticUsers:inventory.syntheticUsers,inventoryHash:inventory.inventoryHash}));
+await mkdir('artifacts',{recursive:true});await writeFile('artifacts/structured-dev-preparation.json',JSON.stringify({project:'pgt-bjj-dev',phase:'INVENTORIED',completeInventory:completeInventory.counts,legacyInventory:inventory.counts,inventoryHash:inventory.inventoryHash},null,2));
 const cleanup=await traverse('delete','legacy',inventory.inventoryHash);assert.deepEqual(cleanup.legacyCollectionsRemaining,[]);
+console.log(JSON.stringify({phase:'legacy_cleanup_completed',deleted:cleanup.deleted,legacyCollectionsRemaining:cleanup.legacyCollectionsRemaining}));
+await writeFile('artifacts/structured-dev-preparation.json',JSON.stringify({project:'pgt-bjj-dev',phase:'LEGACY_CLEANED_CATALOG_PENDING',legacyInventory:inventory.counts,deleted:cleanup.deleted,inventoryHash:inventory.inventoryHash,legacyCollectionsRemaining:[]},null,2));
 const reference=await call('/api/dev/structured-bootstrap',{});assert.equal(reference.project,'pgt-bjj-dev');assert.equal(reference.sourceBlob,'bfb542c79a086ad6f6e8a9cd5cff0efd2e46635e');assert.equal(reference.positions,17);assert.equal(reference.techniques,36);assert.equal(reference.orderAndContentVerified,true);
 // Recover only provisioned QA runs from interrupted prior attempts, preserving
 // all unrelated DEV users and their data in the new model.

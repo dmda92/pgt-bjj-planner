@@ -9,9 +9,9 @@ const canonical = (v: any): any => Array.isArray(v) ? v.map(canonical) : v && ty
 export async function initializeReference(repo: DomainRepositories, token: string, transport: typeof fetch = (input, init) => fetch(input, init)) {
     if (!token)
         throw new ApiError(503, 'REFERENCE_CATALOG_TOKEN_REQUIRED');
-    const response = await transport('https://api.github.com/repos/dmda92/pgt-bjj-data/contents/' + CATALOG_PATH + '?ref=main', { headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github.object+json', 'X-GitHub-Api-Version': '2026-03-10' }, redirect: 'manual', signal: AbortSignal.timeout(15000) });
+    const response = await transport('https://api.github.com/repos/dmda92/pgt-bjj-data/contents/' + CATALOG_PATH + '?ref=main', { headers: { 'User-Agent': 'PGT-BJJ-Planner-DEV-Catalog', Authorization: 'Bearer ' + token, Accept: 'application/vnd.github.object+json', 'X-GitHub-Api-Version': '2026-03-10' }, redirect: 'manual', signal: AbortSignal.timeout(15000) });
     if (!response.ok)
-        throw new ApiError(503, 'REFERENCE_CATALOG_READ_FAILED');
+        throw new ApiError(503, 'REFERENCE_CATALOG_READ_HTTP_' + response.status);
     const blob = await response.json() as any;
     if (blob.sha !== CATALOG_BLOB || blob.type !== 'file' || blob.encoding !== 'base64' || !blob.content)
         throw new ApiError(409, 'REFERENCE_CATALOG_REVISION_REQUIRES_AUDIT');
