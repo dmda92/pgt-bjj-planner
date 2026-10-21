@@ -87,7 +87,9 @@ try{
  let updated=await snapshot(),expected=updateFuturePlanText(plan,updated.techniques.data,updated.comments.data,today);exact(updated.plans.find(p=>p.data.planId===plan.planId).data.sessions,expected.sessions);checks.push('Automatic comment reception and exact future text update');
  const oldPlan=updated.plans.find(p=>p.data.planId===plan.planId).data,deleted=structuredClone(updated.techniques.data);deleted.positions[0].tecnicas.shift();
  await call(s,endpoint(student)+'/techniques','PUT',{data:deleted,sha:updated.techniques.sha});updated=await snapshot();const after=updated.plans.find(p=>p.data.planId===plan.planId).data;
- const recalc=updateFuturePlanText(updateFutureDeletions(oldPlan,updated.techniques.data,updated.comments.data,today),updated.techniques.data,updated.comments.data,today);exact(after.sessions,recalc.sessions);exact(after.continuity,recalc.continuity);exact(aft…70 tokens truncated…eted,sha:assigned.techniques.sha},409);checks.push('Stale write rejected');
+ const recalc=updateFuturePlanText(updateFutureDeletions(oldPlan,updated.techniques.data,updated.comments.data,today),updated.techniques.data,updated.comments.data,today);exact(after.sessions,recalc.sessions);exact(after.continuity,recalc.continuity);exact(after.sessions.filter(v=>v.date<=today),plan.sessions.filter(v=>v.date<=today));checks.push('Exact deletion recalculation and protected past/today');
+ // Stale write must fail; it cannot overwrite the confirmed source.
+ await call(s,endpoint(student)+'/techniques','PUT',{data:deleted,sha:assigned.techniques.sha},409);checks.push('Stale write rejected');
  // Network interruption: no durable mutation can be queued; reconnect reloads truth.
  await s.context.setOffline(true);await poll(()=>s.page.getByText('Sin conexión · copia local de consulta',{exact:true}).isVisible(),'Offline state');
  const previous=await editor.inputValue();await editor.fill('MUST_NOT_BE_STORED');await wait(1000);await s.context.setOffline(false);
