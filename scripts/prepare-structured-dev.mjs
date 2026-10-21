@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {mkdir,writeFile} from 'node:fs/promises';
 const origin='https://pgt-github-probe-dev.david-dzm5.workers.dev';
-const allowed=['refs/heads/develop','refs/heads/feature/firestore-structured-model'];
+const allowed=['refs/heads/develop'];
 if(!allowed.includes(process.env.GITHUB_REF)||!process.env.CLOUDFLARE_API_TOKEN)throw Error('AUTHORIZED_STRUCTURED_DEV_PIPELINE_REQUIRED');
 async function call(path,body){const r=await fetch(origin+path,{method:'POST',headers:{Origin:origin,Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(60000)});let value;try{value=await r.json();}catch{throw Error('DEV administrative response is not JSON');}if(!r.ok)throw Error('DEV administrative operation failed: '+r.status+' '+(value.error||'UNKNOWN'));return value;}
 async function traverse(mode,scope='legacy',inventoryHash){let cursor,result;for(let n=0;n<5000;n++){result=await call('/api/dev/structured-maintenance',{project:'pgt-bjj-dev',mode,scope,inventoryHash,cursor});if(result.done)return result;cursor=result.cursor;}throw Error('DEV traversal exceeded bound');}

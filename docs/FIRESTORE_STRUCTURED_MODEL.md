@@ -68,7 +68,7 @@ No existe listener de Firebase Console ni permiso web abierto. Los cambios funci
 
 ## Operación y revisión
 
-La PR se deja abierta hacia develop. Para completar las pruebas sin fusionarla, el workflow DEV permite exactamente feature/firestore-structured-model además de develop, con la misma cuenta/Worker/proyecto y verificación de HEAD. Ninguna otra feature puede desplegar. Las validaciones se ejecutan antes de inventario/limpieza/carga/QA. No se modificó el workflow PRO.
+Las features nacen de main y se integran mediante PR en develop. Solo develop puede desplegar en DEV, con comprobación de cuenta, Worker, proyecto y HEAD. El propietario autorizó explícitamente fusionar la PR #12 en develop el 21/10/2026 para completar el despliegue y las pruebas reales. Se retiró la excepción incorrecta de despliegue directo de la feature; no se modifican las protecciones del Environment. Las validaciones se ejecutan antes de inventario/limpieza/carga/QA. No se modificó el workflow PRO.
 
 prepare-structured-dev.mjs inventaría y borra solo colecciones heredadas autorizadas, con metadatos de control SQLite, precondiciones y lotes acotados. Preserva colecciones nativas ajenas; colecciones desconocidas o documentos cambiados detienen ese borrado. Carga el catálogo fijo original y recupera únicamente QA interrumpida identificada. verify-structured-dev.mjs comprueba después la ausencia de legado, marcadores y documentos sintéticos nativos, y padres huérfanos. La limpieza contempla también revisiones interrumpidas cuyos planes estén identificados por el marcador QA. Los informes no contienen contraseñas ni datos de usuarios originales. La fuente privada del catálogo no se copia al repositorio público.
 

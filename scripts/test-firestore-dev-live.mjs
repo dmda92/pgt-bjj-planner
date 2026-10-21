@@ -11,7 +11,7 @@ const realOrigin='https://pgt-github-probe-dev.david-dzm5.workers.dev';
 const local=process.env.PGT_LOCAL_QA_ORIGIN;
 if(local&&!/^http:\/\/127\.0\.0\.1:\d+$/.test(local))throw Error('LOCAL_QA_TARGET_INVALID');
 const origin=local||realOrigin;
-if(!local&&(!['refs/heads/develop','refs/heads/feature/firestore-structured-model'].includes(process.env.GITHUB_REF)||!process.env.CLOUDFLARE_API_TOKEN))throw Error('LIVE_QA_REQUIRES_AUTHORIZED_DEV_PIPELINE');
+if(!local&&(process.env.GITHUB_REF!=='refs/heads/develop'||!process.env.CLOUDFLARE_API_TOKEN))throw Error('LIVE_QA_REQUIRES_AUTHORIZED_DEV_PIPELINE');
 const runId=crypto.randomUUID(),password=randomBytes(32).toString('base64url');
 console.log('::add-mask::'+password);
 if(local){const b=await fetch(origin+'/api/dev/structured-bootstrap',{method:'POST',headers:{Origin:realOrigin,Authorization:'Bearer synthetic-deployment-token','Content-Type':'application/json'},body:'{}'});assert.equal(b.status,200,await b.text());}

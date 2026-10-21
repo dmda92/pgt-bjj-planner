@@ -62,3 +62,8 @@ users/{correo} permite localizar mail, perfil, nombre y demás campos sin decodi
 Fuente autorizada exclusiva PGT/master_data/tecnics_base.json del repositorio privado dmda92/pgt-bjj-data, revisión bfb542c79a086ad6f6e8a9cd5cff0efd2e46635e, 17 posiciones y 36 técnicas. Lectura del catálogo permitida; no leer users_data ni copiar cuentas. No publicar el catálogo privado en el repo público: inicialización del Worker con lectura fija del secreto GitHub existente y huella/informe sin datos personales.
 
 Antes de borrar: validar pgt-bjj-dev/(default), inventariar todas las colecciones/subcolecciones y cantidades, clasificar finalidad y perfiles. El permiso cubre los usuarios de prueba creados en DEV; cuentas o contenido de origen real no identificado requieren detener únicamente ese borrado. Nunca borrar a ciegas una colección desconocida. Limpieza paginada y condicionada, registro sin credenciales, inventario final cero de estructuras antiguas y huérfanos. Rehacer pruebas de alta/catálogo/roles/tiempo real después. La PR debe quedar abierta para revisión del propietario.
+
+
+## Corrección de flujo — 21/10/2026
+
+El propietario prohíbe el despliegue directo de feature/* y autoriza explícitamente fusionar la PR #12 en develop para desplegar y completar DEV. Se elimina la excepción incorrecta del workflow y de los scripts administrativos; las protecciones del Environment permanecen intactas. Esta autorización posterior sustituye para PR #12 la condición inicial de dejarla sin fusionar, sin autorizar main ni PRO.
