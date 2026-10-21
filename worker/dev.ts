@@ -1,6 +1,7 @@
+import {ExecutionBudget,budgetedFirestoreRequest,type BudgetSetup,type BudgetPhase} from './structured/execution-budget.ts';
 import {DurableObject} from 'cloudflare:workers';
 import {SessionReplica,sessionKey,type SessionChange} from './structured/session-store.ts';
-import {privateTransport,privateExecutor,type PrivateIOBinding,type RealtimeSession,type RealtimeChange} from './structured/private-io.ts';
+import {privateTransport,privateExecutor,budgetExecutor,type GlobalBudgetContext,type PrivateIOBinding,type RealtimeSession,type RealtimeChange} from './structured/private-io.ts';
 import {ApiError,fingerprint,opaqueToken,jsonBody,onlyFields} from './security.ts';
 import {DomainRepositories} from './structured/repositories.ts';
 import {DevMaintenance} from './structured/maintenance.ts';
@@ -19,14 +20,26 @@ export default {async fetch(request:Request,env:DevEnv){
  const response=await env.SECURITY.get(env.SECURITY.idFromName('github-probe')).fetch(request);
  return stamped(response,'X-PGT-Worker-Build',env.DEV_BUILD_SHA||'local');
 }};
-/** Private ephemeral DOs: a fresh execution context, no SQLite/business cache.
+/** Private domain DOs: fresh execution contexts without a business cache.
+ * A dedicated test-meter instance stores only transactional budget metadata.
  * Password KDF retains the DO CPU allowance. RPC returns materialized bytes,
  * never a response stream whose owner has already been disposed. */
 export class DomainIO extends DurableObject<DevEnv> {
  private cloud?:DomainRepositories;
- private repositories(){return this.cloud ||= new DomainRepositories(this.env,privateTransport(this.env.DOMAIN_IO,this.env.DEV_BUILD_SHA||'local'));}
- async realtime(sessions:RealtimeSession[],recover=false){
-  requireDev(this.env);const cloud=this.repositories();cloud.beginOperation();
+ private cloudBudgetKey='';
+ private repositories(budget?:GlobalBudgetContext){
+  const key=budget?budget.id+':'+budget.phase:'ordinary';
+  if(key!==this.cloudBudgetKey){this.cloud=undefined;this.cloudBudgetKey=key;}
+  return this.cloud ||= new DomainRepositories(this.env,privateTransport(this.env.DOMAIN_IO,this.env.DEV_BUILD_SHA||'local',budget));
+ }
+ private budget(){requireDev(this.env);return new ExecutionBudget({transaction:action=>this.ctx.storage.transaction(tx=>action(tx))});}
+ budgetOpen(setup:BudgetSetup){if(setup.build!==(this.env.DEV_BUILD_SHA||'local'))throw new ApiError(409,'FIRESTORE_TEST_BUILD_MISMATCH');return this.budget().open(setup);}
+ budgetReserve(phase:BudgetPhase,request:{reads?:number;writes?:number;deletes?:number;queryCeiling?:number}){return this.budget().reserve(phase,request);}
+ budgetSettle(id:string,actualReads?:number,uncertain=false){return this.budget().settle(id,actualReads,uncertain);}
+ budgetStatus(){return this.budget().status();}
+ budgetClose(){return this.budget().close();}
+ async realtime(sessions:RealtimeSession[],recover=false,budget?:GlobalBudgetContext){
+  requireDev(this.env);const cloud=this.repositories(budget);cloud.beginOperation();
   try{
    if(recover)await cloud.collectRetired();const changes=await cloud.changes(),actors=[];
    for(const {sessionHash,session} of sessions){
@@ -36,14 +49,14 @@ export class DomainIO extends DurableObject<DevEnv> {
    return {build:this.env.DEV_BUILD_SHA||'local',changes,actors};
   }finally{cloud.endOperation();}
  }
- async acknowledge(changes:RealtimeChange[]){
+ async acknowledge(changes:RealtimeChange[],budget?:GlobalBudgetContext){
   requireDev(this.env);if(changes.some(c=>!/^realtime_events\/[^/]+$/.test(c.name)))throw new ApiError(400,'REALTIME_ACK_SCOPE_INVALID');
-  const cloud=this.repositories();cloud.beginOperation();try{await cloud.acknowledge(changes);}finally{cloud.endOperation();}
+  const cloud=this.repositories(budget);cloud.beginOperation();try{await cloud.acknowledge(changes);}finally{cloud.endOperation();}
  }
  manifest(){requireDev(this.env);return {build:this.env.DEV_BUILD_SHA||'local',revision:RUNTIME_REVISION};}
- async run(request:Request,entries:[string,unknown][]){
+ async run(request:Request,entries:[string,unknown][],budget?:GlobalBudgetContext){
   requireDev(this.env);
-  const sessions=new SessionReplica(entries),cloud=this.repositories();cloud.beginOperation();
+  const sessions=new SessionReplica(entries),cloud=this.repositories(budget);cloud.beginOperation();
   try{
    let response:Response,stage='DOMAIN_START';
    try{response=await new StructuredAppApi(sessions,cloud,undefined,value=>stage=value).handle(request,new URL(request.url));}
@@ -52,13 +65,16 @@ export class DomainIO extends DurableObject<DevEnv> {
   }finally{cloud.endOperation();}
  }
  private outgoing=0;
- async request(input:string,init:RequestInit={}){
+ async request(input:string,init:RequestInit={},budget?:GlobalBudgetContext){
   requireDev(this.env);
   // This capability is private and cannot act as a generic HTTP proxy.
   const url=new URL(input);
   if(!((url.origin==='https://firestore.googleapis.com'&&(url.pathname==='/v1/projects/pgt-bjj-dev/databases/(default)'||url.pathname.startsWith('/v1/projects/pgt-bjj-dev/databases/(default)/')))||(url.origin==='https://oauth2.googleapis.com'&&url.pathname==='/token')))throw new ApiError(403,'PRIVATE_IO_TARGET_FORBIDDEN');
   if(++this.outgoing>32)throw new ApiError(503,'PRIVATE_IO_BUDGET_EXCEEDED');
-  const response=await fetch(input,{...init,redirect:'manual',signal:AbortSignal.timeout(20000)});
+  const send=(url:string,options:RequestInit)=>fetch(url,{...options,redirect:'manual',signal:AbortSignal.timeout(20000)});
+  const response=budget&&url.origin==='https://firestore.googleapis.com'
+    ?await budgetedFirestoreRequest(budgetExecutor(this.env.DOMAIN_IO,budget.id),budget.phase,input,init,send)
+    :await send(input,init);
   return {body:await response.arrayBuffer(),status:response.status,headers:wireHeaders(response.headers),build:this.env.DEV_BUILD_SHA||'local'};
  }
 }

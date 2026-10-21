@@ -59,6 +59,8 @@ jobs:
         run: npm run test:runtime
       - name: DEV Firestore diagnostic runtime (isolated)
         run: node scripts/test-firestore-preflight-runtime.mjs
+      - name: Global Firestore test budget across private executors (isolated)
+        run: node scripts/test-execution-budget-runtime.mjs
       - name: DEV Firestore application and realtime runtime (isolated)
         run: node scripts/test-firestore-app-runtime.mjs
       - name: Install Chromium
