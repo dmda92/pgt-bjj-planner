@@ -53,7 +53,7 @@ export class ProbeSecurity {
     return this.devState.blockConcurrencyWhile(async()=>{const store=this.cloud();store.beginOperation();try{return await action();}finally{store.endOperation();}});
   }
   private async online(request:Request):Promise<Response>{
-    const url=new URL(request.url),path=url.pathname;
+    const url=new URL(request.url),path=url.pathname;let operationStage='GUARD';
     try{
       requireDev(this.devEnv);
       const origin=request.headers.get('Origin');
@@ -80,15 +80,19 @@ export class ProbeSecurity {
       // recoverable even if the isolate dies between commit and publication.
       await this.devState.storage.setAlarm(Date.now()+15000);
       try{
+        if(request.method!=='GET')return await new StructuredAppApi(this.devState.storage,this.cloud()).handle(request,url);
+        operationStage='QUERY_RUN';
         const entries:[string,unknown][]=[...await this.devState.storage.list({prefix:'app-session:'}),...await this.devState.storage.list({prefix:'plan-update:'})];
         using result=await this.devEnv.DOMAIN_IO.run(request,entries);
+        operationStage='QUERY_RESULT';
         const changes=await result.getChanges();
         if(changes.some(change=>!sessionKey(change.key)))throw new ApiError(500,'PRIVATE_SESSION_KEY_INVALID');
         if(changes.length)await this.devState.storage.transaction(async transaction=>{for(const change of changes){if(change.deleted)await transaction.delete(change.key);else await transaction.put(change.key,change.value);}});
+        operationStage='QUERY_RESPONSE';
         const response=await result.getResponse();
         return new Response(await response.arrayBuffer(),{status:response.status,headers:response.headers});
       }finally{await this.flush().catch(error=>console.warn('PGT_REALTIME_RETRY_SCHEDULED',error instanceof ApiError?error.message:'RUNTIME_ERROR')); }
-    }catch(error){return Response.json({error:error instanceof ApiError?error.message:'FIRESTORE_DEV_UNAVAILABLE',...(error instanceof ApiError&&error.size?{size:error.size}:{})},{status:error instanceof ApiError?error.status:503,headers:{'Cache-Control':'no-store'}});}
+    }catch(error){const message=error instanceof Error?error.message:'';const reason=/CPU|resource.*limit|exceed.*resource/i.test(message)?'RESOURCE_LIMIT':/serial|clone|transfer/i.test(message)?'SERIALIZATION':/disconnect|cancel/i.test(message)?'DISCONNECTED':/different request|I\/O.*context|I\/O on behalf/i.test(message)?'IO_CONTEXT':/loop limit|too many.*(worker|subrequest)/i.test(message)?'CALL_LIMIT':/entrypoint|binding|not.*function/i.test(message)?'BINDING':'RUNTIME';return Response.json({error:error instanceof ApiError?error.message:'FIRESTORE_DEV_UNAVAILABLE_'+operationStage+'_'+reason,...(error instanceof ApiError&&error.size?{size:error.size}:{})},{status:error instanceof ApiError?error.status:503,headers:{'Cache-Control':'no-store'}});}
   }
   private async limit(request:Request,path:string){
     const limits:[string,number][]=[['global',600],['ip:'+await fingerprint(request.headers.get('CF-Connecting-IP')||'local'),180]];
