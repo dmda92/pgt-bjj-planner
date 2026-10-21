@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {FirestoreStorage} from '../worker/firestore-storage.ts';
+import {FirestoreStorage} from './legacy-file-store.ts';
 import {firestoreFixture} from './firestore-fixture.ts';
 const path='PGT/users_data/pgt-dev-storage@example.test/tecnics.json';
 test('Firestore preserves ordered JSON >1MiB, UTF-8, hashes, listing and tombstones',async()=>{

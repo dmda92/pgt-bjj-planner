@@ -2,18 +2,18 @@ import assert from 'node:assert/strict';
 import {build} from 'esbuild';
 import WebSocket from 'ws';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
-import {firestoreFixture} from '../tests/firestore-fixture.ts';
+import {structuredFixture} from '../tests/structured-firestore-fixture.ts';
 import {generatePlan} from '../src/domain/planner.ts';
 import {madridDate,updateFuturePlanText} from '../src/domain/plan-text-updates.ts';
 import {updateFutureDeletions} from '../src/domain/plan-continuity.ts';
-const f=await firestoreFixture(),origin='https://pgt-github-probe-dev.david-dzm5.workers.dev';
+const f=await structuredFixture(),origin='https://pgt-github-probe-dev.david-dzm5.workers.dev';
 const bundle=await build({entryPoints:['worker/dev.ts'],bundle:true,write:false,format:'esm',target:'es2022'});
 const runtime=new Miniflare(convertV4MiniflareOptions({modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-13',durableObjects:{SECURITY:{className:'ProbeSecurity',useSQLite:true}},bindings:{...f.env,ALLOWED_ORIGINS:origin},outboundService:async request=>f.transport(request.url,{method:request.method,headers:request.headers,body:['GET','HEAD'].includes(request.method)?undefined:await request.text()})}));
 let requests=0;const sockets=[];
 async function call(path,method='GET',body,token='',status=200){
  const started=f.calls.length;
- const r=await runtime.dispatchFetch('http://localhost'+path,{method,headers:{Origin:origin,'X-PGT-Client':'firestore-dev-v1','CF-Connecting-IP':'synthetic-'+requests++,...(token?{Authorization:'Bearer '+token}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
- assert.ok(f.calls.length-started<=50,'DEV runtime exceeded 50 subrequests: '+method+' '+path);
+ const r=await runtime.dispatchFetch('http://localhost'+path,{method,headers:{Origin:origin,'X-PGT-Client':'firestore-dev-structured-v2','CF-Connecting-IP':'synthetic-'+requests++,...(token?{Authorization:'Bearer '+token}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
+ assert.ok(f.calls.length-started<=50,'DEV runtime exceeded 50 subrequests ('+(f.calls.length-started)+'): '+method+' '+path);
  const v=await r.json();assert.equal(r.status,status,method+' '+path+' '+JSON.stringify(v));return v;
 }
 async function socket(token){
@@ -27,8 +27,10 @@ async function changed(w,after){for(let n=0;n<100;n++){if(w.messages.slice(after
 try{
  const obsolete=await runtime.dispatchFetch('http://localhost/api/app/login',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:'{}'});assert.equal(obsolete.status,426);
  const runId=crypto.randomUUID(),password='synthetic-runtime-password-more-than-24';
- const setup=await call('/api/dev/synthetic-fixture','POST',{runId,password},'synthetic-deployment-token');
+ await call('/api/dev/structured-bootstrap','POST',{},'synthetic-deployment-token');
+ let setup;for(let n=0;n<4;n++){setup=await call('/api/dev/synthetic-fixture','POST',{runId,password},'synthetic-deployment-token');if(setup.status==='SYNTHETIC_FIXTURE_CREATED')break;}assert.equal(setup.status,'SYNTHETIC_FIXTURE_CREATED');
  const [trainer,student,other]=setup.users.map(u=>u.mail),login=mail=>call('/api/app/login','POST',{mail,password});
+ await call('/api/app/register','POST',{mail:other,password,confirm:password,nombre:'Registro público',apellidos:'QA'},'',201);
  const [t,s,o]=await Promise.all([login(trainer),login(student),login(other)]);
  const sw=await socket(s.token),tw=await socket(t.token),ow=await socket(o.token);await sleep(10);
  const endpoint='/api/app/users/'+encodeURIComponent(student),snapshot=()=>call(endpoint+'/snapshot','GET',undefined,s.token);
@@ -64,8 +66,10 @@ try{
  const twice=await runtime.dispatchFetch('http://localhost/api/app/realtime?ticket='+reused,{headers:{Origin:origin,Upgrade:'websocket'}});assert.equal(twice.status,401);
  let closed=false;sw.ws.on('close',()=>closed=true);await call('/api/app/logout','POST',{},s.token);for(let i=0;i<40&&!closed;i++)await sleep(20);assert.ok(closed||sw.ws.readyState>=2,"revoked socket must close; state="+sw.ws.readyState);
  await call('/api/app/realtime-ticket','POST',{},s.token,401);
- await call('/api/dev/synthetic-fixture-cleanup','POST',{runId,password},'synthetic-deployment-token');
+ for(let n=0;n<100;n++){const c=await call('/api/dev/synthetic-fixture-cleanup','POST',{runId,password},'synthetic-deployment-token');if(c.status==='SYNTHETIC_FIXTURE_CLEANED')break;assert.equal(c.status,'SYNTHETIC_FIXTURE_CLEANING');if(n===99)throw Error('QA cleanup did not finish');}
  await call('/api/app/students','GET',undefined,t.token,401);
- assert.ok(f.calls.every(c=>!c.url.includes('api.github.com')));
+ assert.ok(!JSON.stringify([...f.docs]).includes(runId),'QA user/credential/revision remains');
+ assert.ok(!JSON.stringify([...f.docs]).includes(competition.planId),'QA plan reference/tombstone remains');
+ assert.ok(f.calls.every(c=>!c.url.includes('api.github.com'))); // Only the separately intercepted fixed reference import reads GitHub.
  console.log('DEV workerd + SQLite + Firestore protocol: login/roles/isolation, two authorized sockets, no third-user leak, exact generated plan, text/deletion recalculation and protected history, CAS, unassignment, one-use tickets/logout revocation PASS. Google transport intercepted; not remote Firestore.');
 }finally{for(const ws of sockets)try{ws.close();}catch{}await runtime.dispose();}

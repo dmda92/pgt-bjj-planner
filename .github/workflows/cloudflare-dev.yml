@@ -2,7 +2,7 @@ name: Validate and deploy PGT DEV
 
 on:
   push:
-    branches: [develop]
+    branches: [develop, feature/firestore-structured-model]
   pull_request:
     branches: [develop]
   workflow_dispatch:
@@ -45,6 +45,8 @@ jobs:
         run: npm run typecheck
       - name: Build frontend PWA
         run: npm run build
+      - name: Validate native DEV boundary
+        run: node scripts/check-structured-boundary.mjs
       - name: Compile Worker
         run: npm run check:worker
       - name: Worker runtime tests
@@ -107,7 +109,7 @@ jobs:
 
   deploy-dev:
     needs: [validate, validate-online]
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/develop' && vars.DEV_DEPLOY_ENABLED == 'true'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/feature/firestore-structured-model') && vars.DEV_DEPLOY_ENABLED == 'true'
     environment: development
     # Live QA installs the same Playwright Chromium as validation.
     runs-on: ubuntu-24.04
@@ -148,8 +150,8 @@ jobs:
             if (!process.env[key]) throw new Error(`Missing development configuration: ${key}`);
           }
           if (process.env.CLOUDFLARE_ACCOUNT_ID !== process.env.EXPECTED_DEV_ACCOUNT_ID) throw new Error('DEV account mismatch');
-          if (process.env.GITHUB_REF !== 'refs/heads/develop' || !['push', 'workflow_dispatch'].includes(process.env.GITHUB_EVENT_NAME)) throw new Error('Invalid deployment event');
-          const response = await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/git/ref/heads/develop`, {
+          if (!['refs/heads/develop','refs/heads/feature/firestore-structured-model'].includes(process.env.GITHUB_REF) || process.env.GITHUB_REPOSITORY !== 'dmda92/pgt-bjj-planner' || !['push', 'workflow_dispatch'].includes(process.env.GITHUB_EVENT_NAME)) throw new Error('Invalid deployment event');
+          const response = await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/git/ref/heads/${encodeURIComponent(process.env.GITHUB_REF_NAME)}`, {
             headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json' }
           });
           if (!response.ok) throw new Error(`Cannot verify develop HEAD: HTTP ${response.status}`);
@@ -166,9 +168,15 @@ jobs:
             console.log(JSON.stringify(report));
             if (!preflight.ok || report.status !== 'FIRESTORE_DEV_CONNECTION_VERIFIED') throw new Error('DEV Firestore preflight failed');
             const qaEnv = {...process.env}; delete qaEnv.PGT_LOCAL_QA_ORIGIN;
+            const preparation=spawnSync(process.execPath,['scripts/prepare-structured-dev.mjs'],{stdio:'inherit',env:qaEnv});
+            if(preparation.error)throw preparation.error;
+            if(preparation.status!==0)process.exit(preparation.status??1);
             const qa = spawnSync(process.execPath, ['scripts/test-firestore-dev-live.mjs'], {stdio:'inherit',env:qaEnv});
             if (qa.error) throw qa.error;
             if (qa.status !== 0) process.exit(qa.status ?? 1);
+            const integrity=spawnSync(process.execPath,['scripts/verify-structured-dev.mjs'],{stdio:'inherit',env:qaEnv});
+            if(integrity.error)throw integrity.error;
+            if(integrity.status!==0)process.exit(integrity.status??1);
           }
           JS
       - name: Save real DEV verification evidence
@@ -177,6 +185,8 @@ jobs:
         with:
           name: firestore-real-dev
           path: |
+            artifacts/structured-dev-preparation.json
+            artifacts/structured-dev-integrity.json
             artifacts/firestore-dev-live.json
             artifacts/firestore-student.png
             artifacts/firestore-trainer.png

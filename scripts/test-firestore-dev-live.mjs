@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {randomBytes} from 'node:crypto';
+import {randomBytes,createHash} from 'node:crypto';
 import {mkdir,writeFile,readFile} from 'node:fs/promises';
 import {chromium} from 'playwright';
 import {generatePlan} from '../src/domain/planner.ts';
@@ -9,26 +9,37 @@ const realOrigin='https://pgt-github-probe-dev.david-dzm5.workers.dev';
 const local=process.env.PGT_LOCAL_QA_ORIGIN;
 if(local&&!/^http:\/\/127\.0\.0\.1:\d+$/.test(local))throw Error('LOCAL_QA_TARGET_INVALID');
 const origin=local||realOrigin;
-if(!local&&(process.env.GITHUB_REF!=='refs/heads/develop'||!process.env.CLOUDFLARE_API_TOKEN))throw Error('LIVE_QA_REQUIRES_AUTHORIZED_DEV_PIPELINE');
+if(!local&&(!['refs/heads/develop','refs/heads/feature/firestore-structured-model'].includes(process.env.GITHUB_REF)||!process.env.CLOUDFLARE_API_TOKEN))throw Error('LIVE_QA_REQUIRES_AUTHORIZED_DEV_PIPELINE');
 const runId=crypto.randomUUID(),password=randomBytes(32).toString('base64url');
 console.log('::add-mask::'+password);
-const response=await fetch(origin+'/api/dev/synthetic-fixture',{method:'POST',headers:{Origin:realOrigin,Authorization:'Bearer '+(local?'synthetic-deployment-token':process.env.CLOUDFLARE_API_TOKEN),'Content-Type':'application/json'},body:JSON.stringify({runId,password})});
-const fixture=await response.json();assert.equal(response.status,200,JSON.stringify(fixture));
+if(local){const b=await fetch(origin+'/api/dev/structured-bootstrap',{method:'POST',headers:{Origin:realOrigin,Authorization:'Bearer synthetic-deployment-token','Content-Type':'application/json'},body:'{}'});assert.equal(b.status,200,await b.text());}
+let fixture;
+for(let n=0;n<4;n++){const response=await fetch(origin+'/api/dev/synthetic-fixture',{method:'POST',headers:{Origin:realOrigin,Authorization:'Bearer '+(local?'synthetic-deployment-token':process.env.CLOUDFLARE_API_TOKEN),'Content-Type':'application/json'},body:JSON.stringify({runId,password})});fixture=await response.json();assert.equal(response.status,200,JSON.stringify(fixture));if(fixture.status==='SYNTHETIC_FIXTURE_CREATED')break;}assert.equal(fixture.status,'SYNTHETIC_FIXTURE_CREATED');
 const [trainer,student,other]=fixture.users.map(u=>u.mail);
 const browser=await chromium.launch({headless:true});
 let finalReport;
 const contexts=[],errors=[],samples=[],checks=[],network={requests:0,mutations:0,snapshots:0,websocketMessages:0,failedResponses:[]};
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 async function poll(fn,message,timeout=20000){const until=Date.now()+timeout;let last;while(Date.now()<until){try{last=await fn();if(last)return last;}catch(e){last=e.message;}await wait(100);}throw Error(message+': '+String(last));}
-async function login(mail,mobile=false){
+async function login(mail,mobile=false,register=false){
  const context=await browser.newContext({viewport:mobile?{width:390,height:844}:{width:1440,height:1000},serviceWorkers:'block'});contexts.push(context);const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{const path=new URL(r.url()).pathname;if(path.startsWith('/api/app/')){network.requests++;if(!['GET','HEAD'].includes(r.method()))network.mutations++;if(path.endsWith('/snapshot'))network.snapshots++;}});page.on('response',r=>{if(r.status()>=400&&new URL(r.url()).pathname.startsWith('/api/app/'))network.failedResponses.push({status:r.status(),path:new URL(r.url()).pathname.replace(/\/users\/[^/]+/,'/users/:user')});});page.on('websocket',ws=>ws.on('framereceived',()=>network.websocketMessages++));
- await page.goto(origin,{waitUntil:'networkidle'});await page.getByLabel('Correo',{exact:true}).fill(mail);await page.getByLabel('Contraseña',{exact:true}).fill(password);await page.getByRole('button',{name:'Entrar',exact:true}).click();await page.getByRole('button',{name:'Salir',exact:true}).waitFor({timeout:30000});
+ await page.goto(origin,{waitUntil:'networkidle'});if(register){await page.getByRole('button',{name:'Registrarme',exact:true}).click();await page.getByLabel('Nombre',{exact:true}).fill('Alta pública');await page.getByLabel('Apellidos',{exact:true}).fill('QA');await page.getByLabel('Repetir contraseña',{exact:true}).fill(password);}await page.getByLabel('Correo',{exact:true}).fill(mail);await page.getByLabel('Contraseña',{exact:true}).fill(password);await page.getByRole('button',{name:register?'Crear cuenta de alumno':'Entrar',exact:true}).click();await page.getByRole('button',{name:'Salir',exact:true}).waitFor({timeout:30000});
  const token=await page.evaluate(()=>JSON.parse(localStorage.getItem('pgt-session')).token);console.log('::add-mask::'+token);return {context,page,token,mail};
 }
-let http=0;async function call(actor,path,method='GET',body,status=200){http++;const result=await actor.page.evaluate(async({path,method,body,token})=>{const r=await fetch(path,{method,headers:{'X-PGT-Client':'firestore-dev-v1',Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});return {status:r.status,body:await r.json()};},{path,method,body,token:actor.token});assert.equal(result.status,status,method+' '+path+' '+JSON.stringify(result.body));return result.body;}
+let http=0;async function call(actor,path,method='GET',body,status=200){http++;const result=await actor.page.evaluate(async({path,method,body,token})=>{const r=await fetch(path,{method,headers:{'X-PGT-Client':'firestore-dev-structured-v2',Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});return {status:r.status,body:await r.json()};},{path,method,body,token:actor.token});assert.equal(result.status,status,method+' '+path+' '+JSON.stringify(result.body));return result.body;}
 const endpoint=mail=>'/api/app/users/'+encodeURIComponent(mail);
 try{
- const t=await login(trainer),s=await login(student,true),o=await login(other);
+ const t=await login(trainer),s=await login(student,true),o=await login(other,false,true);
+ const seeded=await call(s,endpoint(student)+'/snapshot');
+ const canonical=v=>Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.entries(v).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>[k,canonical(v)])):v;
+ const structure=seeded.techniques.data.positions.map(p=>({posicion:p.posicion,prioridad:p.prioridad,tecnicas:p.tecnicas.map(t=>({tipo:t.tipo}))}));
+ assert.equal(createHash('sha256').update(JSON.stringify(canonical(structure))).digest('hex').slice(0,40),fixture.catalogStructureChecksum);checks.push('New student receives the exact reference names, priorities, technique types and array order');
+ const registered=await call(o,endpoint(other)+'/snapshot');assert.equal(registered.profile.data.perfil,'alumno');assert.deepEqual(registered.techniques.data.positions.map(p=>p.posicion),seeded.techniques.data.positions.map(p=>p.posicion));
+ const editedProfile={...registered.profile.data,nombre:'Perfil persistido',peso:72.25,perfil:'entrenador'};await call(o,endpoint(other)+'/profile','PUT',{data:editedProfile,sha:registered.profile.sha});let verified=await call(o,endpoint(other)+'/snapshot');assert.equal(verified.profile.data.nombre,'Perfil persistido');assert.equal(verified.profile.data.peso,72.25);assert.equal(verified.profile.data.perfil,'alumno');
+ await call(o,'/api/app/role','POST',{mail:other,perfil:'entrenador',sha:verified.profile.sha},403);await call(t,'/api/app/role','POST',{mail:other,perfil:'entrenador',sha:verified.profile.sha});await call(o,endpoint(other)+'/snapshot','GET',undefined,401);
+ o.token=(await call(o,'/api/app/login','POST',{mail:other,password})).token;verified=await call(o,endpoint(other)+'/snapshot');assert.equal(verified.profile.data.nombre,'Perfil persistido');assert.equal(verified.profile.data.perfil,'entrenador');await call(o,'/api/app/students');
+ await call(t,'/api/app/role','POST',{mail:other,perfil:'alumno',sha:verified.profile.sha});await call(o,'/api/app/students','GET',undefined,401);checks.push('Public UI registration, profile persistence, privilege injection denied, role grant/revoke, invalidated session and fresh trainer authentication');
+
  await t.page.getByRole('button',{name:'Entrenador',exact:true}).click();await t.page.getByLabel('Buscar alumnos',{exact:true}).fill(student);await t.page.locator('.student-card').first().click();
  await t.page.locator('.student-detail details summary').first().click();
  await s.page.locator('details.position summary').first().click();
@@ -64,6 +75,7 @@ try{
  let assigned=await snapshot(),plan=assigned.plans.find(p=>p.data.fecha_torneo===input.fecha_torneo).data;const competition={...input,planId:plan.planId};
  await poll(()=>cached(s,'plan:'+plan.planId),'Assigned plan appears automatically in student cache');
  const oracle=generatePlan(competition,student,assigned.techniques.data,assigned.comments.data,plan.generatedAt);oracle.appliedDescriptionUpdates={...assigned.techniques.data.descriptionUpdates};oracle.appliedCommentUpdates={...assigned.comments.data.commentUpdates};assert.deepEqual(plan,oracle);checks.push('Exact full generated plan equals existing domain oracle');
+ await s.page.getByRole('button',{name:'Mis planes',exact:true}).click();await s.page.getByLabel('Mi plan',{exact:true}).selectOption(plan.planId);const pdfDownload=s.page.waitForEvent('download');await s.page.getByRole('button',{name:'Exportar PDF',exact:true}).click();const pdf=await readFile(await(await pdfDownload).path());assert.equal(pdf.subarray(0,5).toString(),'%PDF-');assert.ok(pdf.length>10000);checks.push('PDF exported in browser from native persisted plan');await s.page.getByRole('button',{name:'Mis técnicas',exact:true}).click();await s.page.locator('details.position summary').first().click();
  await poll(()=>t.page.locator('.student-count').allTextContents().then(v=>v.some(text=>text.includes('2 alumnos'))),'Assignment updates training day automatically');checks.push('Automatic training-day update after assignment');
  const comments={...assigned.comments.data,comments:[{techniqueId:assigned.techniques.data.positions[0].tecnicas[0].id,comment:'QA comentario '+runId.slice(0,8)}]};
  await call(t,endpoint(student)+'/comments','PUT',{data:comments,sha:assigned.comments.sha});await poll(()=>cached(s,'comments').then(v=>v?.data.comments.some(c=>c.comment===comments.comments[0].comment)),'Comment arrives automatically');
@@ -87,7 +99,7 @@ try{
  assert.ok(report.p95Ms<10000,'DEV propagation exceeds 10 seconds including autosave and complete refresh');
  finalReport=report;
 }catch(error){console.log(JSON.stringify({status:'QA_FAILED',completedChecks:checks,samplesMs:samples,clientNetwork:network,pageErrors:errors.map(()=>true)}));await mkdir('artifacts',{recursive:true});for(const [index,role] of [[0,'trainer'],[1,'student']]){const page=contexts[index]?.pages()[0];if(page)await page.screenshot({path:'artifacts/firestore-'+role+'.png',fullPage:true}).catch(()=>{});}throw error;}finally{for(const context of contexts)await context.close();await browser.close();
- const cleaned=await fetch(origin+'/api/dev/synthetic-fixture-cleanup',{method:'POST',headers:{Origin:realOrigin,Authorization:'Bearer '+(local?'synthetic-deployment-token':process.env.CLOUDFLARE_API_TOKEN),'Content-Type':'application/json'},body:JSON.stringify({runId,password})});
- const cleanup=await cleaned.json();if(!cleaned.ok||cleanup.status!=='SYNTHETIC_FIXTURE_CLEANED')throw Error('Synthetic cleanup failed: '+JSON.stringify(cleanup));
+ let cleanup;for(let attempt=0;attempt<100;attempt++){const cleaned=await fetch(origin+'/api/dev/synthetic-fixture-cleanup',{method:'POST',headers:{Origin:realOrigin,Authorization:'Bearer '+(local?'synthetic-deployment-token':process.env.CLOUDFLARE_API_TOKEN),'Content-Type':'application/json'},body:JSON.stringify({runId,password})});
+ cleanup=await cleaned.json();if(!cleaned.ok)throw Error('Synthetic cleanup failed: '+JSON.stringify(cleanup));if(cleanup.status==='SYNTHETIC_FIXTURE_CLEANED')break;if(cleanup.status!=='SYNTHETIC_FIXTURE_CLEANING'||attempt===99)throw Error('Synthetic cleanup did not finish');}
  if(finalReport){finalReport.fixtureCleanup=true;await mkdir('artifacts',{recursive:true});await writeFile(local?'artifacts/firestore-local-browser.json':'artifacts/firestore-dev-live.json',JSON.stringify(finalReport,null,2));console.log(JSON.stringify(finalReport));}
 }

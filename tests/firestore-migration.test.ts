@@ -1,6 +1,6 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {inspectMigration,migrateSynthetic} from '../worker/firestore-migration.ts';
-import {firestoreFixture} from './firestore-fixture.ts';import {FirestoreStorage} from '../worker/firestore-storage.ts';
+import {inspectMigration,migrateSynthetic} from './legacy-file-migration.ts';
+import {firestoreFixture} from './firestore-fixture.ts';import {FirestoreStorage} from './legacy-file-store.ts';
 import {template} from './template-fixture.ts';import {cloneTemplate,initialVersion} from '../src/domain/models.ts';
 const mail='pgt-dev-migration@example.test',base='PGT/users_data/'+mail+'/';
 const records=[{path:'PGT/master_data/tecnics_base.json',data:template},{path:base+'user_data.json',data:{...initialVersion(),mail,nombre:'Test',apellidos:'Synthetic',fecha_nacimiento:null,peso:71.125,cinturon:'Negro',perfil:'alumno',pwd:'pbkdf2-sha256$600000$synthetic-salt$unchanged-hash'}},{path:base+'tecnics.json',data:cloneTemplate(template)},{path:base+'trainer_comments.json',data:{...initialVersion(),comments:[]}},{path:base+'plans_index.json',data:{...initialVersion(),planIds:[]}}];

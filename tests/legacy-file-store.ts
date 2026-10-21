@@ -1,7 +1,8 @@
-import {ApiError} from './security.ts';
-import {FirestoreIdentity,DEV_DATABASE_NAME,type Transport} from './firestore-auth.ts';
-import {requireDev,type PreflightEnv} from './firestore-preflight.ts';
-import {safePath,type CloudRecord,type CloudStorageProvider} from './storage.ts';
+// Historical characterization fixture only; never imported by a Worker entrypoint.
+import {ApiError} from '../worker/security.ts';
+import {FirestoreIdentity,DEV_DATABASE_NAME,type Transport} from '../worker/firestore-auth.ts';
+import {requireDev,type PreflightEnv} from '../worker/firestore-preflight.ts';
+import {safePath,type CloudRecord,type CloudStorageProvider} from '../worker/storage.ts';
 import {MAX_JSON_BYTES,documentFile} from '../src/domain/json-limits.ts';
 
 const root=`https://firestore.googleapis.com/v1/${DEV_DATABASE_NAME}`;
