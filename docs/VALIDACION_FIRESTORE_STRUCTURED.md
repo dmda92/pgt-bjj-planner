@@ -27,3 +27,12 @@ Corrección del propietario (21/10/2026): el intento de desplegar directamente u
 Comprobación final antes de documentar el bloqueo: main permanece en 3b8125cb362f665f908e4028d54514f65f00459a y develop en f0080f89889503cdd25cc7d2f0b42f183c423b40. La PR #12 está abierta y sin conflictos; no se fusionó. **La tarea sigue pendiente de operaciones y aceptación reales en DEV.**
 
 Revisión adicional independiente: runtime con cinco planes activos simultáneos dentro del presupuesto de 50 subrequests por petición; limpieza física también de revisiones de planes interrumpidos conocidos por el marcador QA. El inventario final preparado detecta documentos sintéticos nativos además de marcadores QA y padres huérfanos. Estas comprobaciones adicionales siguen siendo aisladas hasta integrar la PR autorizada y desplegar desde develop.
+
+
+## Primera integración real desde develop
+
+El propietario autorizó integrar en develop. PR #12 fusionada en ac2bfb4db10588bbc3162ed30c3575f1ca416b9b. Actions [39589079506](https://github.com/dmda92/pgt-bjj-planner/actions/runs/39589079506) pasó ambas validaciones y publicó exclusivamente pgt-github-probe-dev, versión 84a81df7-56bc-48b8-ab82-d15ec51f4021. Preflight real satisfactorio: pgt-bjj-dev/(default), europe-west1, STANDARD/FIRESTORE_NATIVE, CRUD/CAS, rechazo anónimo y borrado diagnóstico.
+
+Inventario: pgt_resources 62 documentos; pgt_qa_runs 3; sin padres huérfanos. Clasificación de perfiles heredados: 2 registros DEV de prueba del propietario y 9 sintéticos. Inventario aprobado con huella f3e0a29781dceb99c5854c91c8e5036e6b864c38. El recorrido de borrado terminó y bootstrap confirmó ausencia de colecciones heredadas; falló después al leer el catálogo original: REFERENCE_CATALOG_READ_FAILED. No se ejecutó aún QA real de la aplicación. Se mantiene el modo de mantenimiento hasta inicializar correctamente la referencia.
+
+Corrección preparada: la petición GitHub omitía el User-Agent obligatorio, a diferencia del provider anterior. Se añade el identificador de la aplicación, diagnóstico HTTP sin contenido privado y fixture que rechaza la ausencia de ese header y devuelve Base64 con saltos de línea como GitHub. El importador sigue limitado al archivo original fijo y no escribe en GitHub. El proceso administrativo conserva ahora un informe parcial después del inventario y después del borrado, incluso si falla una fase posterior. Revalidación y segunda integración DEV pendientes.
