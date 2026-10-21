@@ -4,11 +4,11 @@ import {readFile} from 'node:fs/promises';
 import {extname,resolve} from 'node:path';
 import {spawn} from 'node:child_process';
 import {build} from 'esbuild';
-import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
+import {Miniflare,convertV4MiniflareOptions,kCurrentWorker} from 'miniflare';
 import {structuredFixture} from '../tests/structured-firestore-fixture.ts';
 const f=await structuredFixture(),devOrigin='https://pgt-github-probe-dev.david-dzm5.workers.dev';
-const bundle=await build({entryPoints:['worker/dev.ts'],bundle:true,write:false,format:'esm',target:'es2022'});
-const runtime=new Miniflare(convertV4MiniflareOptions({modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-13',durableObjects:{SECURITY:{className:'ProbeSecurity',useSQLite:true}},bindings:{...f.env,ALLOWED_ORIGINS:devOrigin},outboundService:async r=>f.transport(r.url,{method:r.method,headers:r.headers,body:['GET','HEAD'].includes(r.method)?undefined:await r.text()})}));
+const bundle=await build({entryPoints:['worker/dev.ts'],bundle:true,write:false,external:['cloudflare:workers'],format:'esm',target:'es2022'});
+const runtime=new Miniflare(convertV4MiniflareOptions({serviceBindings:{FIRESTORE_IO:{name:kCurrentWorker,entrypoint:'FirestoreIO'}},modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-13',durableObjects:{SECURITY:{className:'ProbeSecurity',useSQLite:true}},bindings:{...f.env,ALLOWED_ORIGINS:devOrigin},outboundService:async r=>f.transport(r.url,{method:r.method,headers:r.headers,body:['GET','HEAD'].includes(r.method)?undefined:await r.text()})}));
 const runtimeURL=await runtime.ready;
 const connections=new Set();
 const server=createServer(async(req,res)=>{

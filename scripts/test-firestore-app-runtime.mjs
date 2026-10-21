@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import {build} from 'esbuild';
 import WebSocket from 'ws';
-import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
+import {Miniflare,convertV4MiniflareOptions,kCurrentWorker} from 'miniflare';
 import {structuredFixture} from '../tests/structured-firestore-fixture.ts';
 import {generatePlan} from '../src/domain/planner.ts';
 import {madridDate,updateFuturePlanText} from '../src/domain/plan-text-updates.ts';
 import {updateFutureDeletions} from '../src/domain/plan-continuity.ts';
 const f=await structuredFixture(),origin='https://pgt-github-probe-dev.david-dzm5.workers.dev';
-const bundle=await build({entryPoints:['worker/dev.ts'],bundle:true,write:false,format:'esm',target:'es2022'});
-const runtime=new Miniflare(convertV4MiniflareOptions({modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-13',durableObjects:{SECURITY:{className:'ProbeSecurity',useSQLite:true}},bindings:{...f.env,ALLOWED_ORIGINS:origin},outboundService:async request=>f.transport(request.url,{method:request.method,headers:request.headers,body:['GET','HEAD'].includes(request.method)?undefined:await request.text()})}));
+const bundle=await build({entryPoints:['worker/dev.ts'],bundle:true,write:false,external:['cloudflare:workers'],format:'esm',target:'es2022'});
+const runtime=new Miniflare(convertV4MiniflareOptions({serviceBindings:{FIRESTORE_IO:{name:kCurrentWorker,entrypoint:'FirestoreIO'}},modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-13',durableObjects:{SECURITY:{className:'ProbeSecurity',useSQLite:true}},bindings:{...f.env,ALLOWED_ORIGINS:origin},outboundService:async request=>f.transport(request.url,{method:request.method,headers:request.headers,body:['GET','HEAD'].includes(request.method)?undefined:await request.text()})}));
 let requests=0,maxSubrequests=0;const sockets=[];
 async function call(path,method='GET',body,token='',status=200){
  const started=f.calls.length;
@@ -26,6 +26,11 @@ async function socket(token){
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function changed(w,after){for(let n=0;n<100;n++){if(w.messages.slice(after).some(v=>v.type==='changed'))return;await sleep(20);}assert.fail('Missing realtime change');}
 try{
+ const {FIRESTORE_IO}=await runtime.getBindings();const forbiddenBefore=f.calls.length;
+ for(const url of ['https://firestore.googleapis.com/v1/projects/pgt-bjj-pro/databases/(default)/documents:commit','https://example.test/','http://firestore.googleapis.com/v1/projects/pgt-bjj-dev/databases/(default)/documents']){
+  const denied=await FIRESTORE_IO.fetch(url,{method:'POST',body:'{}'});assert.equal(denied.status,403);
+ }
+ assert.equal(f.calls.length,forbiddenBefore,'Internal transport must deny other destinations before any outbound call');
  const obsolete=await runtime.dispatchFetch('http://localhost/api/app/login',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:'{}'});assert.equal(obsolete.status,426);
  const runId=crypto.randomUUID(),password='synthetic-runtime-password-more-than-24';
  await call('/api/dev/structured-bootstrap','POST',{},'synthetic-deployment-token');
@@ -49,6 +54,11 @@ try{
  old=await snapshot();const original=old.plans[0].data;competition.planId=original.planId;
  const day=await call('/api/app/training-day?date='+offset(1),'GET',undefined,t.token);assert.equal(day.groups.reduce((n,g)=>n+g.students.length,0),2);
  await call('/api/app/training-day?date='+offset(1),'GET',undefined,s.token,403);
+ // A burst shares one DO I/O context, while each internal transport invocation owns its Google call.
+ const burstStart=f.calls.length;
+ const burst=await Promise.all(Array.from({length:12},(_,n)=>runtime.dispatchFetch('http://localhost'+(n%2?endpoint+'/snapshot':'/api/app/training-day?date='+offset(1)),{headers:{Origin:origin,'X-PGT-Client':'firestore-dev-structured-v2','CF-Connecting-IP':'synthetic-burst-'+n,Authorization:'Bearer '+(n%2?s.token:t.token)}})));
+ for(const response of burst){assert.equal(response.status,200,'Concurrent native reads must stay available');await response.arrayBuffer();}
+ assert.ok(f.calls.length-burstStart>50,'Burst must exercise more than one external request budget');
  const oracle=generatePlan(competition,student,old.techniques.data,old.comments.data,original.generatedAt);oracle.appliedDescriptionUpdates={...old.techniques.data.descriptionUpdates};oracle.appliedCommentUpdates={...old.comments.data.commentUpdates};
  assert.deepEqual(original,oracle);
  const comments={...old.comments.data,comments:[{techniqueId:tech.positions[0].tecnicas[0].id,comment:'Comentario remoto'}]};

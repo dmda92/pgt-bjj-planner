@@ -99,6 +99,7 @@ try{
  catalog=await call(t,'/api/app/catalog');await call(t,'/api/app/delete-competition','POST',{planId:plan.planId,sha:catalog.sha});
  await call(s,'/api/app/logout','POST',{});await poll(()=>s.page.getByRole('button',{name:'Entrar',exact:true}).isVisible(),'Revoked socket/session');await call(s,'/api/app/realtime-ticket','POST',{},401);checks.push('Logout revokes subscription and tickets');
  assert.ok(!network.failedResponses.some(v=>v.code==='FIRESTORE_SUBREQUEST_LIMIT'),'Cloudflare Free subrequest budget exceeded');
+ assert.ok(!network.failedResponses.some(v=>v.status>=500&&v.code!=='QA_TRANSIENT_READ'),'Unexpected server failure during functional browser QA');
  exact(errors,[]);
  const sorted=[...samples].sort((a,b)=>a-b),p=n=>sorted[Math.min(sorted.length-1,Math.ceil(n*sorted.length)-1)];
  const report={status:local?'FIRESTORE_LOCAL_BROWSER_QA_VERIFIED':'FIRESTORE_DEV_LIVE_QA_VERIFIED',googleTransport:local?'INTERCEPTED':'REAL',project:'pgt-bjj-dev',database:'(default)',worker:'pgt-github-probe-dev',commit:process.env.GITHUB_SHA,runId,synthetic:true,contexts:3,roles:['entrenador','alumno','alumno'],samplesMs:samples,p50Ms:p(.5),p95Ms:p(.95),latencyIncludes:'700ms autosave debounce + Worker commit + WebSocket + authorized re-read + render',checks,httpTestCalls:http,clientNetwork:network,limits:'Chromium desktop and mobile viewport, not physical devices or Safari; billing counters not queried'};
