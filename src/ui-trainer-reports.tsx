@@ -1,20 +1,22 @@
 import React,{useState,useEffect,useMemo} from 'react';
-import {client,ApiFailure} from './application/client.ts';
+import {client,ApiFailure,onlineMode} from './application/client.ts';
 import type {TrainerView} from './application/trainer-cache.ts';
 import type {Techniques} from './domain/models.ts';
 import {preparation,type TrainingDay} from './domain/trainer-reports.ts';
 export function Loading({children='Cargando…'}:{children?:React.ReactNode}){return <p className="competition-loading" role="status"><span className="loading-spinner" aria-hidden="true"/>{children}</p>;}
+function useLiveRevision(){const [n,setN]=useState(0);useEffect(()=>{if(!onlineMode)return;const changed=()=>setN(v=>v+1);window.addEventListener('pgt-live-update',changed);return()=>window.removeEventListener('pgt-live-update',changed);},[]);return n;}
 type Run=(a:()=>Promise<unknown>)=>Promise<void>;
 export function TrainerPreparation({students,run}:{students:any[];run:Run}){
+ const liveRevision=useLiveRevision();
  const [mail,setMail]=useState(''),[planId,setPlanId]=useState(''),[view,setView]=useState<TrainerView|null>(null),[source,setSource]=useState<Techniques|null>(null),[detail,setDetail]=useState<TrainerView|null>(null),[loading,setLoading]=useState(false),[planLoading,setPlanLoading]=useState(false),[filter,setFilter]=useState('all');
  useEffect(()=>{let current=true;setView(null);setSource(null);setDetail(null);setPlanId('');if(!mail){setLoading(false);return;}setLoading(true);
   void run(async()=>{try{const cached=await Promise.all([client.cachedTrainer(mail,'techniques'),client.cachedTrainer(mail,'plans')]);if(current&&cached[0]&&cached[1]){setSource(cached[0].techniques!.data);setView(cached[1]);}
    const [t,p]=await Promise.all([client.trainerView(mail,'techniques'),client.trainerView(mail,'plans')]);if(current){setSource(t.techniques!.data);setView(p);setPlanId(p.planSummaries?.[0]?.planId||'');}
   }catch(e){if(current&&e instanceof ApiFailure&&(e.status===401||e.status===403)){setView(null);setSource(null);}throw e;}finally{if(current)setLoading(false);}});return()=>{current=false;};
- },[mail]);
+ },[mail,liveRevision]);
  useEffect(()=>{let current=true;setDetail(null);if(!mail||!planId){setPlanLoading(false);return;}setPlanLoading(true);
   void run(async()=>{try{const cached=await client.cachedTrainer(mail,'plans',planId);if(current&&cached)setDetail(cached);const data=await client.trainerView(mail,'plans',false,planId);if(current)setDetail(data);}catch(e){if(current&&e instanceof ApiFailure&&(e.status===401||e.status===403))setDetail(null);throw e;}finally{if(current)setPlanLoading(false);}});return()=>{current=false;};
- },[mail,planId]);
+ },[mail,planId,liveRevision]);
  const plan=detail?.plans?.find(p=>p.data.planId===planId)?.data;
  const report=useMemo(()=>plan&&source?preparation(plan,source):null,[plan,source]);
  const percent=(n:number,d:number)=>d?`${(n/d*100).toLocaleString('es-ES',{maximumFractionDigits:1})} %`:'—';
@@ -24,7 +26,7 @@ export function TrainerPreparation({students,run}:{students:any[];run:Run}){
    <label>Plan para cobertura<select value={planId} disabled={!view?.planSummaries?.length} onChange={e=>setPlanId(e.target.value)}><option value="">Selecciona un plan</option>{view?.planSummaries?.map(p=><option key={p.planId} value={p.planId}>Torneo · {p.fecha_torneo||p.planId}</option>)}</select></label></div>
   {(loading||planLoading)&&<Loading>{report?'Actualizando preparación…':'Cargando preparación…'}</Loading>}
   {!mail&&<p className="empty">Selecciona un alumno y su plan.</p>}
-  {mail&&view&&!view.planSummaries?.length&&!loading&&<p className="empty">Este alumno no tiene planes generados. Debe sincronizar su cuenta para recibir un plan asignado.</p>}
+  {mail&&view&&!view.planSummaries?.length&&!loading&&<p className="empty">Este alumno no tiene planes generados. {onlineMode ? "Los planes aparecerán al guardar una asignación válida." : "Debe sincronizar su cuenta para recibir un plan asignado."}</p>}
   {report&&<>
    {plan?.structuralUpdateError&&<p role="alert">El plan tiene una actualización bloqueada. Se analiza la última instantánea guardada.</p>}
    <dl className="coverage-overview"><div><dt>Técnicas del plan con descripción</dt><dd>{report.described} / {report.planned}</dd><p>{percent(report.described,report.planned)} preparadas</p></div><div><dt>Cobertura del repertorio</dt><dd>{report.covered} / {report.total}</dd><p>{percent(report.covered,report.total)} programado</p></div><div><dt>Sesiones del plan</dt><dd>{report.sessions}</dd><p>{report.appearances} apariciones · {report.appearances-report.planned} repeticiones adicionales</p></div></dl>
@@ -37,8 +39,9 @@ export function TrainerPreparation({students,run}:{students:any[];run:Run}){
  </section>;
 }
 export function TrainerDay({run}:{run:Run}){
+ const liveRevision=useLiveRevision();
  const [date,setDate]=useState(''),[data,setData]=useState<TrainingDay|null>(null),[loading,setLoading]=useState(false),[refresh,setRefresh]=useState(0);
- useEffect(()=>{let current=true;setData(null);setLoading(true);void run(async()=>{try{const cached=await client.cachedTrainingDay(date);if(current&&cached)setData(cached);const value=await client.trainingDay(date);if(current)setData(value);}catch(e){if(current&&e instanceof ApiFailure&&(e.status===401||e.status===403))setData(null);throw e;}finally{if(current)setLoading(false);}});return()=>{current=false;};},[date,refresh]);
+ useEffect(()=>{let current=true;setData(null);setLoading(true);void run(async()=>{try{const cached=await client.cachedTrainingDay(date);if(current&&cached)setData(cached);const value=await client.trainingDay(date);if(current)setData(value);}catch(e){if(current&&e instanceof ApiFailure&&(e.status===401||e.status===403))setData(null);throw e;}finally{if(current)setLoading(false);}});return()=>{current=false;};},[date,refresh,liveRevision]);
  return <section aria-label="Entrenamiento del día"><div className="section-head"><label>Fecha del entrenamiento<input type="date" value={date||data?.date||''} onChange={e=>setDate(e.target.value)}/></label><button type="button" className="secondary" disabled={loading} onClick={()=>setRefresh(v=>v+1)}>Actualizar entrenamientos</button></div><p>Se agrupan las sesiones guardadas por posición y técnica, incluyendo sus cantidades. No se comparan descripciones, comentarios ni orden. La fecha inicial es el próximo entrenamiento posterior a hoy.</p>
  {loading&&<Loading>{data?'Comprobando cambios…':'Cargando entrenamientos…'}</Loading>}
  {data&&<>{(data.missing>0||data.blocked>0)&&<p role="alert">Vista incompleta o pendiente: {data.missing} planes asignados aún sin instantánea y {data.blocked} planes con actualización bloqueada. Revisa las técnicas y los avisos de esos alumnos y vuelve a actualizar.</p>}

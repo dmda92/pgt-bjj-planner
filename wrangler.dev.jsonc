@@ -1,12 +1,14 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "pgt-github-probe-dev",
-  "main": "worker/index.ts",
+  "main": "worker/dev.ts",
   "compatibility_date": "2026-10-13",
   "workers_dev": true,
   "observability": { "enabled": false },
   "vars": {
     "DATA_BRANCH": "main",
+    "FIRESTORE_PROJECT_ID": "pgt-bjj-dev",
+    "FIRESTORE_DATABASE_ID": "(default)",
     "ALLOWED_ORIGINS": "https://pgt-github-probe-dev.david-dzm5.workers.dev",
   },
   "assets": {
