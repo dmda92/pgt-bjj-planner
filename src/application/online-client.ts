@@ -91,6 +91,7 @@ export class OnlineClient extends Client {
         this.refreshAgain=false;const identity=this.requireIdentity();
         try{
           const snapshot=await this.snapshot(identity.mail);this.validate(snapshot);
+          if(!navigator.onLine){this.status='Sin conexión · copia local de consulta';return;}
           if(this.requireIdentity().token!==identity.token)throw Error('Sesión cambiada');
           const entries=this.snapshotEntries(snapshot,identity.mail);
           await db.transaction('rw',db.entries,db.meta,db.commentNotices,async()=>{
@@ -105,9 +106,9 @@ export class OnlineClient extends Client {
           await this.rememberPlanIssues(identity.mail,snapshot.planIssues);
           clearTimeout(this.snapshotRetry);this.snapshotRetry=undefined;this.snapshotFailures=0;
           const archived=await db.meta.get('legacy-drafts:'+identity.mail);
-          this.status=snapshot.planIssues?.length?planIssueMessage(snapshot.planIssues):archived?'Borradores anteriores disponibles para exportar':this.socket?.readyState===WebSocket.OPEN?'Actualizado':'Datos cargados · conectando actualizaciones';
+          this.status=!navigator.onLine?'Sin conexión · copia local de consulta':snapshot.planIssues?.length?planIssueMessage(snapshot.planIssues):archived?'Borradores anteriores disponibles para exportar':this.socket?.readyState===WebSocket.OPEN?'Actualizado':'Datos cargados · conectando actualizaciones';
         }catch(error){
-          this.status='No se pudo actualizar: '+(error instanceof Error?error.message:'error');
+          this.status=!navigator.onLine?'Sin conexión · copia local de consulta':'No se pudo actualizar: '+(error instanceof Error?error.message:'error');
           // Retry only authoritative reads: a transient failure after a live
           // invalidation must not leave an acknowledged assignment invisible.
           const transient=error instanceof TypeError||error instanceof SyntaxError||error instanceof ApiFailure&&[500,502,503,504].includes(error.status);
