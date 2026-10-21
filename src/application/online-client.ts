@@ -8,6 +8,8 @@ import {planIssueMessage} from '../domain/plan-issues.ts';
 export class OnlineClient extends Client {
   private refresh:Promise<void>|undefined;
   private refreshAgain=false;
+  private snapshotRetry:ReturnType<typeof setTimeout>|undefined;
+  private snapshotFailures=0;
   private socket:WebSocket|undefined;
   private socketToken='';
   private opening=false;
@@ -35,7 +37,7 @@ export class OnlineClient extends Client {
   }
   private stop(){
     this.connectionEpoch++;this.opening=false;this.socketToken='';
-    clearTimeout(this.retry);clearTimeout(this.eventRefresh);this.retry=undefined;
+    clearTimeout(this.retry);clearTimeout(this.eventRefresh);clearTimeout(this.snapshotRetry);this.retry=undefined;this.snapshotRetry=undefined;this.snapshotFailures=0;
     this.ownRefreshPending=false;
     const ws=this.socket;this.socket=undefined;if(ws){ws.onclose=null;ws.close();}
   }
@@ -89,6 +91,7 @@ export class OnlineClient extends Client {
         this.refreshAgain=false;const identity=this.requireIdentity();
         try{
           const snapshot=await this.snapshot(identity.mail);this.validate(snapshot);
+          if(!navigator.onLine){this.status='Sin conexión · copia local de consulta';return;}
           if(this.requireIdentity().token!==identity.token)throw Error('Sesión cambiada');
           const entries=this.snapshotEntries(snapshot,identity.mail);
           await db.transaction('rw',db.entries,db.meta,db.commentNotices,async()=>{
@@ -101,9 +104,20 @@ export class OnlineClient extends Client {
             await db.entries.clear();await db.entries.bulkPut(entries);
           });
           await this.rememberPlanIssues(identity.mail,snapshot.planIssues);
+          clearTimeout(this.snapshotRetry);this.snapshotRetry=undefined;this.snapshotFailures=0;
           const archived=await db.meta.get('legacy-drafts:'+identity.mail);
-          this.status=snapshot.planIssues?.length?planIssueMessage(snapshot.planIssues):archived?'Borradores anteriores disponibles para exportar':this.socket?.readyState===WebSocket.OPEN?'Actualizado':'Datos cargados · conectando actualizaciones';
-        }catch(error){this.status='No se pudo actualizar: '+(error instanceof Error?error.message:'error');throw error;}
+          this.status=!navigator.onLine?'Sin conexión · copia local de consulta':snapshot.planIssues?.length?planIssueMessage(snapshot.planIssues):archived?'Borradores anteriores disponibles para exportar':this.socket?.readyState===WebSocket.OPEN?'Actualizado':'Datos cargados · conectando actualizaciones';
+        }catch(error){
+          this.status=!navigator.onLine?'Sin conexión · copia local de consulta':'No se pudo actualizar: '+(error instanceof Error?error.message:'error');
+          // Retry only authoritative reads: a transient failure after a live
+          // invalidation must not leave an acknowledged assignment invisible.
+          const transient=error instanceof TypeError||error instanceof SyntaxError||error instanceof ApiFailure&&[500,502,503,504].includes(error.status);
+          if(transient&&this.identity?.token===identity.token&&!this.locked&&navigator.onLine&&this.snapshotFailures<3){
+            clearTimeout(this.snapshotRetry);const delay=[500,1500,4000][this.snapshotFailures++];
+            this.snapshotRetry=setTimeout(()=>{this.snapshotRetry=undefined;if(this.identity?.token===identity.token&&!this.locked&&navigator.onLine)void this.sync().then(()=>window.dispatchEvent(new Event('pgt-live-update'))).catch(()=>{});},delay);
+          }
+          throw error;
+        }
         finally{this.onChange();}
       }while(this.refreshAgain&&this.identity&&!this.locked&&navigator.onLine);
     })().finally(()=>{this.refresh=undefined;});return this.refresh;

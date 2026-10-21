@@ -173,10 +173,10 @@ jobs:
             if(preparation.status!==0)process.exit(preparation.status??1);
             const qa = spawnSync(process.execPath, ['scripts/test-firestore-dev-live.mjs'], {stdio:'inherit',env:qaEnv});
             if (qa.error) throw qa.error;
-            if (qa.status !== 0) process.exit(qa.status ?? 1);
             const integrity=spawnSync(process.execPath,['scripts/verify-structured-dev.mjs'],{stdio:'inherit',env:qaEnv});
             if(integrity.error)throw integrity.error;
             if(integrity.status!==0)process.exit(integrity.status??1);
+            if (qa.status !== 0) process.exit(qa.status ?? 1);
           }
           JS
       - name: Save real DEV verification evidence
