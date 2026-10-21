@@ -97,7 +97,8 @@ export class DomainRepositories {
         if (ref.kind === 'assignment')
             return { data, sha: await revisionOf(root.updateTime) };
         const gen = String(root.data.activeRevision).split('/documents/')[1], tables: Record<string, NativeRow[]> = {};
-        await Promise.all(Object.keys(root.data.entityCounts || {}).map(async (name) => { tables[name] = (await this.db.list(gen + '/' + name)).sort(order); }));
+        const children=await this.db.children(gen);
+        for(const name of Object.keys(root.data.entityCounts||{}))tables[name]=children.filter(row=>row.path.slice(gen.length+1).split('/')[0]===name).sort(order);
         if (Object.entries(root.data.entityCounts || {}).some(([key, n]) => tables[key].length !== n)) {
             const changed = await this.db.get(path, true);
             if (changed && changed.data.activeRevision !== root.data.activeRevision)
@@ -278,7 +279,7 @@ export class DomainRepositories {
         return;
     } const prior = await this.read(ref, true); if (prior)
         await this.remove(ref, prior.sha); }
-    async removeGeneration(path: string) { const collections = await this.db.collectionIds(path), rows = (await Promise.all(collections.map(name => this.db.list(path + '/' + name)))).flat(); const generation = await this.db.get(path); if (generation)
+    async removeGeneration(path: string) { const rows = await this.db.children(path); const generation = await this.db.get(path); if (generation)
         rows.push(generation); await this.db.deleteRows(rows); }
     async list(scope: EntityScope): Promise<EntityEntry[]> {
         if (scope.kind === 'users')

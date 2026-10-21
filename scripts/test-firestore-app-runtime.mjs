@@ -9,10 +9,11 @@ import {updateFutureDeletions} from '../src/domain/plan-continuity.ts';
 const f=await structuredFixture(),origin='https://pgt-github-probe-dev.david-dzm5.workers.dev';
 const bundle=await build({entryPoints:['worker/dev.ts'],bundle:true,write:false,format:'esm',target:'es2022'});
 const runtime=new Miniflare(convertV4MiniflareOptions({modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-13',durableObjects:{SECURITY:{className:'ProbeSecurity',useSQLite:true}},bindings:{...f.env,ALLOWED_ORIGINS:origin},outboundService:async request=>f.transport(request.url,{method:request.method,headers:request.headers,body:['GET','HEAD'].includes(request.method)?undefined:await request.text()})}));
-let requests=0;const sockets=[];
+let requests=0,maxSubrequests=0;const sockets=[];
 async function call(path,method='GET',body,token='',status=200){
  const started=f.calls.length;
  const r=await runtime.dispatchFetch('http://localhost'+path,{method,headers:{Origin:origin,'X-PGT-Client':'firestore-dev-structured-v2','CF-Connecting-IP':'synthetic-'+requests++,...(token?{Authorization:'Bearer '+token}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
+ maxSubrequests=Math.max(maxSubrequests,f.calls.length-started);
  assert.ok(f.calls.length-started<=50,'DEV runtime exceeded 50 subrequests ('+(f.calls.length-started)+'): '+method+' '+path);
  const v=await r.json();assert.equal(r.status,status,method+' '+path+' '+JSON.stringify(v));return v;
 }
@@ -74,5 +75,6 @@ try{
  assert.ok(!JSON.stringify([...f.docs]).includes(runId),'QA user/credential/revision remains');
  assert.ok(!JSON.stringify([...f.docs]).includes(competition.planId),'QA plan reference/tombstone remains');
  assert.ok(f.calls.every(c=>!c.url.includes('api.github.com'))); // Only the separately intercepted fixed reference import reads GitHub.
+ console.log('Maximum Firestore subrequests per isolated API operation: '+maxSubrequests);
  console.log('DEV workerd + SQLite + Firestore protocol: login/roles/isolation, two authorized sockets, no third-user leak, exact generated plan, text/deletion recalculation and protected history, CAS, unassignment, one-use tickets/logout revocation PASS. Google transport intercepted; not remote Firestore.');
 }finally{for(const ws of sockets)try{ws.close();}catch{}await runtime.dispose();}

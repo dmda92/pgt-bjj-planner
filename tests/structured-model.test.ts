@@ -48,8 +48,8 @@ test('Native concurrent publication keeps exactly one revision, with no losing s
 test('A reader whose published revision is retired retries the new complete native revision',async()=>{
  const f=await structuredFixture(),a=new DomainRepositories(f.env,f.transport),b=new DomainRepositories(f.env,f.transport),value=cloneTemplate(template);
  const version=await a.write(ref,value,null),root=(await a.db.get(a.path(ref)))!,old=root.data.activeRevision.split('/documents/')[1];
- const next=structuredClone(value);next.positions[0].posicion='New complete revision';const list=a.db.list.bind(a.db);let replacement:Promise<string>|undefined;
- a.beginOperation();a.db.list=async path=>{if(path.startsWith(old+'/')){replacement ||= b.write(ref,next,version);await replacement;}return list(path);};
+ const next=structuredClone(value);next.positions[0].posicion='New complete revision';const children=a.db.children.bind(a.db);let replacement:Promise<string>|undefined;
+ a.beginOperation();a.db.children=async path=>{if(path===old){replacement ||= b.write(ref,next,version);await replacement;}return children(path);};
  assert.deepEqual((await a.read(ref))?.data,next);a.endOperation();
 });
 
@@ -57,4 +57,15 @@ test('An unavailable publication verification never deletes a possibly active na
  const f=await structuredFixture();let unavailable=0;const transport:typeof f.transport=async(url,init)=>{if(unavailable&&url.includes('/documents/user_techniques/')&&(!init?.method||init.method==='GET')){unavailable--;throw Error('temporary verification outage');}try{return await f.transport(url,init);}catch(e){if(String(init?.body).includes('publicationId'))unavailable=2;throw e;}};
  const r=new DomainRepositories(f.env,transport),value=cloneTemplate(template),version=await r.write(ref,value,null);value.positions[0].posicion='Published despite lost ACK';f.losePublicationAck();await assert.rejects(r.write(ref,value,version));
  assert.deepEqual((await r.read(ref))?.data,value);await r.cleanupEntity(ref);assert.ok(![...f.docs.keys()].some(k=>k.includes('/user_techniques/')));
+});
+
+
+test('Revision query reads only immediate children and invalidates its operation cache after a write',async()=>{
+ const f=await structuredFixture(),r=new DomainRepositories(f.env,f.transport),db=r.db;
+ await db.commit([db.update('scope/one/positions/p',{ordinal:0}),db.update('scope/one/techniques/t',{ordinal:1}),db.update('scope/two/positions/other',{ordinal:0}),db.update('scope/one/positions/p/details/nested',{secret:true})]);
+ db.beginOperation();const before=f.calls.length;
+ assert.deepEqual((await db.children('scope/one')).map(row=>row.path).sort(),['scope/one/positions/p','scope/one/techniques/t']);
+ assert.equal(f.calls.length,before+1);await db.children('scope/one');assert.equal(f.calls.length,before+1);
+ await db.commit([db.update('scope/one/techniques/next',{ordinal:2})]);
+ assert.equal((await db.children('scope/one')).length,3);assert.equal(f.calls.length,before+3);db.endOperation();
 });

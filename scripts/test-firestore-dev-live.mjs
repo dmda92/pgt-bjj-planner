@@ -87,9 +87,7 @@ try{
  let updated=await snapshot(),expected=updateFuturePlanText(plan,updated.techniques.data,updated.comments.data,today);exact(updated.plans.find(p=>p.data.planId===plan.planId).data.sessions,expected.sessions);checks.push('Automatic comment reception and exact future text update');
  const oldPlan=updated.plans.find(p=>p.data.planId===plan.planId).data,deleted=structuredClone(updated.techniques.data);deleted.positions[0].tecnicas.shift();
  await call(s,endpoint(student)+'/techniques','PUT',{data:deleted,sha:updated.techniques.sha});updated=await snapshot();const after=updated.plans.find(p=>p.data.planId===plan.planId).data;
- const recalc=updateFuturePlanText(updateFutureDeletions(oldPlan,updated.techniques.data,updated.comments.data,today),updated.techniques.data,updated.comments.data,today);exact(after.sessions,recalc.sessions);exact(after.continuity,recalc.continuity);exact(after.sessions.filter(v=>v.date<=today),plan.sessions.filter(v=>v.date<=today));checks.push('Exact deletion recalculation and protected past/today');
- // Stale write must fail; it cannot overwrite the confirmed source.
- await call(s,endpoint(student)+'/techniques','PUT',{data:deleted,sha:assigned.techniques.sha},409);checks.push('Stale write rejected');
+ const recalc=updateFuturePlanText(updateFutureDeletions(oldPlan,updated.techniques.data,updated.comments.data,today),updated.techniques.data,updated.comments.data,today);exact(after.sessions,recalc.sessions);exact(after.continuity,recalc.continuity);exact(aft…70 tokens truncated…eted,sha:assigned.techniques.sha},409);checks.push('Stale write rejected');
  // Network interruption: no durable mutation can be queued; reconnect reloads truth.
  await s.context.setOffline(true);await poll(()=>s.page.getByText('Sin conexión · copia local de consulta',{exact:true}).isVisible(),'Offline state');
  const previous=await editor.inputValue();await editor.fill('MUST_NOT_BE_STORED');await wait(1000);await s.context.setOffline(false);
@@ -98,6 +96,7 @@ try{
  await poll(()=>t.page.locator('.day-groups').textContent().then(text=>!text.includes('Alumno de prueba')),'Training-day removes unassigned student automatically');
  catalog=await call(t,'/api/app/catalog');await call(t,'/api/app/delete-competition','POST',{planId:plan.planId,sha:catalog.sha});
  await call(s,'/api/app/logout','POST',{});await poll(()=>s.page.getByRole('button',{name:'Entrar',exact:true}).isVisible(),'Revoked socket/session');await call(s,'/api/app/realtime-ticket','POST',{},401);checks.push('Logout revokes subscription and tickets');
+ assert.ok(!network.failedResponses.some(v=>v.code==='FIRESTORE_SUBREQUEST_LIMIT'),'Cloudflare Free subrequest budget exceeded');
  exact(errors,[]);
  const sorted=[...samples].sort((a,b)=>a-b),p=n=>sorted[Math.min(sorted.length-1,Math.ceil(n*sorted.length)-1)];
  const report={status:local?'FIRESTORE_LOCAL_BROWSER_QA_VERIFIED':'FIRESTORE_DEV_LIVE_QA_VERIFIED',googleTransport:local?'INTERCEPTED':'REAL',project:'pgt-bjj-dev',database:'(default)',worker:'pgt-github-probe-dev',commit:process.env.GITHUB_SHA,runId,synthetic:true,contexts:3,roles:['entrenador','alumno','alumno'],samplesMs:samples,p50Ms:p(.5),p95Ms:p(.95),latencyIncludes:'700ms autosave debounce + Worker commit + WebSocket + authorized re-read + render',checks,httpTestCalls:http,clientNetwork:network,limits:'Chromium desktop and mobile viewport, not physical devices or Safari; billing counters not queried'};
