@@ -1,6 +1,7 @@
 import {firestoreFixture} from './firestore-fixture.ts';
 import {template} from './template-fixture.ts';
 import {DEV_DATABASE_NAME} from '../worker/firestore-auth.ts';
+const canonical=(v:any):any=>Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.entries(v).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>[k,canonical(v)])):v;
 export async function structuredFixture(){
  const original=await firestoreFixture(),docs=new Map<string,any>(),calls:{url:string;method:string}[]=[];let n=0,losePublication=false,failStaging=false;
  const prefix=DEV_DATABASE_NAME+'/documents/',base='https://firestore.googleapis.com/v1/'+DEV_DATABASE_NAME;
@@ -15,7 +16,7 @@ export async function structuredFixture(){
   if(path==='/documents:commit'){
    const {writes}=JSON.parse(String(init.body));
    for(const w of writes){const prior=docs.get(w.update?.name||w.delete),p=w.currentDocument;if((p?.exists===false&&prior)||(p?.updateTime&&prior?.updateTime!==p.updateTime))return Response.json({error:{code:400,status:'FAILED_PRECONDITION'}},{status:400});}
-   for(const w of writes){if(w.delete)docs.delete(w.delete);else {const time='2026-10-21T10:00:'+String(Math.floor(++n/1000000)%60).padStart(2,'0')+'.'+String(n%1000000).padStart(6,'0')+'Z';docs.set(w.update.name,{...structuredClone(w.update),updateTime:time,createTime:docs.get(w.update.name)?.createTime||time});}}
+   for(const w of writes){if(w.delete)docs.delete(w.delete);else {const time='2026-10-21T10:00:'+String(Math.floor(++n/1000000)%60).padStart(2,'0')+'.'+String(n%1000000).padStart(6,'0')+'Z';docs.set(w.update.name,{...structuredClone(w.update),fields:canonical(w.update.fields),updateTime:time,createTime:docs.get(w.update.name)?.createTime||time});}}
    if(losePublication&&writes.some((w:any)=>w.update?.fields.publicationId)){losePublication=false;throw Error('lost publication ACK');}
    if(failStaging&&writes.some((w:any)=>w.update?.name.includes('/revisions/'))&&!writes.some((w:any)=>w.update?.fields.publicationId)){failStaging=false;throw Error('failed stage ACK');}
    return Response.json({writeResults:writes.map((w:any)=>w.update?{updateTime:docs.get(w.update.name).updateTime}:{}),commitTime:'fixture'});
