@@ -1,6 +1,6 @@
-import {WorkerEntrypoint,RpcTarget} from 'cloudflare:workers';
+import {DurableObject} from 'cloudflare:workers';
 import {SessionReplica,sessionKey,type SessionChange} from './structured/session-store.ts';
-import type {Transport} from './firestore-auth.ts';
+import {privateTransport,type PrivateIOBinding} from './structured/private-io.ts';
 import {ApiError,fingerprint,opaqueToken,jsonBody,onlyFields} from './security.ts';
 import {DomainRepositories} from './structured/repositories.ts';
 import {DevMaintenance} from './structured/maintenance.ts';
@@ -9,26 +9,33 @@ import {seedStructuredQA,cleanStructuredQA} from './structured/qa.ts';
 import {StructuredAppApi} from './structured/application.ts';
 import type {Profile} from '../src/domain/models.ts';
 import {authorizePreflight,firestorePreflight,requireDev,PreflightFailure,type PreflightEnv} from './firestore-preflight.ts';
-export interface DevEnv extends PreflightEnv {SECURITY:DurableObjectNamespace;ASSETS:Fetcher;DOMAIN_IO:{run(request:Request,entries:[string,unknown][]):Promise<{getResponse():Promise<Response>;getChanges():Promise<SessionChange[]>;[Symbol.dispose]():void}>};GITHUB_DATA_TOKEN:string;ALLOWED_ORIGINS:string}
+export interface DevEnv extends PreflightEnv {SECURITY:DurableObjectNamespace;DOMAIN_IO:PrivateIOBinding;ASSETS:Fetcher;GITHUB_DATA_TOKEN:string;ALLOWED_ORIGINS:string}
+const runtimeReason=(error:unknown)=>{const message=error instanceof Error?error.message:'';return /CPU|resource.*limit|exceed.*resource/i.test(message)?'RESOURCE_LIMIT':/serial|clone|transfer/i.test(message)?'SERIALIZATION':/disconnect|cancel/i.test(message)?'DISCONNECTED':/different request|I\/O.*context|I\/O on behalf/i.test(message)?'IO_CONTEXT':/loop limit|too many.*(worker|subrequest)/i.test(message)?'CALL_LIMIT':/entrypoint|binding|not.*function/i.test(message)?'BINDING':'RUNTIME';};
+const wireHeaders=(headers:Headers)=>{const result:[string,string][]=[];headers.forEach((value,key)=>result.push([key,value]));return result;};
 export default {fetch(request:Request,env:DevEnv){return new URL(request.url).pathname.startsWith('/api/')?env.SECURITY.get(env.SECURITY.idFromName('github-probe')).fetch(request):env.ASSETS.fetch(request);}};
-/** Retain the response stream's invocation until the coordinator consumes it. */
-class DomainResult extends RpcTarget {
- #response:Response;#changes:SessionChange[];
- constructor(response:Response,changes:SessionChange[]){super();this.#response=response;this.#changes=changes;}
- getResponse(){return this.#response;}
- getChanges(){return this.#changes;}
-}
-/** One private invocation executes a complete authorized domain operation. */
-export class DomainIO extends WorkerEntrypoint<DevEnv> {
- async run(request:Request,entries:[string,unknown][]):Promise<DomainResult>{
+/** Private ephemeral DOs: a fresh execution context, no SQLite/business cache.
+ * Password KDF retains the DO CPU allowance. RPC returns materialized bytes,
+ * never a response stream whose owner has already been disposed. */
+export class DomainIO extends DurableObject<DevEnv> {
+ async run(request:Request,entries:[string,unknown][]){
   requireDev(this.env);
-  const sessions=new SessionReplica(entries),cloud=new DomainRepositories(this.env);cloud.beginOperation();
+  const sessions=new SessionReplica(entries),cloud=new DomainRepositories(this.env,privateTransport(this.env.DOMAIN_IO));cloud.beginOperation();
   try{
    let response:Response;
    try{response=await new StructuredAppApi(sessions,cloud).handle(request,new URL(request.url));}
-   catch(error){response=Response.json({error:error instanceof ApiError?error.message:'FIRESTORE_DEV_UNAVAILABLE',...(error instanceof ApiError&&error.size?{size:error.size}:{})},{status:error instanceof ApiError?error.status:503,headers:{'Cache-Control':'no-store'}});}
-   return new DomainResult(response,sessions.changes());
+   catch(error){response=Response.json({error:error instanceof ApiError?error.message:'FIRESTORE_DOMAIN_'+runtimeReason(error),...(error instanceof ApiError&&error.size?{size:error.size}:{})},{status:error instanceof ApiError?error.status:503,headers:{'Cache-Control':'no-store'}});}
+   return {body:await response.arrayBuffer(),status:response.status,headers:wireHeaders(response.headers),changes:sessions.changes()};
   }finally{cloud.endOperation();}
+ }
+ private outgoing=0;
+ async request(input:string,init:RequestInit={}){
+  requireDev(this.env);
+  // This capability is private and cannot act as a generic HTTP proxy.
+  const url=new URL(input);
+  if(!((url.origin==='https://firestore.googleapis.com'&&(url.pathname==='/v1/projects/pgt-bjj-dev/databases/(default)'||url.pathname.startsWith('/v1/projects/pgt-bjj-dev/databases/(default)/')))||(url.origin==='https://oauth2.googleapis.com'&&url.pathname==='/token')))throw new ApiError(403,'PRIVATE_IO_TARGET_FORBIDDEN');
+  if(++this.outgoing>32)throw new ApiError(503,'PRIVATE_IO_BUDGET_EXCEEDED');
+  const response=await fetch(input,{...init,redirect:'manual',signal:AbortSignal.timeout(20000)});
+  return {body:await response.arrayBuffer(),status:response.status,headers:wireHeaders(response.headers)};
  }
 }
 // Same local class name/binding as the existing DEV SQLite namespace. PRO keeps
@@ -38,9 +45,11 @@ export class ProbeSecurity {
   private preflight:Promise<Response>|undefined;
   private devState:DurableObjectState;
   private cloud:()=>DomainRepositories;
+  private resetCloud:()=>void;
   constructor(state:DurableObjectState,env:DevEnv){
     let cloud:DomainRepositories|undefined;
-    const provider=()=>cloud||(cloud=new DomainRepositories(env));
+    const provider=()=>cloud||(cloud=new DomainRepositories(env,privateTransport(env.DOMAIN_IO)));
+    this.resetCloud=()=>{cloud=undefined;};
     this.devEnv=env;this.devState=state;this.cloud=provider;
   }
   fetch(request:Request):Promise<Response>{
@@ -50,7 +59,7 @@ export class ProbeSecurity {
   private serial<T>(action:()=>Promise<T>):Promise<T>{
     // Gate incoming events rather than carrying their I/O across a shared
     // promise chain. Memoized reads exist only for this single event.
-    return this.devState.blockConcurrencyWhile(async()=>{const store=this.cloud();store.beginOperation();try{return await action();}finally{store.endOperation();}});
+    return this.devState.blockConcurrencyWhile(async()=>{this.resetCloud();const store=this.cloud();store.beginOperation();try{return await action();}finally{store.endOperation();}});
   }
   private async online(request:Request):Promise<Response>{
     const url=new URL(request.url),path=url.pathname;let operationStage='GUARD';
@@ -80,19 +89,17 @@ export class ProbeSecurity {
       // recoverable even if the isolate dies between commit and publication.
       await this.devState.storage.setAlarm(Date.now()+15000);
       try{
-        if(request.method!=='GET')return await new StructuredAppApi(this.devState.storage,this.cloud()).handle(request,url);
         operationStage='QUERY_RUN';
         const entries:[string,unknown][]=[...await this.devState.storage.list({prefix:'app-session:'}),...await this.devState.storage.list({prefix:'plan-update:'})];
-        using result=await this.devEnv.DOMAIN_IO.run(request,entries);
+        const result=await this.devEnv.DOMAIN_IO.get(this.devEnv.DOMAIN_IO.newUniqueId()).run(request,entries);
         operationStage='QUERY_RESULT';
-        const changes=await result.getChanges();
+        const changes=result.changes;
         if(changes.some(change=>!sessionKey(change.key)))throw new ApiError(500,'PRIVATE_SESSION_KEY_INVALID');
         if(changes.length)await this.devState.storage.transaction(async transaction=>{for(const change of changes){if(change.deleted)await transaction.delete(change.key);else await transaction.put(change.key,change.value);}});
         operationStage='QUERY_RESPONSE';
-        const response=await result.getResponse();
-        return new Response(await response.arrayBuffer(),{status:response.status,headers:response.headers});
+        return new Response(result.body,{status:result.status,headers:result.headers});
       }finally{await this.flush().catch(error=>console.warn('PGT_REALTIME_RETRY_SCHEDULED',error instanceof ApiError?error.message:'RUNTIME_ERROR')); }
-    }catch(error){const message=error instanceof Error?error.message:'';const reason=/CPU|resource.*limit|exceed.*resource/i.test(message)?'RESOURCE_LIMIT':/serial|clone|transfer/i.test(message)?'SERIALIZATION':/disconnect|cancel/i.test(message)?'DISCONNECTED':/different request|I\/O.*context|I\/O on behalf/i.test(message)?'IO_CONTEXT':/loop limit|too many.*(worker|subrequest)/i.test(message)?'CALL_LIMIT':/entrypoint|binding|not.*function/i.test(message)?'BINDING':'RUNTIME';return Response.json({error:error instanceof ApiError?error.message:'FIRESTORE_DEV_UNAVAILABLE_'+operationStage+'_'+reason,...(error instanceof ApiError&&error.size?{size:error.size}:{})},{status:error instanceof ApiError?error.status:503,headers:{'Cache-Control':'no-store'}});}
+    }catch(error){const reason=runtimeReason(error);return Response.json({error:error instanceof ApiError?error.message:'FIRESTORE_DEV_UNAVAILABLE_'+operationStage+'_'+reason,...(error instanceof ApiError&&error.size?{size:error.size}:{})},{status:error instanceof ApiError?error.status:503,headers:{'Cache-Control':'no-store'}});}
   }
   private async limit(request:Request,path:string){
     const limits:[string,number][]=[['global',600],['ip:'+await fingerprint(request.headers.get('CF-Connecting-IP')||'local'),180]];
@@ -131,6 +138,7 @@ export class ProbeSecurity {
     return new Response(null,{status:101,webSocket:client});
   }
   private async flush(){
+    await this.cloud().collectRetired();
     const changes=await this.cloud().changes();
     // Even no-op logout/role requests must revalidate existing subscriptions.
     const actors=new Map<string,Awaited<ReturnType<ProbeSecurity['authorizeHash']>>|null>();

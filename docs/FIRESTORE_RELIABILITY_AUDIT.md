@@ -1,0 +1,37 @@
+# Auditoría preventiva de fiabilidad — 21/10/2026
+
+Base revisada: feature 2a2c8e9, develop 6b870a7. Continuación autorizada por el propietario tras detener los despliegues. Revisión previa a implementar; solo DEV. La feature original procede de main; se mantiene su trazabilidad y PR #18 a develop.
+
+## Hallazgos y plan de corrección
+
+| Riesgo observado en código | Consecuencia | Corrección y prueba prevista |
+| --- | --- | --- |
+| Un único DO coordina todas las peticiones y hace I/O externo; las pruebas solo sumaban llamadas por HTTP, no por contexto compartido | Ráfagas consumen presupuestos distintos del contador simulado | Separar coordinación persistente de ejecución privada por operación; I/O externo acotado en DO efímeros. Imponer presupuesto en el transporte aislado y probar ráfagas, no solo solicitudes secuenciales |
+| `DomainIO` Worker ordinario también ejecutaba PBKDF2; trasladarlo fue seguido de fallo de login, sin excepción identificable | Contexto CPU inadecuado para autenticación costosa; causa del fallo remoto anterior aún no demostrada | Ejecución en DO (30 s CPU documentados), conservar PBKDF2/sal/600000 iteraciones; eliminar dependencia de streams/RpcTarget, devolver bytes y cambios de sesión serializables |
+| `read(ref,true)` evita caché de agregado pero `load` reutiliza caché nativa | Conflicto puede reintentarse con la misma versión obsoleta; comprobaciones finales no son frescas | Invalidar lecturas y consultas al pedir frescura; regresiones con edición concurrente real en fixture |
+| Retirar revisión anterior forma parte del resultado después de confirmar CAS | Error de limpieza presenta como fallido un guardado que ya se publicó | Cola nativa de limpieza idempotente, recuperación administrativa acotada; comprobar pérdida de respuesta y fallo posterior a publicación |
+| Sin validación del tamaño nativo individual antes de staging | Límite JSON de aplicación 4 MiB no equivale a límite Firestore de documento 1 MiB | Medir representación nativa conservadoramente antes de escribir; nunca truncar entidades; prueba de rechazo sin publicación parcial |
+| Lista de colecciones no pagina; commitChunks solo divide por bytes | Inventarios incompletos y lotes grandes | Paginar listCollectionIds; acotar tamaño y número de escrituras por lote; probar paginación |
+| Revalidación de catálogo usa caché | Respuesta mezcla una asignación retirada durante lectura | Lectura realmente fresca y CAS preservado |
+| El gate real precedía a un inventario, pero publicación ya había ocurrido | Pipeline rojo deja DEV defectuoso publicado | Ejecutar todos los gates aislados antes del merge y conservar gate real estricto; no considerar despliegue aceptado hasta navegador e integridad. No desplegar feature ni relajar controles |
+
+## Documentación oficial contrastada
+
+- https://firebase.google.com/docs/firestore/best-practices — evitar fanout de índices, reintentos transaccionales REST, pruebas de carga. No repetir mutaciones de resultado incierto: verificar `publicationId` primero.
+- https://firebase.google.com/docs/firestore/quotas — documento 1 MiB, petición API 10 MiB, cuotas gratuitas. El límite funcional agregado de 4 MiB se conserva mediante documentos por entidad, no blobs.
+- https://firebase.google.com/docs/firestore/manage-data/transactions — commit atómico y precondiciones; no aplicar último escritor.
+- https://developers.cloudflare.com/workers/platform/limits/ — Free 50 subpeticiones externas; 1000 internas, CPU Worker y conexiones no equivalentes a Firestore.
+- https://developers.cloudflare.com/durable-objects/platform/limits/ — DO SQLite Free y CPU de 30 segundos por petición.
+- https://developers.cloudflare.com/changelog/post/2026-08-28-durable-objects-dynamic-workers-limit/ — solicitudes concurrentes del mismo DO comparten contexto I/O. Un contador por respuesta HTTP no lo reproduce.
+
+## Invariantes y aceptación
+
+No se modifica src/domain, algoritmo, UI, PDF, contraseñas, políticas de autorización ni PRO. Repositorios nativos conservan UUID, orden ordinal, timestamps y referencias. Sesiones/checkpoints son los únicos datos copiados al coordinador; negocio siempre Firestore. Nuevos DO de ejecución no almacenan negocio ni escriben SQLite. Solo PR a develop después de pruebas completas; aceptación real requiere cero 5xx inesperados, caracterización exacta, navegador, tiempo real y limpieza de usuarios sintéticos.
+
+Pendientes de aceptación al iniciar: diagnóstico exacto del fallo de #17, validación nueva arquitectura en workerd y Cloudflare real. No afirmar resuelto por compilar o por mocks.
+
+## Ejecución previa al merge
+
+Las regresiones de frescura y limpieza fallaron contra la implementación inicial y pasaron tras corregirla. El ensayo workerd fuerza el fallback PBKDF2 original (600000 iteraciones), identifica el DO de salida real y limita sus llamadas (incluido OAuth) a 32. Comprueba ráfaga concurrente de 12 lecturas, cinco competiciones, permisos, revocación, oracle exacto y limpieza. Namespace DOMAIN_IO nuevo, SQLite solo por disponibilidad Free, sin escrituras de negocio/SQLite en sus instancias efímeras. No se reutiliza un Worker ordinario para autenticación costosa.
+
+El entorno local recuperó ejecución de comandos; Chromium no se pudo descargar (archivo truncado por red). Las pruebas de navegador se ejecutarán obligatoriamente en CI sobre la feature antes de integrar: subir código a feature no despliega DEV. No se relaja ninguna aserción ni se cambia el workflow PRO.

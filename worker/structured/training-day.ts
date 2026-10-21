@@ -66,7 +66,7 @@ export async function readTrainingDay(cloud: DomainRepositories, date: string, t
         }
     }));
     // Reject a catalogue changed during this read; never mix removed assignments into a report.
-    const current = await cloud.read<Catalog>({ kind: 'catalog' });
+    const current = await cloud.read<Catalog>({ kind: 'catalog' },true);
     if (current?.sha !== catalog?.sha)
         return reject(409, 'CATALOG_CHANGED_RETRY');
     return { ...trainingDay(values, date, today), missing };

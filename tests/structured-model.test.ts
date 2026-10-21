@@ -69,3 +69,32 @@ test('Revision query reads only immediate children and invalidates its operation
  await db.commit([db.update('scope/one/techniques/next',{ordinal:2})]);
  assert.equal((await db.children('scope/one')).length,3);assert.equal(f.calls.length,before+3);db.endOperation();
 });
+
+
+test('Fresh repository reads bypass both aggregate and native document/query caches',async()=>{
+ const f=await structuredFixture(),a=new DomainRepositories(f.env,f.transport),b=new DomainRepositories(f.env,f.transport),value=cloneTemplate(template);
+ const version=await a.write(ref,value,null);a.beginOperation();await a.read(ref);
+ value.positions[0].posicion='External concurrent value';await b.write(ref,value,version);
+ assert.deepEqual((await a.read(ref,true))?.data,value);a.endOperation();
+});
+test('Confirmed publication succeeds when old-revision collection fails and durable retirement can recover',async()=>{
+ const f=await structuredFixture(),r=new DomainRepositories(f.env,f.transport),value=cloneTemplate(template);const version=await r.write(ref,value,null);
+ const remove=r.removeGeneration.bind(r);r.removeGeneration=async()=>{throw Error('cleanup unavailable');};value.positions[0].posicion='Commit confirmed';
+ const saved=await r.write(ref,value,version);assert.deepEqual((await r.read(ref))?.data,value);assert.ok(saved);
+ assert.equal((await r.db.list('revision_cleanup')).length,1);r.removeGeneration=remove;
+ await r.collectRetired();assert.equal((await r.db.list('revision_cleanup')).length,0);assert.equal((await r.db.list(r.path(ref)+'/revisions')).length,1);
+});
+
+test('An oversized native document is rejected before any revision is staged or published',async()=>{
+ const f=await structuredFixture(),r=new DomainRepositories(f.env,f.transport),value=cloneTemplate(template);const version=await r.write(ref,value,null),before=[...f.docs.keys()].sort();
+ value.positions[0].tecnicas[0].descripcion_del_alumno='á'.repeat(600000);
+ await assert.rejects(r.write(ref,value,version),/NATIVE_DOCUMENT_TOO_LARGE/);assert.deepEqual([...f.docs.keys()].sort(),before);
+});
+test('Collection inventory follows page tokens and large batches are bounded',async()=>{
+ const f=await structuredFixture();let pages=0;const transport:typeof f.transport=async(url,init)=>{
+  if(url.endsWith(':listCollectionIds')){pages++;const body=JSON.parse(String(init?.body));return Response.json(body.pageToken?{collectionIds:['second']}:{collectionIds:['first'],nextPageToken:'next'});}return f.transport(url,init);
+ };
+ const r=new DomainRepositories(f.env,transport);assert.deepEqual(await r.db.collectionIds(),['first','second']);assert.equal(pages,2);
+ await r.db.commitChunks(Array.from({length:451},(_,n)=>r.db.update('batch/document-'+n,{n},null)));
+ assert.equal(f.calls.filter(c=>c.url.endsWith('/documents:commit')).length,2);
+});

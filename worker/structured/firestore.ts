@@ -59,6 +59,12 @@ export function unfield(v: any): any {
         return Object.fromEntries(Object.entries(v.mapValue.fields || {}).map(([k, v]) => [k, unfield(v)]));
     throw new ApiError(502, 'NATIVE_FIELD_INVALID');
 }
+// Firestore storage-size rules: names/strings are UTF-8 + 1, maps add 32,
+// numeric/timestamp values use 8 bytes. Measure native documents, not JSON wire size.
+const utf8=(value:string)=>new TextEncoder().encode(value).length+1;
+const nameSize=(name:string)=>name.split('/documents/').at(-1)!.split('/').reduce((n,s)=>n+utf8(s),16);
+const valueSize=(v:any):number=>v.stringValue!==undefined?utf8(v.stringValue):v.referenceValue?nameSize(v.referenceValue):v.mapValue?32+Object.entries(v.mapValue.fields||{}).reduce((n,[key,v])=>n+utf8(key)+valueSize(v),0):v.arrayValue?(v.arrayValue.values||[]).reduce((n:number,v:any)=>n+valueSize(v),0):v.booleanValue!==undefined||'nullValue' in v?1:8;
+export const nativeDocumentBytes=(doc:{name:string;fields:Record<string,any>})=>nameSize(doc.name)+32+Object.entries(doc.fields).reduce((n,[key,v])=>n+utf8(key)+valueSize(v),0);
 const prefix = DEV_DATABASE_NAME + '/documents/';
 export class NativeFirestore {
     private identity: FirestoreIdentity;
@@ -66,6 +72,7 @@ export class NativeFirestore {
     private queries?: Map<string, NativeRow[]>;
     beginOperation() { this.reads = new Map(); this.queries = new Map(); }
     endOperation() { this.reads = undefined; this.queries = undefined; }
+    invalidate() { this.reads?.clear(); this.queries?.clear(); }
     private transport: Transport;
     constructor(env: PreflightEnv, transport: Transport = (url, init) => fetch(url, init)) { this.transport = transport; requireDev(env); this.identity = new FirestoreIdentity(env.FIRESTORE_SERVICE_ACCOUNT_JSON || '', transport); }
     async request(path: string, init: RequestInit = {}, readOnly = false) {
@@ -110,7 +117,11 @@ export class NativeFirestore {
         const result=((await r.json()) as any[]).flatMap(v=>v.document?[this.row(v.document)]:[]);
         this.queries?.set(cacheKey,result);for(const row of result)this.reads?.set(row.path,row);return structuredClone(result);
     }
-    update(path: string, data: unknown, previous?: NativeRow | null) { return { update: { name: prefix + this.path(path), fields: fields(data as any) }, ...(previous !== undefined ? { currentDocument: previous ? { updateTime: previous.updateTime } : { exists: false } } : {}) }; }
+    update(path: string, data: unknown, previous?: NativeRow | null) {
+        const update={name:prefix+this.path(path),fields:fields(data as any)};
+        if(nativeDocumentBytes(update)>1024*1024)throw new ApiError(413,'NATIVE_DOCUMENT_TOO_LARGE');
+        return {update,...(previous!==undefined?{currentDocument:previous?{updateTime:previous.updateTime}:{exists:false}}:{})};
+    }
     deletion(row: NativeRow) { return { delete: prefix + this.path(row.path), ...(row.exists ? { currentDocument: { updateTime: row.updateTime } } : {}) }; }
     async commit(writes: any[]) { if (!writes.length)
         return; for (const w of writes) {
@@ -135,10 +146,15 @@ export class NativeFirestore {
             this.reads?.set(row.path, row);
         }
     } return receipt; }
-    async collectionIds(path = '') { const r = await this.request('/documents' + (path ? '/' + this.path(path) : '') + ':listCollectionIds', { method: 'POST', body: JSON.stringify({ pageSize: 1000 }) }, true); this.check(r); return ((await r.json()) as any).collectionIds as string[] || []; }
+    async collectionIds(path = '') {
+        const ids:string[]=[];let pageToken='';
+        do { const r=await this.request('/documents'+(path?'/'+this.path(path):'')+':listCollectionIds',{method:'POST',body:JSON.stringify({pageSize:1000,...(pageToken?{pageToken}:{})})},true);this.check(r);
+            const page=await r.json() as any;ids.push(...(page.collectionIds||[]));pageToken=page.nextPageToken||'';
+        }while(pageToken);return ids;
+    }
     async commitChunks(writes: any[]) { let batch: any[] = [], bytes = 0; for (const w of writes) {
         const length = new TextEncoder().encode(JSON.stringify(w)).length;
-        if (bytes + length > 8 * 1024 * 1024 && batch.length) {
+        if ((bytes + length > 8 * 1024 * 1024 || batch.length >= 450) && batch.length) {
             await this.commit(batch);
             batch = [];
             bytes = 0;

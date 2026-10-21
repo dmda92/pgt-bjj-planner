@@ -2,7 +2,7 @@ import { ApiError } from '../security.ts';
 import { DEV_PROJECT } from '../firestore-auth.ts';
 import { revisionOf, NativeFirestore, type NativeRow } from './firestore.ts';
 const legacy = new Set(['pgt_resources', 'pgt_qa_runs', 'pgt_changes', '_pgt_dev_diagnostics']);
-const native = new Set(['users', 'technique_catalog', 'user_techniques', 'trainer_comments', 'competitions', 'competition_tombstones', 'training_plans', 'training_day_indexes', 'user_plan_assignments', 'settings', 'realtime_events', 'qa_runs']);
+const native = new Set(['users', 'technique_catalog', 'user_techniques', 'trainer_comments', 'competitions', 'competition_tombstones', 'training_plans', 'training_day_indexes', 'user_plan_assignments', 'settings', 'realtime_events', 'qa_runs', 'revision_cleanup']);
 type Frame = {
     type: 'collection' | 'document' | 'delete';
     path: string;

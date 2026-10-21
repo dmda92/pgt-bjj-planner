@@ -70,6 +70,7 @@ export class DomainRepositories {
     }
     async read<T = any>(ref: EntityRef, fresh = false): Promise<EntityRecord<T> | null> {
         const path = this.path(ref);
+        if(fresh){this.cache?.clear();this.db.invalidate();}
         if (!fresh && this.cache?.has(path))
             return structuredClone(await this.cache.get(path)) as EntityRecord<T> | null;
         const load = this.load(ref);
@@ -242,7 +243,7 @@ export class DomainRepositories {
                 newGeneration = gen;
                 const writes = [this.db.update(gen, { createdAt: new Date().toISOString(), entityKind: ref.kind }, null), ...Object.entries(tables).flatMap(([name, rows]) => rows.map(row => this.db.update(gen + '/' + name + '/' + row.id, row.data, null)))];
                 await this.db.commitChunks(writes);
-                await this.db.commit([this.db.update(path, { ...meta, entityKind: ref.kind, activeRevision: reference(gen), entityCounts: Object.fromEntries(Object.entries(tables).map(([k, v]) => [k, v.length])), publicationId: id }, root), ...(ref.kind === 'structure' ? [] : [this.event(ref, id)])]);
+                await this.db.commit([this.db.update(path, { ...meta, entityKind: ref.kind, activeRevision: reference(gen), entityCounts: Object.fromEntries(Object.entries(tables).map(([k, v]) => [k, v.length])), publicationId: id }, root), ...(ref.kind === 'structure' ? [] : [this.event(ref, id)]), ...(root?.data.activeRevision ? [this.db.update('revision_cleanup/'+id,{entityPath:path,revisionPath:String(root.data.activeRevision).split('/documents/')[1],createdAt:new Date().toISOString()},null)] : [])]);
             }
         }
         catch (e) {
@@ -260,13 +261,25 @@ export class DomainRepositories {
         const saved = await this.db.get(path);
         if (!saved || saved.data.publicationId !== id)
             throw new ApiError(409, 'VERSION_CONFLICT');
-        if (root?.data.activeRevision)
-            await this.removeGeneration(String(root.data.activeRevision).split('/documents/')[1]);
+        if (root?.data.activeRevision) {
+            try { await this.collectRetired(id); }
+            catch { console.warn('PGT_REVISION_CLEANUP_PENDING'); }
+        }
         const result = ref.kind === 'catalog' ? await this.read(ref, true) : { data: structuredClone(data), sha: await revisionOf(saved.updateTime) };
         if (!result)
             throw new ApiError(503, 'NATIVE_WRITE_NOT_CONFIRMED');
         this.cache?.set(path, Promise.resolve(result));
         return result.sha;
+    }
+    async collectRetired(id?:string) {
+        const jobs=id?[await this.db.get('revision_cleanup/'+id)]:await this.db.list('revision_cleanup');
+        for(const job of jobs.filter(Boolean).slice(0,4)){
+            const entityPath=job!.data.entityPath,revisionPath=job!.data.revisionPath;
+            if(typeof entityPath!=='string'||typeof revisionPath!=='string'||!revisionPath.startsWith(entityPath+'/revisions/')||revisionPath.split('/').length!==4)throw new ApiError(500,'REVISION_CLEANUP_INVALID');
+            const active=await this.db.get(entityPath,true);
+            if(active?.data.activeRevision===('projects/pgt-bjj-dev/databases/(default)/documents/'+revisionPath))continue;
+            await this.removeGeneration(revisionPath);await this.db.deleteRows([job!]);
+        }
     }
     errorName(ref: EntityRef) { return ref.kind === 'plan' ? 'plan_' + ref.planId + '.json' : ref.kind === 'techniques' ? 'tecnics.json' : ref.kind === 'comments' ? 'trainer_comments.json' : ref.kind === 'catalog' ? 'plans.json' : 'user_data.json'; }
     async remove(ref: EntityRef, expected: string) { const path = this.path(ref), root = await this.db.get(path), current = await this.read(ref, true); if (!root || current?.sha !== expected)
