@@ -38,14 +38,16 @@ async function concurrentMap<T, R>(values: T[], fn: (value: T) => Promise<R>, li
     return result;
 }
 export class StructuredAppApi {
-    constructor(privateStore: SessionStore, cloud: DomainRepositories, clock: () => Date = () => new Date()) {
+    constructor(privateStore: SessionStore, cloud: DomainRepositories, clock: () => Date = () => new Date(), stage: (stage:string)=>void = ()=>{}) {
         this.store = privateStore;
         this.repositories = cloud;
         this.clock = clock;
+        this.stage = stage;
     }
     private store: SessionStore;
     private repositories: DomainRepositories;
     private clock: () => Date;
+    private stage: (stage:string)=>void;
     private async profile(mail: string) {
         const p = await this.repositories.read<Profile>(userRef(mail));
         if (!p || !p.data.pwd)
@@ -336,15 +338,18 @@ export class StructuredAppApi {
             const b = await jsonBody(request, MAX_APP_BODY_BYTES);
             onlyFields(b, ["mail", "password"]);
             const mail = normalizedMail(b.mail);
-            const p = await this.repositories.read<Profile>(userRef(mail));
-            const matches = await passwordMatches(b.password, p?.data.pwd || "pbkdf2-sha256$600000$unknown$unknown");
+            this.stage('LOGIN_READ');
+            const p = await this.repositories.read<Profile>(userRef(mail),true);
+            this.stage('LOGIN_PASSWORD');
+            const matches = await passwordMatches(b.password, p?.data.pwd || "pbkdf2-sha256$600000$unknown$unknown",stage=>this.stage('LOGIN_'+stage.toUpperCase()));
             if (!p || p.data.probeOnly || !matches)
                 return reject(401, "LOGIN_FAILED");
+            this.stage('LOGIN_INITIALIZE');
             await this.initialize(mail);
-            return respond({
-                profile: clean(p.data),
-                token: await this.mint(p.data),
-            });
+            this.stage('LOGIN_SESSION');
+            const token=await this.mint(p.data);
+            this.stage('LOGIN_RESPONSE');
+            return respond({profile:clean(p.data),token});
         }
         if (route === "POST /api/app/logout") {
             const s = await this.session(request);

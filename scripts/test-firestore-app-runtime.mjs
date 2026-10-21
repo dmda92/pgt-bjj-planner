@@ -27,10 +27,13 @@ async function socket(token){
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function changed(w,after){for(let n=0;n<100;n++){if(w.messages.slice(after).some(v=>v.type==='changed'))return;await sleep(20);}assert.fail('Missing realtime change');}
 try{
+ const manifest=await runtime.dispatchFetch('http://localhost/api/dev/runtime');assert.equal(manifest.status,200);assert.equal((await manifest.json()).revision,'structured-credentials-check-20261021-v1');assert.equal(manifest.headers.get('X-PGT-Worker-Build'),'local');
  const obsolete=await runtime.dispatchFetch('http://localhost/api/app/login',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:'{}'});assert.equal(obsolete.status,426);
  const runId=crypto.randomUUID(),password='synthetic-runtime-password-more-than-24';
  await call('/api/dev/structured-bootstrap','POST',{},'synthetic-deployment-token');
  let setup;for(let n=0;n<4;n++){setup=await call('/api/dev/synthetic-fixture','POST',{runId,password},'synthetic-deployment-token');if(setup.status==='SYNTHETIC_FIXTURE_CREATED')break;}assert.equal(setup.status,'SYNTHETIC_FIXTURE_CREATED');
+ const verified=await call('/api/dev/synthetic-fixture-check','POST',{runId,password},'synthetic-deployment-token');
+ for(const user of verified.users)for(const key of ['profileExists','credentialsExist','hashFormatValid','repositoryRestoresHash','passwordMatches','profileRoleCorrect'])assert.equal(user[key],true,key);
  const [trainer,student,other]=setup.users.map(u=>u.mail),login=mail=>call('/api/app/login','POST',{mail,password});
  await call('/api/app/register','POST',{mail:other,password,confirm:password,nombre:'Registro público',apellidos:'QA'},'',201);
  const [t,s,o]=await Promise.all([login(trainer),login(student),login(other)]);

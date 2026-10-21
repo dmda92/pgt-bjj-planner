@@ -1,3 +1,4 @@
+import {ApiError} from '../worker/security.ts';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -97,4 +98,9 @@ test('Collection inventory follows page tokens and large batches are bounded',as
  const r=new DomainRepositories(f.env,transport);assert.deepEqual(await r.db.collectionIds(),['first','second']);assert.equal(pages,2);
  await r.db.commitChunks(Array.from({length:451},(_,n)=>r.db.update('batch/document-'+n,{n},null)));
  assert.equal(f.calls.filter(c=>c.url.endsWith('/documents:commit')).length,2);
+});
+
+test('Explicit private execution failures retain their diagnostic code rather than becoming network retries',async()=>{
+ const f=await structuredFixture(),repo=new DomainRepositories(f.env,async(url,init)=>{if(url.includes('firestore.googleapis.com'))throw new ApiError(503,'PRIVATE_IO_BUILD_MISMATCH');return f.transport(url,init);});
+ await assert.rejects(repo.read({kind:'user',mail:'missing@example.test'}),/PRIVATE_IO_BUILD_MISMATCH/);
 });

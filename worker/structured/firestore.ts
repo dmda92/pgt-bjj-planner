@@ -86,6 +86,7 @@ export class NativeFirestore {
                 return copy;
             }
             catch (e) {
+                if(e instanceof ApiError)throw e;
                 if (e instanceof Error && /too many subrequests/i.test(e.message))
                     throw new ApiError(503, 'FIRESTORE_SUBREQUEST_LIMIT');
                 if (readOnly && !n)
