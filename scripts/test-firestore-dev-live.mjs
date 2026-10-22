@@ -104,6 +104,8 @@ try{
  await call(s,endpoint(student)+'/techniques','PUT',{data:deleted,sha:updated.techniques.sha});updated=await snapshot();const after=updated.plans.find(p=>p.data.planId===plan.planId).data;
  const recalc=updateFuturePlanText(updateFutureDeletions(oldPlan,updated.techniques.data,updated.comments.data,today),updated.techniques.data,updated.comments.data,today);exact(after.sessions,recalc.sessions);exact(after.continuity,recalc.continuity);exact(after.sessions.filter(v=>v.date<=today),plan.sessions.filter(v=>v.date<=today));checks.push('Exact deletion recalculation and protected past/today');
  // Actual UI additions must reach future plans and IndexedDB without reload.
+ await poll(()=>cached(s,'techniques').then(v=>v?.sha===updated.techniques.sha),'Deletion source reaches student before next UI edit');
+ await poll(()=>firstPosition.getByLabel('Descripción de técnica o enlace de vídeo',{exact:true}).count().then(n=>n===updated.techniques.data.positions[0].tecnicas.length),'Deletion renders before next UI edit');
  async function uiSaved(action){const saved=s.page.waitForResponse(r=>r.request().method()==='PUT'&&new URL(r.url()).pathname.endsWith('/techniques'));await action();assert.equal((await saved).status(),200,'UI structural edit must be confirmed by server before inspecting persistence');}
  const protectedBeforeAddition=structuredClone(after.sessions.filter(v=>v.date<=today));
  const originalIds=new Set(updated.techniques.data.positions.flatMap(p=>p.tecnicas.map(v=>v.id)));
