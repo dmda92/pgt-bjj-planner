@@ -1,3 +1,4 @@
+import {updateFuturePlanLabels} from '../../src/domain/plan-labels.ts';
 import {hasTrainableAdditions,updateFutureStructure,type AdditionTechniques,type AdditionPlan} from '../../src/domain/plan-additions.ts';
 import {revisionOf} from './firestore.ts';
 import type {SessionStore} from './session-store.ts';
@@ -137,7 +138,7 @@ export class StructuredAppApi {
                 c: string;
                 p: string;
                 day: string;
-            }>(`plan-update:${mail}:${file.id}`);
+            }>(`plan-update:${mail}:${file.id}:labels-v1`);
             return file.sha && tSha && cSha && marker?.t === tSha && marker.c === cSha && marker.p === file.sha && marker.day === today ? null : file;
         }))).filter((file): file is NonNullable<typeof file> => file !== null);
         if (!pending.length)
@@ -146,13 +147,10 @@ export class StructuredAppApi {
         if (!techniques || !comments)
             return loaded;
         await concurrentMap(pending, async (file) => {
-            const key = `plan-update:${mail}:${file.id}`;
+            const key = `plan-update:${mail}:${file.id}:labels-v1`;
             const mark = (sha: string, t = techniques, c = comments) => this.store.put(key, { t: t.sha, c: c.sha, p: sha, day: today });
-            if (!techniques.data.descriptionUpdates && !comments.data.commentUpdates && !techniques.data.deletedIds?.length && !(techniques.data as AdditionTechniques).additionRevision) {
-                if (file.sha)
-                    await mark(file.sha);
-                return;
-            }
+            // Labels may already be stale from an earlier add/rename. Validate
+            // pending active plans even when no text/addition checkpoint exists.
             const path: EntityRef = { kind: "plan", mail, planId: file.id };
             for (let attempt = 0; attempt < 3; attempt++) {
                 const current = await this.repositories.read<TrainingPlan>(path,attempt>0);
@@ -166,7 +164,7 @@ export class StructuredAppApi {
                 const [t, c] = attempt ? await Promise.all([this.repositories.read<Techniques>({ kind: "techniques", mail },true), this.repositories.read<Comments>({ kind: "comments", mail },true)]) : [techniques, comments];
                 if (!t || !c)
                     return;
-                const next = updateFuturePlanText(updateFutureStructure(current.data, t.data, c.data, today), t.data, c.data, today);
+                const next = updateFuturePlanLabels(updateFuturePlanText(updateFutureStructure(current.data, t.data, c.data, today), t.data, c.data, today),t.data,today);
                 if (next === current.data) {
                     await mark(current.sha, t, c);
                     return;
