@@ -1,0 +1,95 @@
+{
+  "indexes": [],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "techniques",
+      "fieldPath": "descripcion_del_alumno",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "comments",
+      "fieldPath": "comment",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "exercises",
+      "fieldPath": "descripcion_del_alumno",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "exercises",
+      "fieldPath": "comment",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "boundaries",
+      "fieldPath": "cursor",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "boundaries",
+      "fieldPath": "exerciseSignature",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sessions",
+      "fieldPath": "exercises",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sessions",
+      "fieldPath": "continuityBoundary",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "user_techniques",
+      "fieldPath": "positions",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "user_techniques",
+      "fieldPath": "descriptionUpdates",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "user_techniques",
+      "fieldPath": "deletionCatalog",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "technique_catalog",
+      "fieldPath": "positions",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "trainer_comments",
+      "fieldPath": "comments",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "trainer_comments",
+      "fieldPath": "commentUpdates",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "training_plans",
+      "fieldPath": "continuityCatalog",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "training_plans",
+      "fieldPath": "appliedDescriptionUpdates",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "training_plans",
+      "fieldPath": "appliedCommentUpdates",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "training_day_indexes",
+      "fieldPath": "dayDictionary",
+      "indexes": []
+    }
+  ]
+}

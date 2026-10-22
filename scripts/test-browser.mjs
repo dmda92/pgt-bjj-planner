@@ -9,6 +9,9 @@ import { chromium } from "playwright";
 import { AppApi } from "../worker/application.ts";
 import { ApiError } from "../worker/security.ts";
 // Isolated local fixture. Does not use Cloudflare or GitHub credentials and cannot deploy.
+const fixtureToday=madridDate();
+const relativeDate=days=>{const d=new Date(fixtureToday+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10);};
+const startDate=relativeDate(-9),tournamentDate=relativeDate(21);
 const files = new Map([
     [
       "PGT/master_data/tecnics_base.json",
@@ -505,11 +508,11 @@ try {
     .click();
   await page.getByRole("button",{name:"Nueva competición",exact:true}).click();
   await visible(page.getByRole("heading", { name: "Crear competición" }));
-  await page.getByLabel("Fecha inicial", { exact: true }).fill("2026-10-13");
+  await page.getByLabel("Fecha inicial", { exact: true }).fill(startDate);
   let createRequests=0;
   page.on('request',request=>{if(new URL(request.url()).pathname==='/api/app/competition')createRequests++;});
   const endDate=page.getByLabel('Fecha del torneo',{exact:true});
-  for(const invalidEnd of ['2026-10-13','2026-10-12','2030-10-23']) {
+  for(const invalidEnd of [startDate,relativeDate(-10),relativeDate(1000)]) {
     await endDate.fill(invalidEnd);
     await page.locator('.competition-create').getByRole('button',{name:'Crear competición',exact:true}).click();
     assert.equal(await endDate.getAttribute('aria-invalid'),'true');
@@ -517,7 +520,7 @@ try {
     assert.equal(createRequests,0);
     await visible(page.locator('#competition-end-error'));
   }
-  await page.getByLabel("Fecha del torneo", { exact: true }).fill("2026-10-23");
+  await page.getByLabel("Fecha del torneo", { exact: true }).fill(tournamentDate);
   assert.equal(await endDate.evaluate(el=>el.validity.valid),true);
   assert.equal(await page.locator('#competition-end-error').count(),0);
   for(const label of ['Cambio de roles (s)','Entre técnicas (s)']) {
@@ -569,7 +572,7 @@ try {
   await page.locator('.competition-create').screenshot({path:'.browser-artifacts/competition-loading.png'});
   assert.equal(await page.locator('.competition-create').getByRole('button',{name:'Crear competición',exact:true}).isDisabled(),true);
   releaseCompetition();
-  await visible(page.getByRole("heading", { name: "Torneo · 2026-10-23" }));
+  await visible(page.getByRole("heading", { name: "Torneo · "+tournamentDate }));
   await page.getByRole('status',{name:'Creando competición'}).waitFor({state:'hidden'});
   await page.unroute(competitionRoute,delayedCompetition);
   assert.equal(files.get("PGT/master_data/plans.json").data.plans[0].tiempo_por_tecnica_segundos,180);
@@ -611,8 +614,8 @@ try {
   assert.equal(assignmentRequests,2);
   // A second competition lets us verify deletion feedback without affecting later fixtures.
   await page.getByRole('button',{name:'Nueva competición',exact:true}).click();
-  await page.getByLabel('Fecha inicial',{exact:true}).fill('2026-10-13');
-  await page.getByLabel('Fecha del torneo',{exact:true}).fill('2026-10-24');
+  await page.getByLabel('Fecha inicial',{exact:true}).fill(startDate);
+  await page.getByLabel('Fecha del torneo',{exact:true}).fill(relativeDate(22));
   await page.locator('.competition-create').getByRole('button',{name:'Crear competición',exact:true}).click();
   await page.waitForFunction(()=>document.querySelectorAll('.competition-card').length===2);
   let releaseDelete;
@@ -642,7 +645,7 @@ try {
   await sync(); // trainer receives their own snapshot just like any competitor.
   await page.getByRole("button", { name: /Mis planes/ }).click();
   await page.getByLabel("Mi plan",{exact:true}).selectOption({index:1});
-  await visible(page.locator(".plan-card").getByRole("heading", { name: "Torneo · 2026-10-23" }));
+  await visible(page.locator(".plan-card").getByRole("heading", { name: "Torneo · "+tournamentDate }));
   assert.match(await page.locator(".plan-card .timer").innerText(), /32:10/);
   await page.getByRole("button", { name: "Entrenador", exact: true }).click();
   await page.getByRole('button',{name:'Equipo',exact:true}).click();
@@ -713,7 +716,7 @@ try {
   );
   await page.getByRole("button", { name: /Mis planes/ }).click();
   await page.getByLabel("Mi plan",{exact:true}).selectOption({index:1});
-  await visible(page.locator(".plan-card").getByRole("heading", { name: "Torneo · 2026-10-23" }));
+  await visible(page.locator(".plan-card").getByRole("heading", { name: "Torneo · "+tournamentDate }));
   assert.match(await page.locator(".plan-card .timer").innerText(), /32:10/);
   await context.setOffline(true);
   const download = page.waitForEvent("download");

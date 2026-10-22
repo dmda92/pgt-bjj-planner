@@ -1,0 +1,37 @@
+{
+  "googleTransport": "INTERCEPTED",
+  "checks": [
+    "registration",
+    "login",
+    "original_catalog_order",
+    "profile_write",
+    "logout_login_persistence"
+  ],
+  "spent": {
+    "scenario": {
+      "reads": 130,
+      "writes": 48,
+      "deletes": 0,
+      "http": 49,
+      "queries": 4
+    },
+    "cleanup": {
+      "reads": 52,
+      "writes": 0,
+      "deletes": 47,
+      "http": 19,
+      "queries": 4
+    }
+  },
+  "cleanup": {
+    "clean": true
+  },
+  "budgetClosed": true,
+  "date": "2026-10-21",
+  "total": {
+    "reads": 182,
+    "writes": 48,
+    "deletes": 47
+  },
+  "realFirestoreExecuted": false
+}

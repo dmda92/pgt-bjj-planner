@@ -155,9 +155,11 @@ try {
   });
   let snap = await call(bp + "snapshot", "GET", undefined, b.token);
   assert.equal(snap.techniques.data.positions.length, 17);
+  const today = madridDate();
+  const relativeDate = (days) => { const d = new Date(today + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); };
   const competition = {
-    fecha_comienzo: "2026-10-13",
-    fecha_torneo: "2026-10-23",
+    fecha_comienzo: relativeDate(-9),
+    fecha_torneo: relativeDate(21),
     dias_de_entrenamiento: [2, 4],
     ejercicios_por_sesion: 5,
     tiempo_por_tecnica_segundos: 180,
@@ -174,7 +176,6 @@ try {
   snap = await call(bp + "snapshot", "GET", undefined, b.token);
   assert.equal(snap.plans.length, 1);
   let plan = snap.plans[0];
-  const today = madridDate();
   const futureId = plan.data.sessions.find((s) => s.date > today).exercises[0]
     .techniqueId;
   const protectedSessions = structuredClone(

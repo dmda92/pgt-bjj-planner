@@ -513,11 +513,11 @@ Este apartado sustituye expresamente la regla original de planes completamente i
 
 Nuevas posiciones/técnicas, eliminaciones, prioridades y reordenaciones no deben modificar el histórico ni hoy. El objetivo es rellenar solamente las fechas futuras originales con el mismo N y Tábata, manteniendo el algoritmo circular desde el punto alcanzado, sin reiniciar ni repetir para rellenar. Usar el orden actual del alumno de acuerdo con las decisiones de cursor que se aprueben. Si una posición terminó su pasada, sus nuevas técnicas esperan a la siguiente aparición. Si no queda calendario suficiente, quedan pendientes.
 
-Antes de activar esta parte, consultar las ambigüedades sobre inserciones anteriores al cursor, eliminación de elementos en curso, cambios de lista circular, prioridad/orden y planes editados manualmente. Análisis en ANALISIS_CAMBIOS_ESTRUCTURALES.md. En esta entrega **no se activa el recálculo estructural**; las pruebas verifican que añadir o reordenar no altera implícitamente las sesiones mientras se resuelven dichas decisiones.
+Antes de activar esta parte, consultar las ambigüedades sobre inserciones anteriores al cursor, eliminación de elementos en curso, cambios de lista circular, prioridad/orden y planes editados manualmente. Análisis en ANALISIS_CAMBIOS_ESTRUCTURALES.md. La restricción inicial sobre altas queda sustituida en DEV por el apartado 11.3 (22/10/2026). Los cambios aislados de prioridad o reordenación siguen pendientes.
 
 ### 11.3 Pruebas requeridas
 
-Verificar: todas las apariciones futuras de descripciones y comentarios, histórico exacto, competiciones finalizadas incluso en su día de torneo, sesión de hoy protegida, cambios de día en España, secuencia/fechas/N/Tábata intactos, versiones idempotentes, recuperación tras escritura parcial, conflictos SHA, edición offline y sincronización entre dispositivos, permisos y aislamiento de otros alumnos. Las pruebas de incorporación/replanificación de nuevas técnicas se añadirán cuando se apruebe la política estructural, sin confundir la ausencia actual de recálculo con una incorporación ya implementada.
+Verificar: todas las apariciones futuras de descripciones y comentarios, histórico exacto, competiciones finalizadas incluso en su día de torneo, sesión de hoy protegida, cambios de día en España, secuencia/fechas/N/Tábata intactos, versiones idempotentes, recuperación tras escritura parcial, conflictos SHA, edición offline y sincronización entre dispositivos, permisos y aislamiento de otros alumnos. En DEV las pruebas de altas del apartado 11.3 verifican incorporación futura, orden, continuidad e histórico protegido.
 
 ## 12. Decisión del propietario: planes de solo lectura (14/10/2026)
 
@@ -674,3 +674,11 @@ GET training-day sigue siendo de lectura de planes/derivados. POST training-day,
 ### Título de Mis técnicas (16/10/2026)
 
 Petición del propietario: sustituir «Construye tu juego.» por un literal distinto. Se elige «Tu juego, técnica a técnica», sin cambios adicionales en la pantalla.
+
+### 11.3 Altas de técnicas y posiciones — autorización DEV 22/10/2026
+
+Añadir una técnica o añadir/poblar una posición con al menos una técnica recalcula las sesiones estrictamente posteriores a la fecha actual Europe/Madrid de todos los planes activos del alumno. Hoy y pasado permanecen literalmente iguales; competiciones con fecha <= hoy no cambian. Una posición vacía no es contenido entrenable y no dispara recálculo.
+
+Conservar fechas originales, cantidad exacta de ejercicios por sesión, Tábata, UUID y pertenencia al alumno. Continuar desde la frontera de la última sesión protegida, sin volver a P1. Mantener orden de arrays y movimiento circular existente. Una técnica añadida después del cursor de una posición incompleta entra en el resto de esa pasada; una inserción anterior al cursor o una técnica de posición ya completada espera su siguiente aparición. Una posición nueva situada después del cursor puede entrar en la aparición pendiente de su prioridad; si está antes, espera su siguiente pasada. Una prioridad nueva se incorpora al anillo ordenado al terminar la aparición actual, conservando la fase del movimiento -1/+2.
+
+Si el calendario no permite llegar a la nueva técnica, queda pendiente: no se crean sesiones ni se aumenta N. Sin sesiones protegidas se genera el futuro con el catálogo actualizado usando el generador original. Cursores ambiguos/corruptos o planes legados no reproducibles se conservan y muestran bloqueo recuperable, sin inventar continuidad. La API asigna revisiones de alta y confirma cada plan mediante CAS; cambios idénticos no reescriben planes. Descripciones, comentarios y bajas conservan sus reglas. No se activan por este encargo cambios aislados de prioridad/reordenación.

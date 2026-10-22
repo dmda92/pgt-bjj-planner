@@ -1,0 +1,71 @@
+{
+  "environment": "local workerd/SQLite; intercepted Firestore REST transport; no Google calls",
+  "referenceFixture": {
+    "positions": 17,
+    "techniques": 36
+  },
+  "sockets": 3,
+  "estimateOnly": true,
+  "indexEntryBilling": "not measured",
+  "httpIncludesOAuth": false,
+  "scenarios": [
+    {
+      "scenario": "Inicio de sesión",
+      "reads": 8,
+      "writes": 0,
+      "deletes": 0,
+      "http": 8
+    },
+    {
+      "scenario": "Mis técnicas: snapshot sin caché",
+      "reads": 53,
+      "writes": 0,
+      "deletes": 0,
+      "http": 18
+    },
+    {
+      "scenario": "Modificar descripción y notificar sockets",
+      "reads": 54,
+      "writes": 3,
+      "deletes": 1,
+      "http": 21
+    },
+    {
+      "scenario": "Consultar catálogo de competiciones",
+      "reads": 11,
+      "writes": 0,
+      "deletes": 0,
+      "http": 11
+    },
+    {
+      "scenario": "Crear competición y dos planes pequeños",
+      "reads": 134,
+      "writes": 20,
+      "deletes": 5,
+      "http": 66
+    },
+    {
+      "scenario": "Entrenamiento del día: primera consulta",
+      "reads": 36,
+      "writes": 10,
+      "deletes": 0,
+      "http": 36
+    },
+    {
+      "scenario": "Entrenamiento del día: índice vigente",
+      "reads": 32,
+      "writes": 0,
+      "deletes": 0,
+      "http": 28
+    },
+    {
+      "scenario": "Sincronización con versiones conocidas",
+      "reads": 16,
+      "writes": 0,
+      "deletes": 0,
+      "http": 16
+    }
+  ],
+  "writesBudgetAuthorized": 150,
+  "liveExecution": "NOT_RUN_QUOTA_NOT_VERIFIED"
+}
