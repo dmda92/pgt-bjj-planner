@@ -1,6 +1,6 @@
 # Actualizaciones estructurales futuras — análisis previo
 
-Estado vigente (14/10/2026): eliminación de técnicas y posiciones APROBADA e implementada. Las restantes decisiones estructurales de la tabla siguen pendientes. La actualización de descripciones y comentarios futuros sí está implementada. Ninguna sesión de fecha igual o anterior a hoy en Europe/Madrid puede alterarse automáticamente. Una competición de fecha igual o anterior a hoy está finalizada.
+Estado histórico (14/10/2026), sustituido para altas DEV por la decisión del 22/10/2026 al final: eliminación de técnicas y posiciones APROBADA e implementada. Las restantes decisiones estructurales de la tabla siguen pendientes. La actualización de descripciones y comentarios futuros sí está implementada. Ninguna sesión de fecha igual o anterior a hoy en Europe/Madrid puede alterarse automáticamente. Una competición de fecha igual o anterior a hoy está finalizada.
 
 ## Decisión confirmada: planes de solo lectura (14/10/2026)
 
@@ -70,3 +70,7 @@ Los tombstones se guardan antes del fan-out. Una escritura interrumpida se recup
 Cobertura de implementación: tests/plan-deletions.test.ts, prueba API de eliminaciones en tests/plan-text-api.test.ts y escenario offline/reload/segundo dispositivo/bloqueo en scripts/test-browser.mjs. Los datos utilizados son sintéticos; no se accede a los alumnos reales para validar estas pruebas.
 
 La revisión de eventos de eliminación (`deletionRevision`, calculada por servidor; `appliedDeletionRevision` por plan) permite distinguir un nuevo borrado del mismo UUID tras recuperar el catálogo de un reintento idempotente. La fuente conserva los tombstones acumulados y cada evento real vuelve a evaluar los planes; repetir la sincronización sin evento nuevo no recalcula.
+
+## Decisión vigente sobre altas DEV — 22/10/2026
+
+El propietario aprueba incorporar nuevas técnicas y posiciones con técnicas a las sesiones futuras, manteniendo hoy/pasado Madrid. Quedan resueltas para DEV las filas de altas antes/después del cursor: después se incorporan a la aparición pendiente, antes esperan siguiente pasada; posiciones ya completadas no se reabren. Las prioridades nuevas entran al terminar la aparición actual sin reiniciar el movimiento. Posiciones vacías no cuentan hasta recibir una técnica. No se añaden fechas para forzar cobertura. Los cambios aislados de prioridad/reordenación siguen fuera de alcance. Especificación definitiva en REQUISITOS_PGT_APP.md 11.3 y PLAN_ADICIONES_DEV.md.
