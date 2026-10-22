@@ -62,8 +62,8 @@ try{
  await s.page.locator('details.position summary').first().click();
  assert.equal(await s.page.getByRole('button',{name:'Sincronizar',exact:true}).count(),0);
  const editor=s.page.getByLabel('Descripción de técnica o enlace de vídeo').first(),remote=t.page.getByLabel('Descripción del alumno',{exact:true}).first();
- // 12 paced samples through the actual autosave UI, with no reload or refresh.
- for(let i=0;i<12;i++){
+ // Two functional edits prove repeat delivery without turning QA into a traffic burst.
+ for(let i=0;i<2;i++){
   if(i)await wait(2500);
   const text='QA '+runId.slice(0,8)+' cambio '+i,start=Date.now();
   await editor.fill(text);await poll(()=>remote.inputValue().then(v=>v===text),'Automatic trainer update');samples.push(Date.now()-start);
@@ -72,7 +72,7 @@ try{
  // Keep the private original catalogue out of public Actions artifacts. The
  // paired description crops show the same synthetic edit; JSON carries timing.
  await editor.screenshot({path:'artifacts/firestore-student.png'});await remote.screenshot({path:'artifacts/firestore-trainer.png'});
- checks.push('12 real UI autosaves -> trainer without refresh');
+ checks.push('2 real UI autosaves -> trainer without refresh');
  // A failed save stays a visible, exportable draft and is never retried silently.
  let blockedAttempts=0;
  await s.page.route('**/api/app/users/**/techniques',async route=>{if(route.request().method()==='PUT'){blockedAttempts++;await route.abort();}else await route.continue();});
