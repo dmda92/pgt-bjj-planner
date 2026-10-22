@@ -104,19 +104,20 @@ try{
  await call(s,endpoint(student)+'/techniques','PUT',{data:deleted,sha:updated.techniques.sha});updated=await snapshot();const after=updated.plans.find(p=>p.data.planId===plan.planId).data;
  const recalc=updateFuturePlanText(updateFutureDeletions(oldPlan,updated.techniques.data,updated.comments.data,today),updated.techniques.data,updated.comments.data,today);exact(after.sessions,recalc.sessions);exact(after.continuity,recalc.continuity);exact(after.sessions.filter(v=>v.date<=today),plan.sessions.filter(v=>v.date<=today));checks.push('Exact deletion recalculation and protected past/today');
  // Actual UI additions must reach future plans and IndexedDB without reload.
+ async function uiSaved(action){const saved=s.page.waitForResponse(r=>r.request().method()==='PUT'&&new URL(r.url()).pathname.endsWith('/techniques'));await action();assert.equal((await saved).status(),200,'UI structural edit must be confirmed by server before inspecting persistence');}
  const protectedBeforeAddition=structuredClone(after.sessions.filter(v=>v.date<=today));
  const originalIds=new Set(updated.techniques.data.positions.flatMap(p=>p.tecnicas.map(v=>v.id)));
- await firstPosition.getByRole('button',{name:'Añadir técnica',exact:true}).click();
+ await uiSaved(()=>firstPosition.getByRole('button',{name:'Añadir técnica',exact:true}).click());
  await poll(()=>cached(s,'techniques').then(v=>v?.data.positions[0].tecnicas.some(t=>!originalIds.has(t.id))),'UI technique addition persisted');
  let additionState=await snapshot(),addedId=additionState.techniques.data.positions[0].tecnicas.find(v=>!originalIds.has(v.id)).id;
  await poll(()=>cached(s,'plan:'+plan.planId).then(v=>v?.data.sessions.some(day=>day.date>today&&day.exercises.some(e=>e.techniqueId===addedId))),'Added technique appears in live future plan');
  exact(additionState.plans.find(p=>p.data.planId===plan.planId).data.sessions.filter(v=>v.date<=today),protectedBeforeAddition);
  const stableAdditionPlan=JSON.stringify(additionState.plans),oldPositionIds=new Set(additionState.techniques.data.positions.map(p=>p.id));
- await s.page.getByRole('button',{name:'Añadir posición',exact:true}).click();
+ await uiSaved(()=>s.page.getByRole('button',{name:'Añadir posición',exact:true}).click());
  await poll(()=>cached(s,'techniques').then(v=>v?.data.positions.some(p=>!oldPositionIds.has(p.id))),'Empty position persisted');
  additionState=await snapshot();exact(JSON.stringify(additionState.plans),stableAdditionPlan,'Empty position must not rewrite a plan');
  const emptyPosition=s.page.locator('details.position').last();
- await emptyPosition.getByRole('button',{name:'Añadir técnica',exact:true}).click();
+ await uiSaved(()=>emptyPosition.getByRole('button',{name:'Añadir técnica',exact:true}).click());
  await poll(()=>cached(s,'techniques').then(v=>v?.data.positions.at(-1)?.tecnicas.length===1),'First technique activates position');
  additionState=await snapshot();const newPositionId=additionState.techniques.data.positions.at(-1).id;
  await poll(()=>cached(s,'plan:'+plan.planId).then(v=>v?.data.sessions.some(day=>day.date>today&&day.exercises.some(e=>e.positionId===newPositionId))),'Newly populated position appears in live future plan');
