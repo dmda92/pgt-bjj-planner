@@ -1,8 +1,9 @@
+import {hasTrainableAdditions,updateFutureStructure,type AdditionTechniques,type AdditionPlan} from '../../src/domain/plan-additions.ts';
 import {revisionOf} from './firestore.ts';
 import type {SessionStore} from './session-store.ts';
 import { readTrainingDay } from "./training-day.ts";
 import type { PlanIssue } from "../../src/domain/plan-issues.ts";
-import { catalogOf, deletedUUIDs, updateFutureDeletions } from "../../src/domain/plan-continuity.ts";
+import { catalogOf, deletedUUIDs } from "../../src/domain/plan-continuity.ts";
 import { MAX_APP_BODY_BYTES, MAX_TEXT_LENGTH } from "../../src/domain/json-limits.ts";
 import { ApiError, reject, normalizedMail, passwordHash, passwordMatches, opaqueToken, fingerprint, jsonBody, onlyFields, } from "../security.ts";
 import type { DomainRepositories, EntityRef, EntityKind, EntityRecord as CloudRecord } from "./repositories.ts";
@@ -147,7 +148,7 @@ export class StructuredAppApi {
         await concurrentMap(pending, async (file) => {
             const key = `plan-update:${mail}:${file.id}`;
             const mark = (sha: string, t = techniques, c = comments) => this.store.put(key, { t: t.sha, c: c.sha, p: sha, day: today });
-            if (!techniques.data.descriptionUpdates && !comments.data.commentUpdates && !techniques.data.deletedIds?.length) {
+            if (!techniques.data.descriptionUpdates && !comments.data.commentUpdates && !techniques.data.deletedIds?.length && !(techniques.data as AdditionTechniques).additionRevision) {
                 if (file.sha)
                     await mark(file.sha);
                 return;
@@ -165,7 +166,7 @@ export class StructuredAppApi {
                 const [t, c] = attempt ? await Promise.all([this.repositories.read<Techniques>({ kind: "techniques", mail },true), this.repositories.read<Comments>({ kind: "comments", mail },true)]) : [techniques, comments];
                 if (!t || !c)
                     return;
-                const next = updateFuturePlanText(updateFutureDeletions(current.data, t.data, c.data, today), t.data, c.data, today);
+                const next = updateFuturePlanText(updateFutureStructure(current.data, t.data, c.data, today), t.data, c.data, today);
                 if (next === current.data) {
                     await mark(current.sha, t, c);
                     return;
@@ -264,6 +265,7 @@ export class StructuredAppApi {
             return;
         }
         const plan = generatePlan(assigned, mail, t.data, notes.data, now());
+        if((t.data as AdditionTechniques).additionRevision)(plan as AdditionPlan).appliedAdditionRevision=(t.data as AdditionTechniques).additionRevision;
         plan.appliedDescriptionUpdates = { ...t.data.descriptionUpdates };
         plan.appliedCommentUpdates = { ...notes.data.commentUpdates };
         try {
@@ -689,14 +691,17 @@ export class StructuredAppApi {
             onlyFields(b, ["data", "sha"]);
             const path: EntityRef = { kind: "techniques", mail };
             const old = await this.checkSha(path, b.sha);
-            const next = b.data as Techniques;
+            const next = b.data as AdditionTechniques;
             validate(() => validateTechniques(next));
             // Tombstones are server-owned and survive partial plan writes and subsequent retries.
             const removed = deletedUUIDs(old!.data as unknown as Techniques, next);
+            const added = hasTrainableAdditions(old!.data as unknown as Techniques,next);
+            next.additionRevision=((old!.data as unknown as AdditionTechniques).additionRevision||0)+Number(added);
+            if(!next.additionRevision)delete next.additionRevision;
             next.deletionRevision = ((old!.data as unknown as Techniques).deletionRevision || 0) + Number(removed.length > 0);
             if (!next.deletionRevision)
                 delete next.deletionRevision;
-            next.deletionCatalog = (old!.data as unknown as Techniques).deletionCatalog || (removed.length ? catalogOf(old!.data as unknown as Techniques) : undefined);
+            next.deletionCatalog = (old!.data as unknown as Techniques).deletionCatalog || (removed.length || added ? catalogOf(old!.data as unknown as Techniques) : undefined);
             if (!next.deletionCatalog)
                 delete next.deletionCatalog;
             next.deletedIds = [...new Set([...((old!.data as unknown as Techniques).deletedIds || []), ...removed])];

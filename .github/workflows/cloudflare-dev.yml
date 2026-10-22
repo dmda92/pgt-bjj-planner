@@ -68,6 +68,8 @@ jobs:
         run: node scripts/test-execution-budget-runtime.mjs
       - name: Budgeted minimal smoke and cleanup (isolated)
         run: node scripts/test-minimal-smoke-runtime.mjs
+      - name: Future plan additions through native API (isolated)
+        run: node scripts/test-plan-additions-runtime.mjs
       - name: DEV Firestore application and realtime runtime (isolated)
         run: node scripts/test-firestore-app-runtime.mjs
       - name: Install Chromium
