@@ -60,7 +60,8 @@ jobs:
       - name: Firestore V2 runtime and frontend boundary (isolated)
         run: npm run check:firestore-v2
       - name: Install Chromium
-        run: npx --no-install playwright install --with-deps chromium
+        timeout-minutes: 8
+        run: bash scripts/ci-install-chromium.sh
       - name: Browser and offline PDF tests
         run: npm run test:browser
       - name: Native V2 persistence cost regression
@@ -92,7 +93,8 @@ jobs:
       - run: npm ci
       - run: npm run build
       - name: Install Chromium
-        run: npx --no-install playwright install --with-deps chromium
+        timeout-minutes: 8
+        run: bash scripts/ci-install-chromium.sh
       - name: Online DEV frontend and Firestore protocol in isolated browsers
         run: npm run test:browser
       - name: Verify online DEV bundle configuration

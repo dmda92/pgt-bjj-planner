@@ -51,3 +51,22 @@ try{
     assert.ok(events.length>=count);
     console.log('Actual DEV V2 Worker, synthetic verified import: auth, CORS, WebSockets, atomic plans, history, selective warm snapshots, zero read-after-ACK, agenda and role revocation PASS. Google/GitHub intercepted.');
 }finally{for(const ws of sockets)try{ws.close();}catch{}await runtime.dispose();}
+
+// A pending import is a configuration gate, not permission to poll its pointer
+// on every reconnect. Activation requires a restart; transient IO isn't cached.
+const pendingFixture=await v2DevFixture();
+for(const key of pendingFixture.f.docs.keys())if(key.endsWith('/documents/pgt_v2/control'))pendingFixture.f.docs.delete(key);
+const pendingRuntime=new Miniflare(convertV4MiniflareOptions({modules:true,script,compatibilityDate:'2026-10-13',
+    durableObjects:{SECURITY:{className:'ProbeSecurity',useSQLite:true},DOMAIN_IO:{className:'DomainIO',useSQLite:true}},
+    bindings:{...pendingFixture.f.env,ALLOWED_ORIGINS:origin},outboundService:async request=>pendingFixture.f.transport(request.url,{method:request.method,headers:request.headers,
+        ...(!['GET','HEAD'].includes(request.method)?{body:await request.text()}:{})})}));
+try{
+    const before=pendingFixture.f.metrics();
+    for(let i=0;i<20;i++){
+        const response=await pendingRuntime.dispatchFetch('https://local/api/v2/users/synthetic@example.test/snapshot',{headers:{Origin:origin,Authorization:'Bearer '+'x'.repeat(43)}});
+        assert.equal(response.status,503);assert.equal((await response.json()).error,'V2_MIGRATION_NOT_ACTIVATED');
+    }
+    assert.equal(pendingFixture.f.metrics().estimatedReads-before.estimatedReads,1);
+    assert.equal(pendingFixture.f.metrics().attemptedWrites,before.attemptedWrites);
+    console.log('Unactivated V2: 20 reconnect requests cost one configuration read, zero writes; no ongoing quota polling PASS.');
+}finally{await pendingRuntime.dispose();}
