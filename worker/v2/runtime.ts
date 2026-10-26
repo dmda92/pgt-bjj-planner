@@ -24,6 +24,7 @@ export default {
 /** Sole DEV business writer, volatile business cache, SQLite coordination only. */
 export class ProbeSecurity extends DurableObject<V2Env> {
     private api?: V2Api;
+    private activationError?: ApiError;
     private queries?: QueryCoordinator;
     private epoch = crypto.randomUUID();
     private queue: Promise<unknown> = Promise.resolve();
@@ -31,15 +32,19 @@ export class ProbeSecurity extends DurableObject<V2Env> {
     private originSession = '';
     private async initialize() {
         if (this.api) return;
+        // Activation explicitly requires a coordinator restart. Remember this
+        // configuration gate so reconnecting old clients cannot poll Firestore
+        // while the new dataset has not been activated. Transport errors retry.
+        if (this.activationError) throw this.activationError;
         const db = new CachedFirestore(this.env, (url, init) => url.startsWith('https://firestore.googleapis.com/') ?
             this.env.DOMAIN_IO.get(this.env.DOMAIN_IO.idFromName('v2-native-transport')).fetch(url, init) : fetch(url, init)), control = await db.get('pgt_v2/control');
         if (!control || control.data.phase !== 'active' || control.data.project !== 'pgt-bjj-dev' ||
-            !/^[0-9a-f]{40}$/.test(control.data.sourceCommit || '')) throw new ApiError(503, 'V2_MIGRATION_NOT_ACTIVATED');
+            !/^[0-9a-f]{40}$/.test(control.data.sourceCommit || '')) throw (this.activationError = new ApiError(503, 'V2_MIGRATION_NOT_ACTIVATED'));
         const namespace = migrationNamespace(control.data.namespace);
-        if (!namespace.startsWith('pgt_v2/import-')) throw new ApiError(503, 'V2_MIGRATION_NOT_ACTIVATED');
+        if (!namespace.startsWith('pgt_v2/import-')) throw (this.activationError = new ApiError(503, 'V2_MIGRATION_NOT_ACTIVATED'));
         const verified = await db.get(namespace);
         if (!verified || verified.data.phase !== 'verified' || verified.data.active !== true || verified.data.sourceCommit !== control.data.sourceCommit)
-            throw new ApiError(503, 'V2_IMPORT_NOT_VERIFIED');
+            throw (this.activationError = new ApiError(503, 'V2_IMPORT_NOT_VERIFIED'));
         const store = new NativeAggregates(db, namespace), queries = new QueryCoordinator(store, new PlanViews(new PlanRepository(db, namespace), store), 32 * 1024 * 1024);
         const trackBlocks = async (target: string) => {
             await this.ctx.storage.put('v2-gc:' + await fingerprint(target), { target, token: '', attempts: 0 });

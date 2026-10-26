@@ -42,6 +42,11 @@ Su éxito NO acredita disponibilidad de login o datos. El acceso a la aplicació
 quedará pendiente de la activación segura descrita en
 [MIGRACION_GITHUB_FIRESTORE_V2.md](MIGRACION_GITHUB_FIRESTORE_V2.md).
 
+La instancia recuerda el bloqueo por importación no activada/verificada hasta su
+reinicio. No repite lecturas del puntero por cada reconexión de clientes antiguos;
+los errores transitorios de transporte no se cachean. Regresión workerd: veinte
+peticiones antes de activar consumen una lectura de configuración y cero escrituras.
+
 El workflow no debe ejecutar inventarios, bootstrap, carga o QA sobre Google.
 La futura importación requiere inventario, cuota fiable, presupuesto compartido
 y gate de mantenimiento; no se infiere autorización para omitirlos del deploy.
