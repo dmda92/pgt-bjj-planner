@@ -8,6 +8,7 @@ import { PlanRepository } from '../worker/v2/plans.ts';
 import { PlanViews } from '../worker/v2/plan-views.ts';
 import { QueryCoordinator, type QuerySession } from '../worker/v2/query-coordinator.ts';
 import { BusinessCommands } from '../worker/v2/business.ts';
+import type { AssignmentState } from '../worker/v2/text-commands.ts';
 import { fingerprint } from '../worker/security.ts';
 import { cloneTemplate, initialVersion, type Profile, type Techniques, type Competition } from '../src/domain/models.ts';
 import { queryMonthlyAgenda, type MonthlyAgenda } from '../src/infrastructure/trainer-agenda.ts';
@@ -123,4 +124,30 @@ test('Correcting an empty repertoire generates its assigned missing plan and rem
     assert.equal(restored.plans!.length, 1);
     assert.equal((await s.q.snapshot(actor, actor.mail)).pendingPlanIds.length, 0);
     assert.equal((await s.q.trainingDay(actor, '2026-11-01', '2026-10-26')).missing, 0);
+});
+test('Migrated assignments without optional pending metadata can be unassigned and reassigned', async () => {
+    const s = await setup(), created = await s.business.competition(s.sessions[0], 'competition', {
+        competition: s.competition, expected: null, operationId: crypto.randomUUID()
+    }), id = created.metadata!.planId, owner = s.sessions[1].mail;
+    const ref = { kind: 'assignment' as const, id: owner }, existing = (await s.store.read<AssignmentState>(ref))!;
+    delete existing.data.pendingPlanIds;
+    await s.store.write(ref, existing.data, existing.version, crypto.randomUUID());
+    // Cold coordinator: match the persisted migrated shape rather than warm generated data.
+    const business = new BusinessCommands(new QueryCoordinator(s.store, s.views), s.views, clock);
+    const retained = (await s.views.read(s.sessions[0].mail, id))!.data;
+    const remove = { planId: id, alumnos: [s.sessions[0].mail], expected: '1', operationId: crypto.randomUUID() };
+    await business.competition(s.sessions[0], 'assignment', remove);
+    assert.equal(await s.views.plans.head(owner, id), null);
+    const assignment = (await s.store.read<AssignmentState>(ref))!.data;
+    assert.equal(Object.hasOwn(assignment, 'pendingPlanIds'), false);
+    assert.ok(assignment.deletedPlanIds?.includes(id));
+    assert.deepEqual((await s.views.read(s.sessions[0].mail, id))!.data, retained);
+    const writes = s.f.metrics().attemptedWrites;
+    await business.competition(s.sessions[0], 'assignment', remove);
+    assert.equal(s.f.metrics().attemptedWrites, writes);
+    await business.competition(s.sessions[0], 'assignment', {
+        planId: id, alumnos: s.sessions.map(a => a.mail), expected: '2', operationId: crypto.randomUUID()
+    });
+    assert.ok(await s.views.plans.head(owner, id));
+    assert.deepEqual((await s.views.read(s.sessions[0].mail, id))!.data, retained);
 });

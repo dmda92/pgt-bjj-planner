@@ -258,7 +258,7 @@ export class BusinessCommands {
                     }
                 }
                 if (!assigned) {
-                    assignment.pendingPlanIds = assignment.pendingPlanIds?.filter(p => p !== id);
+                    if (assignment.pendingPlanIds) assignment.pendingPlanIds = assignment.pendingPlanIds.filter(p => p !== id);
                     if (assignment.projectionIssues) delete assignment.projectionIssues[id];
                 }
                 if (blockDigest(assignment) !== blockDigest(stored.data)) {
