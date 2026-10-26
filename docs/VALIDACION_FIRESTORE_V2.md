@@ -187,3 +187,10 @@ No se han alterado datos DEV para QA ni recursos PRO.
 Límites de diseño explícitos en [contratos](FIRESTORE_V2_CONTRATOS.md): commits
 acotados, extremo remoto de memoria no medido y lectura compacta completa para
 estructuras. No presentar esta implementación como óptimo matemático demostrado.
+
+## Participantes migrados — 26/10/2026
+
+Reproducido `PLAN_NATIVE_VALUE`, expuesto como `INTERNAL_ERROR`, al desasignar
+un participante cuyo índice no contiene `pendingPlanIds`. Corrección localizada
+y prueba de desasignación/reintento/reasignación, sin modificar datos reales.
+Diagnóstico, alcance y resultados en [FIX_PARTICIPANTES_MIGRADOS.md](FIX_PARTICIPANTES_MIGRADOS.md).
