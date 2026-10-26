@@ -167,6 +167,14 @@ exenciones por el propietario; no se amplía IAM. Cuota actual pendiente de apor
 Importación, activación y login real todavía NO ejecutados. No afirmar que DEV
 está lista para uso por tener una simulación correcta o un despliegue de código.
 
+## Corrección posterior de autoguardado — 26/10/2026
+
+La migración se completó después del estado anterior y se comprobó login/plan en
+Chromium real; PR #27 integrada y DEV e110f8f publicada. Evidencia operativa privada
+fuera del repositorio. El propietario reportó RATE_LIMIT durante edición; diagnóstico,
+corrección y pruebas aisladas en [FIX_AUTOGUARDADO_RATE_LIMIT.md](FIX_AUTOGUARDADO_RATE_LIMIT.md).
+No se modifican sus datos para reproducir ni verificar esta incidencia.
+
 Límites de diseño explícitos en [contratos](FIRESTORE_V2_CONTRATOS.md): commits
 acotados, extremo remoto de memoria no medido y lectura compacta completa para
 estructuras. No presentar esta implementación como óptimo matemático demostrado.

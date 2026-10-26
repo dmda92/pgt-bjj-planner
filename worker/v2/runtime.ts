@@ -115,8 +115,11 @@ export class ProbeSecurity extends DurableObject<V2Env> {
             this.originConnection = request.headers.get('X-PGT-Connection') || ''; this.originSession = '';
             if (request.method === 'POST' && url.pathname.startsWith('/api/v2/commands/')) {
                 const { key } = await this.session(request); this.originSession = key;
-                await this.limit('v2-rate:write-minute:' + key, 10, 60000);
-                await this.limit('v2-rate:write-hour:' + key, 100, 3600000);
+                // Autosave is an ordinary write, not one explicit form submission.
+                // A 1.2s editor debounce can make up to 50 saves/minute. Keep a
+                // finite sustained ceiling without rejecting normal editing.
+                await this.limit('v2-rate:write-minute:' + key, 60, 60000);
+                await this.limit('v2-rate:write-hour:' + key, 600, 3600000);
             }
             const response = await this.api!.fetch(request), result = new Response(response.body, response);
             if (response.ok && url.pathname === '/api/v2/auth/logout') {
