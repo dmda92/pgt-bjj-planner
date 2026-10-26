@@ -5,6 +5,7 @@ import {fileURLToPath} from 'node:url';
 import {extractGithubSnapshot,validateSnapshot} from '../tools/migration/github-source.ts';
 import {convertSnapshot,verifyBundle} from '../tools/migration/convert.ts';
 import {encryptPackage,decryptPackage} from '../tools/migration/private-package.ts';
+import {extractLocalSnapshot} from '../tools/migration/github-local.ts';
 
 const [command,...args]=process.argv.slice(2),options=new Map();
 for(let i=0;i<args.length;i++){
@@ -28,6 +29,7 @@ async function main(){
         console.log('Read-only GitHub migration; never writes GitHub or Firestore.\n'+
             'keygen --key-file <outside-repository>\n'+
             'extract --commit <40-hex-SHA> --allow-github-read --key-file <file> --output <file>\n'+
+            'extract-local --git-directory <private-bare-clone> --commit <40-hex-SHA> --key-file <file> --output <file>\n'+
             'convert --project <pgt-bjj-dev|pgt-bjj-pro> --key-file <file> --input <file> --output <file>\n'+
             'inspect --key-file <file> --input <file>\n'+
             'extract uses PGT_MIGRATION_GITHUB_READ_TOKEN. All data packages are AES-256-GCM encrypted.\n'+
@@ -44,6 +46,11 @@ async function main(){
         const snapshot=await extractGithubSnapshot({commit:option('commit'),token:process.env.PGT_MIGRATION_GITHUB_READ_TOKEN||''});
         writePrivate(option('output'),encryptPackage(snapshot,key));
         console.log(JSON.stringify({status:'SOURCE_CAPTURED',commit:snapshot.commit,files:snapshot.files.length}));return;
+    }
+    if(command==='extract-local'){
+        const snapshot=extractLocalSnapshot(privatePath(option('git-directory')),option('commit'));
+        writePrivate(option('output'),encryptPackage(snapshot,readKey()));
+        console.log(JSON.stringify({status:'SOURCE_CAPTURED_READ_ONLY',commit:snapshot.commit,files:snapshot.files.length}));return;
     }
     if(command==='convert'){
         const source=readPrivate(),bundle=convertSnapshot(source,option('project'));

@@ -96,3 +96,17 @@ test('Private migration packages authenticate content and never expose credentia
     pack.ciphertext = 'AA' + pack.ciphertext.slice(2);
     assert.throws(() => decryptPackage(pack, key), /AUTHENTICATION/);
 });
+
+test('Stale derived assignment indexes follow the catalog without changing source or saved plans', () => {
+    const { snapshot, p } = source(), removed = 'c'.repeat(8) + '-cccc-cccc-cccc-' + 'c'.repeat(12);
+    const files = snapshot.files.map(f => f.path.endsWith('/plans_index.json') ? { ...f,
+        content: JSON.stringify({ ...initialVersion(), planIds: [removed], deletedPlanIds: [p.planId, removed] }) } : f);
+    const captured = snapshotFromFiles(commit, tree, files), before = structuredClone(captured);
+    const result = convertSnapshot(captured, 'pgt-bjj-dev');
+    assert.equal(result.ready, true);
+    assert.deepEqual(result.users[0].index!.planIds, [p.planId]);
+    assert.deepEqual(result.users[0].index!.deletedPlanIds, [removed]);
+    assert.ok(result.issues.some(i => i.code === 'ASSIGNMENT_INDEX_REBUILT' && !i.blocking));
+    assert.deepEqual(decodePlan(result.plans[0].plan), p);
+    assert.deepEqual(captured, before);
+});

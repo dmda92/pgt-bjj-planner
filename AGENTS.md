@@ -475,3 +475,12 @@ PR y desplegar exclusivamente DEV tras CI. Sustituye la orden previa de no despl
 No autoriza main/PRO, modificar datos GitHub de producción, ni omitir el inventario,
 cuota fiable y gates necesarios para importar/activar datos reales en Firestore DEV.
 Publicar el código no equivale a activar la importación V2 ni a probar login remoto.
+
+### Migración y puesta en servicio DEV autorizadas — 26/10/2026
+
+El propietario ordena ejecutar la migración desde GitHub PRO sin alterar el origen
+y dejar DEV lista para pruebas. Autoriza captura privada, importación/activación
+exclusivamente pgt-bjj-dev, credenciales DEV independientes, verificación mínima
+y reinicio mediante despliegue desde develop por PR tras CI. Se mantienen los
+gates de inventario, cuota actual, presupuesto compartido e índices; no se amplía
+IAM del runtime ni se autoriza main/PRO. Datos GitHub siempre de solo lectura.

@@ -49,7 +49,8 @@ export function verifyBundle(bundle: MigrationBundle): void {
     if (bundle.format !== 'pgt-firestore-import-v2' || !['pgt-bjj-dev', 'pgt-bjj-pro'].includes(bundle.target) || digest(body) !== checksum)
         throw Error('MIGRATION_BUNDLE_INTEGRITY');
 }
-/** Converts only captured GitHub records. No Firestore reads, generation, repairs or current clock. */
+/** Converts captured records. Rebuilds derived assignment indexes from the
+ * authoritative catalog; never regenerates or repairs saved plan snapshots. */
 export function convertSnapshot(snapshot: GithubSnapshot, target: MigrationTarget): MigrationBundle {
     validateSnapshot(snapshot);
     if (!['pgt-bjj-dev', 'pgt-bjj-pro'].includes(target))
@@ -165,8 +166,16 @@ export function convertSnapshot(snapshot: GithubSnapshot, target: MigrationTarge
             continue;
         }
         const expected = catalog?.plans.filter(c => c.alumnos.includes(owner)).map(c => c.planId).sort() ?? [];
-        if (JSON.stringify([...user.index.planIds].sort()) !== JSON.stringify(expected))
-            issue('ASSIGNMENT_SOURCE_MISMATCH', -1);
+        if (JSON.stringify([...user.index.planIds].sort()) !== JSON.stringify(expected)) {
+            // The original updateIndexes() already treats catalog membership as
+            // authoritative. A stale per-user index must not hide assigned plans.
+            // Preserve deletion knowledge, excluding assignments restored by the catalog.
+            const removed = [...new Set([...(user.index.deletedPlanIds ?? []),
+                ...user.index.planIds.filter(id => !expected.includes(id)), ...(catalog?.deletedPlanIds ?? [])])]
+                .filter(id => !expected.includes(id));
+            user.index = { ...user.index, planIds: expected, deletedPlanIds: removed };
+            issue('ASSIGNMENT_INDEX_REBUILT', -1, false);
+        }
         for (const planId of expected)
             if (!plans.some(p => p.text.metadata.mail === owner && p.text.metadata.planId === planId))
                 issue('ASSIGNED_PLAN_MISSING', -1, false);
