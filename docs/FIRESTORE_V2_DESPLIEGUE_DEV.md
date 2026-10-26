@@ -22,6 +22,11 @@ dependencias, configuración y workflow PRO) restaurando el contenido de develop
 Se comprobó equivalencia de compilación TypeScript antes de restaurar: no se
 retiran cambios funcionales. El resto del reformateo previo permanece en la rama
 solicitada; el diff hacia develop se revisa incluyendo ese antecedente.
+También se excluye del índice la carpeta local .idea, incluido el historial del
+editor, sin borrar los archivos del equipo; se añade a .gitignore. Se conserva
+el contenido de la skill oficial de develop en el commit de integración, sin
+alterar su copia local. Integración mediante squash para no incorporar a la
+historia de develop los commits previos de metadatos del editor.
 
 324 pruebas completas, tipos, PWA, compilación Worker, tres suites runtime,
 navegador V2 y bancos sintéticos correctos en la ejecución documentada en
