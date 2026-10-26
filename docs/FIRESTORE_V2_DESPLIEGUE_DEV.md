@@ -16,6 +16,13 @@ Esta autorización sustituye la orden anterior de terminar sin desplegar. No inc
 
 ## Validación previa
 
+La revisión completa de la PR #25 identificó reformateos del commit previo del
+propietario en archivos de PRO. Se excluyen 15 rutas protegidas (entrada y sus
+dependencias, configuración y workflow PRO) restaurando el contenido de develop.
+Se comprobó equivalencia de compilación TypeScript antes de restaurar: no se
+retiran cambios funcionales. El resto del reformateo previo permanece en la rama
+solicitada; el diff hacia develop se revisa incluyendo ese antecedente.
+
 324 pruebas completas, tipos, PWA, compilación Worker, tres suites runtime,
 navegador V2 y bancos sintéticos correctos en la ejecución documentada en
 [VALIDACION_FIRESTORE_V2.md](VALIDACION_FIRESTORE_V2.md). CI vuelve a validar el
