@@ -1,0 +1,9 @@
+{
+  "indexes": [],
+  "fieldOverrides": [
+    { "collectionGroup": "aggregates", "fieldPath": "*", "indexes": [] },
+    { "collectionGroup": "plans", "fieldPath": "*", "indexes": [] },
+    { "collectionGroup": "blocks", "fieldPath": "*", "indexes": [] },
+    { "collectionGroup": "operations", "fieldPath": "*", "indexes": [] }
+  ]
+}

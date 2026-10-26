@@ -1,9 +1,23 @@
 # Línea base de dominio previa a Firestore
 
-`domain-baseline.json` se capturó el 20/10/2026 desde main `3b8125cb362f665f908e4028d54514f65f00459a`, comprobando antes igualdad byte a byte de los cuatro archivos de dominio con `git show` de ese commit. No incluye datos reales ni copia la plantilla de alumnos. UUIDs, textos y nombres son sintéticos y fijos. `generatedAt` es fijo para que la comparación no dependa del día de ejecución.
+`domain-baseline.json` se capturó el 20/10/2026 desde main `3b8125cb362f665f908e4028d54514f65f00459a`, comprobando antes
+igualdad byte a byte de los cuatro archivos de dominio con `git show` de ese commit. No incluye datos reales ni copia la
+plantilla de alumnos. UUIDs, textos y nombres son sintéticos y fijos. `generatedAt` es fijo para que la comparación no
+dependa del día de ejecución.
 
-Contiene inputs y salidas completas de doce escenarios: cinco prioridades y posiciones partidas; prioridad única; dos prioridades no consecutivas; anillo disperso y tiempos configurables; año bisiesto/inicio incluido/torneo excluido; descansos cero legados; cambios de texto y comentario; borrado pendiente tras posición partida; eliminación de la prioridad actual; catálogo vacío; cursor corrupto; torneo terminado. Las salidas incluyen continuidad, checkpoints, orden, fechas, UUID, textos y recuentos completos. En casos sin recálculo `generated` también es la salida final. En cursor corrupto el input de recálculo es `generated` con el movimiento inicial alterado deliberadamente; la salida esperada conserva el bloqueo recuperable original.
+Contiene inputs y salidas completas de doce escenarios: cinco prioridades y posiciones partidas; prioridad única; dos
+prioridades no consecutivas; anillo disperso y tiempos configurables; año bisiesto/inicio incluido/torneo excluido;
+descansos cero legados; cambios de texto y comentario; borrado pendiente tras posición partida; eliminación de la
+prioridad actual; catálogo vacío; cursor corrupto; torneo terminado. Las salidas incluyen continuidad, checkpoints,
+orden, fechas, UUID, textos y recuentos completos. En casos sin recálculo `generated` también es la salida final. En
+cursor corrupto el input de recálculo es `generated` con el movimiento inicial alterado deliberadamente; la salida
+esperada conserva el bloqueo recuperable original.
 
-Ejecutar `node --experimental-strip-types --test tests/firestore-domain-regression.test.ts`, o `npm test` para incluir las suites de negocio y API previas. Las referencias son estáticas; no se ofrece comando de actualización automática. No modificarlas ni retirar el guard de hashes para acomodar una implementación de persistencia. Un cambio de dominio requeriría otro encargo específico del propietario.
+Ejecutar `node --experimental-strip-types --test tests/firestore-domain-regression.test.ts`, o `npm test` para incluir
+las suites de negocio y API previas. Las referencias son estáticas; no se ofrece comando de actualización automática. No
+modificarlas ni retirar el guard de hashes para acomodar una implementación de persistencia. Un cambio de dominio
+requeriría otro encargo específico del propietario.
 
-Esto demuestra la equivalencia de los escenarios ejecutados y que el dominio no cambia; no demuestra transporte Firestore, seguridad IAM, propagación entre clientes ni equivalencia de toda combinación posible de datos. Esas pruebas pertenecen a las fases siguientes.
+Esto demuestra la equivalencia de los escenarios ejecutados y que el dominio no cambia; no demuestra transporte
+Firestore, seguridad IAM, propagación entre clientes ni equivalencia de toda combinación posible de datos. Esas pruebas
+pertenecen a las fases siguientes.
