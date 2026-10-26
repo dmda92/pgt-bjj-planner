@@ -24,6 +24,7 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     "worker/**/*.ts",
+    "tools/**/*.ts",
     "tests/**/*.ts"
   ]
 }

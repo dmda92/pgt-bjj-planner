@@ -9,22 +9,25 @@ export function Loading({children = 'Cargando…'}: { children?: React.ReactNode
                                                                   aria-hidden="true"/>{children}</p>;
 }
 
-function useLiveRevision() {
+function useLiveRevision(kinds: string, owner?: string) {
     const [n, setN] = useState(0);
     useEffect(() => {
         if (!onlineMode) return;
-        const changed = () => setN(v => v + 1);
+        const changed = (event: Event) => {
+            const detail = (event as CustomEvent<{ reset?: boolean; resources?: { kind: string; owner: string }[] }>).detail;
+            if (!detail?.resources || detail.reset || detail.resources.some(r => kinds.split(',').includes(r.kind) && (!owner || !r.owner || r.owner === owner))) setN(v => v + 1);
+        };
         window.addEventListener('pgt-live-update', changed);
         return () => window.removeEventListener('pgt-live-update', changed);
-    }, []);
+    }, [kinds, owner]);
     return n;
 }
 
 type Run = (a: () => Promise<unknown>) => Promise<void>;
 
 export function TrainerPreparation({students, run}: { students: any[]; run: Run }) {
-    const liveRevision = useLiveRevision();
     const [mail, setMail] = useState(''), [planId, setPlanId] = useState(''), [view, setView] = useState<TrainerView | null>(null), [source, setSource] = useState<Techniques | null>(null), [detail, setDetail] = useState<TrainerView | null>(null), [loading, setLoading] = useState(false), [planLoading, setPlanLoading] = useState(false), [filter, setFilter] = useState('all');
+    const liveRevision = useLiveRevision('profile,repertoire,plan,assignment,catalog', mail);
     useEffect(() => {
         let current = true;
         setView(null);
@@ -198,7 +201,7 @@ export function TrainerPreparation({students, run}: { students: any[]; run: Run 
 }
 
 export function TrainerDay({run}: { run: Run }) {
-    const liveRevision = useLiveRevision();
+    const liveRevision = useLiveRevision('agenda,roster,catalog');
     const [date, setDate] = useState(''), [data, setData] = useState<TrainingDay | null>(null), [loading, setLoading] = useState(false), [refresh, setRefresh] = useState(0);
     useEffect(() => {
         let current = true;

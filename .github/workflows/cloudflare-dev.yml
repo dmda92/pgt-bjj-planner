@@ -8,15 +8,10 @@ on:
   workflow_dispatch:
     inputs:
       operation:
-        description: 'Solo develop: verificar runtime, desplegar o smoke explícito con cuota'
+        description: 'Solo develop: verificar runtime o desplegar DEV'
         type: choice
-        options: [ verify, deploy, smoke ]
+        options: [ verify, deploy ]
         default: verify
-      quota_evidence:
-        description: 'Solo smoke: JSON de cuota actual fiable; vacío impide cualquier prueba real'
-        type: string
-        required: false
-        default: ''
 
 permissions:
   contents: read
@@ -62,22 +57,14 @@ jobs:
         run: npm run check:worker
       - name: Worker runtime tests
         run: npm run test:runtime
-      - name: DEV Firestore diagnostic runtime (isolated)
-        run: node scripts/test-firestore-preflight-runtime.mjs
-      - name: Global Firestore test budget across private executors (isolated)
-        run: node scripts/test-execution-budget-runtime.mjs
-      - name: Budgeted minimal smoke and cleanup (isolated)
-        run: node scripts/test-minimal-smoke-runtime.mjs
-      - name: Future plan additions through native API (isolated)
-        run: node scripts/test-plan-additions-runtime.mjs
-      - name: DEV Firestore application and realtime runtime (isolated)
-        run: node scripts/test-firestore-app-runtime.mjs
+      - name: Firestore V2 runtime and frontend boundary (isolated)
+        run: npm run check:firestore-v2
       - name: Install Chromium
         run: npx --no-install playwright install --with-deps chromium
       - name: Browser and offline PDF tests
         run: npm run test:browser
-      - name: Trainer performance regression
-        run: npm run test:performance
+      - name: Native V2 persistence cost regression
+        run: npm run benchmark:firestore-v2
       - name: Validate DEV configuration and bundle (offline)
         run: |
           node scripts/check-dev-config.mjs
@@ -107,7 +94,7 @@ jobs:
       - name: Install Chromium
         run: npx --no-install playwright install --with-deps chromium
       - name: Online DEV frontend and Firestore protocol in isolated browsers
-        run: node scripts/test-firestore-online-browser.mjs
+        run: npm run test:browser
       - name: Verify online DEV bundle configuration
         run: |
           node scripts/check-dev-config.mjs
@@ -118,9 +105,9 @@ jobs:
         with:
           name: firestore-isolated-browser
           path: |
-            artifacts/firestore-local-browser.json
-            artifacts/firestore-student.png
-            artifacts/firestore-trainer.png
+            .browser-artifacts/v2-mobile.png
+            .browser-artifacts/v2-desktop.png
+            .browser-artifacts/v2-trainer.png
           if-no-files-found: ignore
           retention-days: 7
 
@@ -175,7 +162,7 @@ jobs:
           if ((await response.json()).object.sha !== process.env.GITHUB_SHA) {
             console.log('Skipping obsolete commit.');
           } else {
-            if(!['verify','deploy','smoke'].includes(process.env.DEV_OPERATION))throw new Error('Invalid DEV operation');
+            if(!['verify','deploy'].includes(process.env.DEV_OPERATION))throw new Error('Invalid DEV operation');
             const settings=await fetch(`https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/workers/scripts/pgt-github-probe-dev/settings`,{headers:{Authorization:`Bearer ${process.env.CLOUDFLARE_API_TOKEN}`}});
             let deployedBuild;
             if(settings.ok){const value=await settings.json();deployedBuild=value.result?.bindings?.find(binding=>binding.name==='DEV_BUILD_SHA')?.text;}
@@ -198,7 +185,7 @@ jobs:
               try{
                 const runtime=await fetch('https://pgt-github-probe-dev.david-dzm5.workers.dev/api/dev/runtime',{cache:'no-store',signal:AbortSignal.timeout(10000)});
                 const value=await runtime.json();
-                if(runtime.ok&&runtime.headers.get('X-PGT-Worker-Build')===expectedBuild&&value.build===expectedBuild&&value.domainBuild===expectedBuild&&value.revision==='structured-credentials-check-20261021-v1'&&value.project==='pgt-bjj-dev'){
+                if(runtime.ok&&runtime.headers.get('X-PGT-Worker-Build')===expectedBuild&&value.build===expectedBuild&&value.domainBuild===expectedBuild&&value.revision==='firestore-v2-20261026'&&value.project==='pgt-bjj-dev'){
                   console.log(JSON.stringify({status:'DEV_RUNTIME_BUILD_VERIFIED',build:value.build,revision:value.revision,attempts:attempt+1}));current=true;break;
                 }
               }catch{}
@@ -210,11 +197,6 @@ jobs:
             // against Google in push/rerun/dispatch. Isolated jobs above cover
             // the application. A real smoke requires a separate quota gate.
             console.log('DEV_RUNTIME_VERIFIED_NO_FIRESTORE_TESTS');
-            if(process.env.DEV_OPERATION==='smoke'){
-              const smoke=spawnSync(process.execPath,['scripts/test-firestore-dev-smoke.mjs'],{stdio:'inherit',env:{...process.env,PGT_EXPECTED_DEV_BUILD:expectedBuild}});
-              if(smoke.error)throw smoke.error;
-              if(smoke.status!==0)process.exit(smoke.status??1);
-            }
           }
           JS
       - name: Save real DEV verification evidence

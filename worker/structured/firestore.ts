@@ -86,6 +86,10 @@ export class NativeFirestore {
         return this.receipts.get(path);
     }
 
+    /** V2 seeds its bounded cache from command ACKs, without retaining an
+     * unbounded second copy of every committed business document. */
+    discardCommittedRows() { this.receipts.clear(); }
+
     beginOperation() {
         this.reads = new Map();
         this.queries = new Map();

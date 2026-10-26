@@ -1,3 +1,4 @@
+import {transformSync} from 'esbuild';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -32,10 +33,17 @@ const baseline = JSON.parse(readFileSync(new URL('./fixtures/firestore/domain-ba
     }[];
 };
 
-test('Firestore migration must retain the exact baseline domain source', () => {
+test('Firestore migration retains the exact baseline source and ignores owner formatting only', () => {
     assert.equal(baseline.baseCommit, '3b8125cb362f665f908e4028d54514f65f00459a');
-    for (const [path, expected] of Object.entries(baseline.sourceHashes))
-        assert.equal(createHash('sha256').update(readFileSync(new URL('../' + path, import.meta.url))).digest('hex'), expected, path + ' changed: migration does not authorize algorithm changes');
+    const compile = (source:string) => transformSync(source, {
+        loader:'ts', target:'es2022', minify:true, legalComments:'none'
+    }).code;
+    for (const [path, expected] of Object.entries(baseline.sourceHashes)) {
+        const original=readFileSync(new URL('./fixtures/firestore/domain-source/'+path.split('/').at(-1)+'.txt',import.meta.url),'utf8');
+        assert.equal(createHash('sha256').update(original).digest('hex'),expected,'Original oracle changed: '+path);
+        const current=readFileSync(new URL('../'+path,import.meta.url),'utf8');
+        assert.equal(compile(current),compile(original),path+' changed beyond formatting; algorithm changes are not authorized');
+    }
 });
 
 test('Explicit circular priority reference remains unchanged across wraparound', () => {

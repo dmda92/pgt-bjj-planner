@@ -32,6 +32,10 @@ export async function structuredFixture() {
             databaseEdition: 'STANDARD',
             type: 'FIRESTORE_NATIVE'
         });
+        if (path === '/documents:batchGet') {
+            const { documents } = JSON.parse(String(init.body));
+            return Response.json(documents.map((name: string) => docs.has(name) ? { found: docs.get(name) } : { missing: name }).reverse());
+        }
         if (path === '/documents:commit') {
             const {writes} = JSON.parse(String(init.body));
             for (const w of writes) {
@@ -103,7 +107,8 @@ export async function structuredFixture() {
         const response = await simulate(url, init);
         if (!url.endsWith('/documents:commit')) {
             const value = await response.clone().json() as any;
-            if (url.includes(':runQuery')) {
+            if (url.includes(':batchGet')) usage.estimatedReads += JSON.parse(String(init.body)).documents.length;
+            else if (url.includes(':runQuery')) {
                 usage.queries++;
                 usage.estimatedReads += Math.max(1, value.filter((v: any) => v.document).length);
             } else if (url.includes(':listCollectionIds')) usage.estimatedReads++;

@@ -1,5 +1,13 @@
 # PGT — Planificador de competición
 
+> Rama Firestore V2 (26/10/2026): el cliente y Worker DEV ya usan Firestore como
+> persistencia unica; IndexedDB es cache de consulta. No se ha desplegado ni migrado.
+> Consultar [arquitectura V2](docs/FIRESTORE_V2_CONTRATOS.md),
+> [validacion](docs/VALIDACION_FIRESTORE_V2.md) y
+> [migracion desde GitHub](docs/MIGRACION_GITHUB_FIRESTORE_V2.md).
+> La descripcion GitHub siguiente documenta PRO y antecedentes, fuera del runtime DEV V2.
+
+
 PWA React/TypeScript para alumnos y entrenadores de jiu-jitsu. IndexedDB es la persistencia de trabajo; la
 sincronización pasa por Cloudflare Worker + Durable Object SQLite y escribe JSON por SHA en el repositorio **privado**
 `dmda92/pgt-bjj-data`. Código en `dmda92/pgt-bjj-planner`. No se requieren cuentas GitHub/Microsoft para alumnos ni

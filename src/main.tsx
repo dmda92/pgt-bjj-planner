@@ -2,6 +2,7 @@ import {onlinePresentation} from './application/online-presentation.ts';
 import {OnlineDraft} from './application/online-draft.ts';
 import {ownTrainingDay} from "./domain/own-training-day.ts";
 import {Notifications} from "./ui-notifications.tsx";
+import {CommentEditor} from './ui-comment-editor.tsx';
 import {TrainerPreparation, TrainerDay, Loading} from "./ui-trainer-reports.tsx";
 import {listedCompetitions} from "./domain/trainer-reports.ts";
 import {madridDate} from "./domain/plan-text-updates.ts";
@@ -283,11 +284,17 @@ function App() {
 
     useEffect(() => {
         if (!onlineMode) return;
-        const refresh = () => {
+        const refresh = (event: Event) => {
             if (!client.identity || client.locked) return;
+            const detail = (event as CustomEvent<{ resources?: { kind: string; owner: string }[]; reset?: boolean }>).detail;
+            const resources = detail?.resources;
             if (trainer) {
-                void trainers().catch(e => setError(e.message));
-                if (selectedStudent) selectStudent(selectedStudent, studentSection, true, studentPlanId);
+                if (!resources || detail?.reset || resources.some(r => r.kind === 'roster' || r.kind === 'catalog'))
+                    void trainers().catch(e => setError(e.message));
+                const relevant = !resources || detail?.reset || resources.some(r => r.owner === selectedStudent &&
+                    (r.kind === 'profile' || studentSection === 'techniques' && ['repertoire', 'comments'].includes(r.kind) ||
+                        studentSection === 'plans' && ['plan', 'assignment'].includes(r.kind)));
+                if (selectedStudent && relevant) selectStudent(selectedStudent, studentSection, true, studentPlanId);
             }
             setVersion(v => v + 1);
         };
@@ -1716,46 +1723,15 @@ function TrainerStudent({
                                     <textarea className="student-description" aria-label="Descripción del alumno"
                                               readOnly value={tech.descripcion_del_alumno} placeholder="Sin descripción"
                                               rows={3}/>
-                                    <form
-                                        onSubmit={(e) => {
-                                            e.preventDefault();
-                                            const f = new FormData(e.currentTarget);
-                                            void run(async () => {
-                                                const comments = [
-                                                    ...notes.comments.filter(
-                                                        (c) => c.techniqueId !== tech.id,
-                                                    ),
-                                                    {
-                                                        techniqueId: tech.id,
-                                                        comment: String(f.get("comment")),
-                                                    },
-                                                ];
-                                                const saved = await client.request<{ planIssues?: PlanIssue[] }>(
-                                                    `/api/app/users/${encodeURIComponent(snapshot.profile.data.mail)}/comments`,
-                                                    "PUT",
-                                                    {
-                                                        data: {...notes, comments},
-                                                        sha: snapshot.comments!.sha,
-                                                    },
-                                                );
-                                                setCommentIssues(saved.planIssues || []);
-                                                if (saved.planIssues?.length) client.status = planIssueMessage(saved.planIssues);
-                                                await reload();
-                                            });
-                                        }}
-                                    >
-                                        <label>
-                                            Comentario
-                                            <textarea
-                                                name="comment"
-                                                defaultValue={
-                                                    notes.comments.find((c) => c.techniqueId === tech.id)
-                                                        ?.comment || ""
-                                                }
-                                            />
-                                        </label>
-                                        <button>Guardar comentario remoto</button>
-                                    </form>
+                                    <CommentEditor source={notes} version={snapshot.comments!.sha} techniqueId={tech.id} run={run}
+                                        save={async (data, sha) => {
+                                            const saved = await client.request<{ planIssues?: PlanIssue[] }>(
+                                                `/api/app/users/${encodeURIComponent(snapshot.profile.data.mail)}/comments`,
+                                                "PUT", { data, sha });
+                                            setCommentIssues(saved.planIssues || []);
+                                            if (saved.planIssues?.length) client.status = planIssueMessage(saved.planIssues);
+                                            await reload();
+                                        }} />
                                 </div>
                             ))}
                         </details>

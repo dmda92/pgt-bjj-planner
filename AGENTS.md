@@ -456,3 +456,22 @@ desplegar mediante PR a develop tras CI. No regenerar distribución ni modificar
 descripciones, comentarios, fechas o parámetros. Reparación perezosa de nombres ya desactualizados al consultar planes
 autorizados; sin barridos ni pruebas Google. Requisitos 11.4 y docs/PLAN_NOMBRES_DEV.md. Feature nueva desde main,
 incorporar DEV después; main/PRO intactos.
+
+## Firestore V2 — encargo vigente 26/10/2026
+
+El propietario ordena ejecutar el plan integral y usar la rama existente fetaure/optimizacionFirestore.
+Se autoriza refactorizar DEV con Firestore único, caché volátil y consultas/comandos selectivos,
+sin cambiar algoritmo ni resultados de negocio. El origen de migración es GitHub PRO pgt-bjj-data
+fijado por commit, solo lectura; no Firestore DEV. No modificar/borrar el origen ni mezclar DEV anterior.
+Conservar importador read-only independiente para el futuro corte PRO; fuera del runtime.
+Roles/contraseñas por vía controlada, offline de consulta completo tras descarga.
+No ejecutar Google ni importación/activación sin inventario y presupuesto fiable; no desplegar PRO.
+Plan y evidencia: docs/FIRESTORE_V2_IMPLEMENTACION.md y docs/VALIDACION_FIRESTORE_V2.md.
+
+### Integración y despliegue DEV V2 autorizados — 26/10/2026
+
+El propietario autoriza integrar estos cambios de la rama existente en develop mediante
+PR y desplegar exclusivamente DEV tras CI. Sustituye la orden previa de no desplegar.
+No autoriza main/PRO, modificar datos GitHub de producción, ni omitir el inventario,
+cuota fiable y gates necesarios para importar/activar datos reales en Firestore DEV.
+Publicar el código no equivale a activar la importación V2 ni a probar login remoto.
