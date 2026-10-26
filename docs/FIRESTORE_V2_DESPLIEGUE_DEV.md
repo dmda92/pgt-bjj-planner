@@ -54,3 +54,15 @@ y gate de mantenimiento; no se infiere autorización para omitirlos del deploy.
 La URL de PR, SHA de integración, ejecución Actions y resultado efectivo se
 registrarán en el informe de cierre de la operación. No afirmar despliegue con
 la mera creación de PR o con un job omitido.
+
+## Incidencia de infraestructura CI
+
+El propietario canceló la ejecución 40354773536. Sus logs muestran 12 min 54 s
+para descargar dependencias apt desde azure.archive.ubuntu.com (18,5 kB/s);
+Chromium se descargó después en segundos. El instalador compartido de CI DEV
+usa archive.ubuntu.com con verificación de firmas apt intacta, timeout de red
+de 30 segundos y un reintento. Dependencias y navegador tienen límites globales
+de 240 y 180 segundos; el paso completo, ocho minutos. No se omiten pruebas ni
+se cambia Playwright. Solo se modifica la configuración del runner efímero DEV,
+nunca el workflow PRO. Validación local limitada a sintaxis y comprobación del
+workflow; la instalación Linux efectiva se valida en Actions.
