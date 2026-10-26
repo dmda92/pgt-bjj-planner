@@ -140,6 +140,33 @@ real/gate de mantenimiento para runner privado, publicación revisada de índice
 staging/activación y comprobación mínima DEV. Todo eso queda SIN ejecutar.
 No ejecutar PRO ni reutilizar credenciales PRO.
 
+## Actualización operativa — migración solicitada 26/10/2026
+
+Sustituye el estado operativo anterior: PR #25 y #26 integradas en develop;
+runtime DEV ad32940318be9a517340749bad5076a3bf7aba8c desplegado y endpoint de
+versión HTTP 200 verificado. Main y recursos PRO intactos.
+
+Nueva autorización expresa para migrar GitHub PRO a DEV y habilitar uso/pruebas.
+Captura bare GET-only cifrada y conversión offline: 102 archivos, 18 usuarios,
+3 entrenadores, una competición, 14 planes. Tres índices de asignación obsoletos
+se reconstruyen del catálogo como hacía updateIndexes, sin tocar el origen ni
+los snapshots. Una asignación sin plan permanece recuperable.
+
+Simulación completa con esta captura, sin HTTP Google: 403 lecturas estimadas,
+296 escrituras, cero eliminaciones; límites propuestos con margen 554/420/0.
+Pruebas locales: 327/327 npm test; typecheck, build, check:worker y test:runtime
+correctos. Nuevas pruebas de fuente bare exacta/read-only, reconstrucción de índices
+y ledger SQLite persistente, rollback y reservas entre conexiones concurrentes.
+No hay cambios UI. Claves, captura y credenciales generadas solo en ubicación
+privada fuera de Git, con ACL Windows restringida al operador.
+
+Clave local validada como identidad pgt-worker-dev/pgt-bjj-dev. Única consulta
+remota de esta fase: metadatos administrativos de índices, HTTP 403, sin lecturas
+o escrituras de documentos. Se requiere confirmación explícita de las cuatro
+exenciones por el propietario; no se amplía IAM. Cuota actual pendiente de aportar.
+Importación, activación y login real todavía NO ejecutados. No afirmar que DEV
+está lista para uso por tener una simulación correcta o un despliegue de código.
+
 Límites de diseño explícitos en [contratos](FIRESTORE_V2_CONTRATOS.md): commits
 acotados, extremo remoto de memoria no medido y lectura compacta completa para
 estructuras. No presentar esta implementación como óptimo matemático demostrado.

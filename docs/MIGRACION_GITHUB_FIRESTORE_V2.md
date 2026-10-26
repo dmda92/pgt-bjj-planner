@@ -4,8 +4,9 @@
 
 Extractor GET-only, conversión offline, cifrado, staging, verificación, presupuesto
 durable compartido y activación CAS DEV implementados y probados con fixtures.
-No se ha capturado el repositorio, importado datos reales, activado un namespace
-remoto ni desplegado. El runtime ya está conectado en código y exige activación.
+El runtime V2 se desplegó en DEV el 26/10/2026 (PR #25/#26). Se ha capturado
+el origen privado, cifrado y convertido localmente bajo la autorización posterior
+del propietario. No se ha importado ni activado todavía un namespace remoto.
 No usa Firestore DEV anterior como origen.
 
 ## Origen y CLI
@@ -31,7 +32,10 @@ PGT_MIGRATION_GITHUB_READ_TOKEN por canal privado, nunca en argumentos.
 Convert/inspect/keygen son locales. Esta CLI no carga ni activa Firestore.
 
 Conversión conserva perfiles, UUID, orden, comentarios/autores, asignaciones,
-tombstones, planes/histórico y continuidad. Sin reloj, generación o reparaciones.
+tombstones, planes/histórico y continuidad. Sin reloj ni generación de sesiones.
+El índice derivado de asignaciones se reconstruye desde el catálogo autorizado,
+igual que updateIndexes del backend original; se registra un aviso y se preservan
+los tombstones no reasignados. Nunca se reparan o regeneran snapshots guardados.
 Los derivados se reconstruyen de snapshots fuente. Incoherencias/huérfanos/UUID
 compartidos bloquean; asignaciones sin snapshot quedan pendientes recuperables.
 DEV elimina hashes PRO; entrenadores requieren contraseñas DEV independientes.
@@ -83,6 +87,49 @@ cuota, reserva y mantenimiento deben considerar ese tráfico.
 Antes de abrir escrituras puede volverse al origen intacto. Después no hacer un
 rollback que pierda cambios escritos en Firestore. No borrar pgt-bjj-data ni sus
 históricos como parte de este proceso.
+
+## Ejecutor local DEV — primera activación
+
+`scripts/run-dev-migration.mjs <plan|indexes-check|stage|activate> <directorio_privado>`
+es un ejecutor local fuera del runtime. No se publica un endpoint administrativo.
+Todos los procesos de ese destino usan el mismo SQLite persistente en el padre
+del directorio privado, con transacciones BEGIN IMMEDIATE y synchronous=FULL.
+No utilizar otro equipo/ledger en paralelo. No copia secretos del Worker.
+
+`extract-local` permite obtener la captura de un clon bare privado, fijado por
+commit y con origen exacto comprobado. Solo invoca comandos Git de lectura.
+La autenticación de clone la gestiona Git, sin extraer tokens de su almacén.
+
+`plan` usa únicamente un transporte simulado en memoria, guarda credenciales
+aleatorias DEV en dev-credentials.json privado y estima stage + activate sin red.
+Puede prepararse ese archivo previamente para habilitar solo cuentas concretas;
+todos los entrenadores necesitan una credencial independiente de PRO.
+
+Para ejecutar, operator.json privado contiene serviceAccountFile y expectedBuild
+(SHA desplegado de develop); grant.json contiene MigrationGrant completo con
+checksum del paquete, runId, observedAt, expiresAt, remaining, reserve y limits.
+La observación debe tener menos de cinco minutos al abrir la concesión. No se
+inventa cuota ni se deriva de los contadores locales. El margen del plan cubre
+comprobaciones de mantenimiento; no se reembolsan peticiones fallidas.
+
+Antes de datos, verifica las cuatro exenciones de índices por la API Admin de
+Firestore, sin publicar ni sustituir configuración. Un 403 requiere confirmación
+explícita del propietario desde Firebase, registrada en index-evidence.json privado
+(project, database, source=owner-firebase-console, observedAt, allFieldsExempt y
+collectionGroups con los cuatro grupos). No se eleva IAM del runtime ni se da
+por configurado a partir de un 403. La carga rechaza índices no exentos o evidencia
+ausente. El gate comprueba el build DEV y la ausencia real de pgt_v2/control:
+sin puntero, el runtime V2 no admite escritores. Comprueba otra vez antes de
+activar. Si ya hay un conjunto activo, se detiene: este ejecutor no finge un
+mantenimiento para reemplazarlo. Reiniciar coordinador mediante despliegue desde
+develop después de activar, antes de las pruebas mínimas autorizadas.
+
+Inventario del 26/10/2026: 102 JSON, 18 usuarios (3 entrenadores), una competición,
+14 planes guardados, tres índices derivados desactualizados y un plan asignado
+todavía inexistente. Este último conserva el estado recuperable, sin inventar
+histórico. Simulación con la captura: 403 lecturas, 296 escrituras, cero borrados;
+presupuesto propuesto con margen: 554/420/0. No son operaciones Google medidas.
+La captura, claves, contraseñas y evidencias detalladas permanecen fuera de Git.
 
 El corte futuro PRO usa otra captura final actualizada durante mantenimiento,
 nunca datos modificados en DEV. Reutiliza extractor/conversor; la habilitación de
