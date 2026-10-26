@@ -70,3 +70,35 @@ try{
     assert.equal(pendingFixture.f.metrics().attemptedWrites,before.attemptedWrites);
     console.log('Unactivated V2: 20 reconnect requests cost one configuration read, zero writes; no ongoing quota polling PASS.');
 }finally{await pendingRuntime.dispose();}
+
+// Ordinary autosave can exceed ten changes; the finite abuse ceiling still
+// rejects before any business database request and communicates Retry-After.
+const rateFixture=await v2DevFixture();
+const rateRuntime=new Miniflare(convertV4MiniflareOptions({modules:true,script,compatibilityDate:'2026-10-13',
+    durableObjects:{SECURITY:{className:'ProbeSecurity',useSQLite:true},DOMAIN_IO:{className:'DomainIO',useSQLite:true}},
+    bindings:{...rateFixture.f.env,ALLOWED_ORIGINS:origin},outboundService:async request=>rateFixture.f.transport(request.url,{method:request.method,headers:request.headers,
+        ...(!['GET','HEAD'].includes(request.method)?{body:await request.text()}:{})})}));
+try{
+    const call=async(path,body,token='')=>{
+        const response=await rateRuntime.dispatchFetch('https://local/api/v2/'+path,{method:body===undefined?'GET':'POST',
+            headers:{Origin:origin,...(token?{Authorization:'Bearer '+token}:{}),...(body===undefined?{}:{'Content-Type':'application/json'})},
+            ...(body===undefined?{}:{body:JSON.stringify(body)})});
+        return {response,value:await response.json()};
+    };
+    const login=await call('auth/login',{mail:rateFixture.mail,password:rateFixture.password});assert.equal(login.response.status,200);
+    const token=login.value.token;
+    for(let i=1;i<=61;i++){
+        const source=(await call('users/'+rateFixture.mail+'/repertoire',undefined,token)).value;
+        const before=rateFixture.f.metrics();
+        const result=await call('commands/text',{kind:'description',owner:rateFixture.mail,techniqueId:source.data.positions[0].tecnicas[0].id,
+            text:'Synthetic autosave '+i,expected:source.version,operationId:crypto.randomUUID()},token);
+        if(i<=60)assert.equal(result.response.status,200);
+        else{
+            assert.equal(result.response.status,429);assert.equal(result.value.error,'RATE_LIMIT');
+            assert.ok(Number(result.response.headers.get('Retry-After'))>=1);
+            assert.equal(rateFixture.f.metrics().estimatedReads,before.estimatedReads);
+            assert.equal(rateFixture.f.metrics().attemptedWrites,before.attemptedWrites);
+        }
+    }
+    console.log('Autosave runtime: 60 ordinary saves accepted, excess throttled before database IO with Retry-After PASS. Google intercepted.');
+}finally{await rateRuntime.dispose();}

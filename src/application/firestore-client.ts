@@ -5,6 +5,7 @@ import { validateProfile, validateTechniques, validatePlan, validateVersion, typ
 import { sizeMessage } from '../domain/json-limits.ts';
 import { planIssueMessage, type PlanIssue } from '../domain/plan-issues.ts';
 import { madridDate } from '../domain/plan-text-updates.ts';
+import { SaveThrottled } from './save-throttled.ts';
 export interface Identity { mail: string; token: string; profile: Profile }
 export interface Snapshot {
     profile: RemoteRecord<Profile>; techniques: RemoteRecord; comments: RemoteRecord; index: RemoteRecord;
@@ -22,6 +23,7 @@ const record = (value: any) => value && 'version' in value ? { data: value.data,
 export class FirestoreClient {
     identity: Identity | null = null;
     locked = false;
+    retryGeneration = 0;
     status = 'Sin sesión';
     lastConfirmedRevision = new Map<string, string>();
     onChange: () => void = () => {};
@@ -51,7 +53,7 @@ export class FirestoreClient {
                 this.stop(); this.locked = true; this.identity = null; this.status = 'La sesión cambió en otra pestaña. Recarga para continuar.'; this.onChange();
             }
         });
-        window.addEventListener('offline', () => { this.stop(); this.status = 'Sin conexión · copia local de consulta'; this.onChange(); });
+        window.addEventListener('offline', () => { this.retryGeneration++; this.stop(); this.status = 'Sin conexión · copia local de consulta'; this.onChange(); });
         window.addEventListener('online', () => { if (this.identity && !this.locked) void this.sync().catch(() => {}); });
     }
     private current() {
@@ -79,6 +81,9 @@ export class FirestoreClient {
         const value: any = await response.json();
         if (!response.ok) {
             if (response.status === 401 && this.identity?.token === token) { this.stop(); this.locked = true; await trainerCache.clear(this.identity.mail); this.onChange(); }
+            const retryAfter = response.headers.get('Retry-After');
+            if (path.startsWith('/api/v2/commands/') && response.status === 429 && value.error === 'RATE_LIMIT' && retryAfter && /^\d+$/.test(retryAfter) &&
+                Number(retryAfter) >= 1 && Number(retryAfter) <= 3600) throw new SaveThrottled(Number(retryAfter) * 1000);
             throw new ApiFailure(response.status, value.size ? sizeMessage(value.size) : value.error || 'Error de API');
         }
         return value as T;
@@ -178,7 +183,7 @@ export class FirestoreClient {
         if (!navigator.onLine) throw Error('La primera carga requiere conexión');
         const auth = await this.raw<{ token: string; profile: Profile }>('/api/v2/auth/' + kind, 'POST', body, '');
         const identity = { mail: auth.profile.mail, token: auth.token, profile: auth.profile }, snapshot = await this.snapshot(identity, false);
-        this.validate(snapshot); this.stop(); this.identity = identity; this.locked = false;
+        this.validate(snapshot); this.stop(); this.retryGeneration++; this.identity = identity; this.locked = false;
         localStorage.setItem('pgt-session', JSON.stringify(identity)); this.channel.postMessage('session-changed');
         try { await this.accept(identity, snapshot); } catch (error) { this.locked = true; this.onChange(); throw error; }
         this.onChange(); void this.connect();
