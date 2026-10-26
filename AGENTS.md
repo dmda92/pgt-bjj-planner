@@ -484,3 +484,16 @@ exclusivamente pgt-bjj-dev, credenciales DEV independientes, verificación míni
 y reinicio mediante despliegue desde develop por PR tras CI. Se mantienen los
 gates de inventario, cuota actual, presupuesto compartido e índices; no se amplía
 IAM del runtime ni se autoriza main/PRO. Datos GitHub siempre de solo lectura.
+
+### Equipo y participantes — encargo DEV 26/10/2026
+
+El propietario solicita editar el cinturón de alumnos desde Administración del entrenador;
+operación exclusiva de entrenador, limitada a cinturón, con CAS y permisos vigentes.
+Equipo/Técnicas comparte tarjetas compactas desplegables con Mis técnicas; nombres y
+descripciones del alumno son de solo lectura y comentarios editables con guardado explícito,
+sin autoguardado ni notificaciones por pulsación. Conservar borradores ante fallo/conflicto.
+Equipo y participantes ordenados por nombre con comparación española; participantes con
+nombre y apellidos y tarjetas de selección adaptables, incluidos entrenadores competidores.
+Autoriza integrar por PR a develop y desplegar DEV junto al arreglo PAYLOAD_INVALID del
+editor, tras validaciones. Sustituye la pausa anterior; no autoriza main/PRO ni modificar
+datos reales para QA. Evidencia: docs/CAMBIOS_EQUIPO_2026-10-26.md.

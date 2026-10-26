@@ -24,6 +24,9 @@ try{
     assert.equal(f.metrics().httpRequests,before.httpRequests);
     const trainer=await api('auth/login',{mail,password});assert.ok(!JSON.stringify(trainer).includes('pbkdf2'));
     const pupil=await api('auth/register',{mail:'pupil-v2@example.test',password,confirm:password,nombre:'Pupil',apellidos:'Synthetic'},'',201);
+    await api('commands/belt',{mail:pupil.profile.mail,cinturon:'Azul',expected:'1',operationId:crypto.randomUUID()},pupil.token,403);
+    await api('commands/belt',{mail:pupil.profile.mail,cinturon:'Azul',expected:'1',operationId:crypto.randomUUID()},trainer.token);
+    assert.equal((await api('users/'+pupil.profile.mail+'/profile',undefined,pupil.token)).data.cinturon,'Azul');
     await api('users/'+mail+'/comments',undefined,pupil.token,403);
     const ticket=await api('realtime-ticket',{},pupil.token);
     const upgraded=await runtime.dispatchFetch('https://local/api/v2/realtime?ticket='+ticket.ticket,{headers:{Origin:origin,Upgrade:'websocket'}});

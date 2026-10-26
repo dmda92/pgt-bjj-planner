@@ -15,14 +15,16 @@ export class OnlineDraft<T> {
     private canRetry: () => boolean;
     private retryGeneration: () => number;
     private waitingGeneration = 0;
+    private validateDraft: (value: T) => string | null;
 
-    constructor(privateSave: (data: T, base: string | null) => Promise<string>, privateFailure: (error: unknown) => void, privateDone: () => void, delay = 1200, canRetry = () => true, retryGeneration = () => 0) {
+    constructor(privateSave: (data: T, base: string | null) => Promise<string>, privateFailure: (error: unknown) => void, privateDone: () => void, delay = 1200, canRetry = () => true, retryGeneration = () => 0, validateDraft: (value: T) => string | null = () => null) {
         this.save = privateSave;
         this.failure = privateFailure;
         this.done = privateDone;
         this.delay = delay;
         this.canRetry = canRetry;
         this.retryGeneration = retryGeneration;
+        this.validateDraft = validateDraft;
     }
 
     private save: (data: T, base: string | null) => Promise<string>;
@@ -40,6 +42,10 @@ export class OnlineDraft<T> {
 
     get hasFailed() {
         return this.failed;
+    }
+
+    get validationMessage() {
+        return this.current === undefined ? null : this.validateDraft(this.current);
     }
 
     update(value: T, base: string | null) {
@@ -68,6 +74,9 @@ export class OnlineDraft<T> {
                 }
             }
             while (this.current !== undefined) {
+                // Keep incomplete input locally, including edits arriving during
+                // an in-flight ACK. Completing the field resumes normal debounce.
+                if (this.validationMessage) return;
                 const value = this.current, revision = this.revision, generation = this.retryGeneration();
                 try {
                     this.base = await this.save(value, this.base);

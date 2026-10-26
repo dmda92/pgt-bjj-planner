@@ -1135,6 +1135,25 @@ prioridades, orden, pasadas, cierres de posición, cursor/continuidad, fechas, N
 Hoy/pasado y torneos <= hoy conservan sus instantáneas exactas. UUID retirados no resucitan. Un plan bloqueado
 estructuralmente conserva su diagnóstico y contenido.
 
+### Equipo y participantes — petición del propietario 26/10/2026 (DEV)
+
+Administración de un alumno permite al entrenador cambiar exclusivamente su cinturón,
+con guardado explícito, control de versión y preservación del borrador ante fallo.
+No modifica contraseña, rol, técnicas ni planes. Equipo se ordena por nombre y después
+apellidos con comparación española. Los entrenadores participantes siguen visibles.
+
+Equipo/Técnicas usa las mismas tarjetas compactas desplegables que Mis técnicas.
+Nombre de posición, nombre de técnica y descripción son de solo lectura. Comentarios
+siempre editables y guardados únicamente mediante botón explícito. Escribir, desplegar
+o buscar no envía comentarios. Un reintento idempotente no duplica notificaciones.
+La escritura nueva durante un guardado confirmado queda pendiente para otro guardado
+explícito; no se descarta ni se envía automáticamente. Conflictos conservan el borrador.
+
+Competiciones muestra nombre y apellidos de participantes, ordenados por nombre,
+en tarjetas seleccionables adaptadas a móvil y escritorio. Mantener Guardar datos y
+las reglas de asignación/desasignación. Autorizado desplegar exclusivamente DEV junto
+a la corrección PAYLOAD_INVALID del editor, mediante PR a develop tras CI.
+
 Los planes futuros ya desactualizados se reparan al consultarlos con autorización vigente, mediante CAS y eventos
 habituales, sin inventario ni migración masiva. Tras aplicar el nombre, una consulta o guardado sin cambios no vuelve a
 escribir el plan. No se activan por esta corrección cambios de prioridad/reordenación.

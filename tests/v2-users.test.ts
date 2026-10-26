@@ -11,6 +11,7 @@ import { UserService, type SessionStorage } from '../worker/v2/users.ts';
 import { V2Api } from '../worker/v2/api.ts';
 import { fingerprint, passwordHash } from '../worker/security.ts';
 import { initialVersion, type Profile, type Techniques } from '../src/domain/models.ts';
+import type { Roster } from '../worker/v2/users.ts';
 
 async function setup() {
     const f = await structuredFixture(), store = new NativeAggregates(new NativeFirestore(f.env, f.transport));
@@ -27,6 +28,36 @@ async function setup() {
     const sessionOf = async (token: string) => (await sessions.get<QuerySession>('pgt-v2-session:' + await fingerprint(token)))!;
     return { f, store, q, sessions, users, trainer, trainerSession, registration, sessionOf, password };
 }
+
+test('Trainer belt command updates only the student belt and roster atomically without revoking sessions', async () => {
+    const s = await setup(), registered = await s.users.register(s.registration), pupil = await s.sessionOf(registered.token);
+    const ref = { kind: 'profile' as const, id: pupil.mail }, before = (await s.store.read<Profile>(ref))!;
+    const command = { mail: pupil.mail, cinturon: 'Azul', expected: before.version, operationId: crypto.randomUUID() };
+    await s.users.change(s.trainerSession, 'belt', command);
+    const after = (await s.store.read<Profile>(ref))!;
+    assert.equal(after.data.cinturon, 'Azul'); assert.equal(after.data.revision, before.data.revision + 1);
+    assert.deepEqual({ ...after.data, cinturon: before.data.cinturon, revision: before.data.revision, updatedAt: before.data.updatedAt }, before.data);
+    const roster = (await s.store.read<Roster>({ kind: 'roster', id: 'users' }))!;
+    assert.equal(roster.data.users.find(p => p.mail === pupil.mail)!.cinturon, 'Azul');
+    assert.equal(((await s.q.user(pupil, { kind: 'profile', owner: pupil.mail }))!.data as Profile).cinturon, 'Azul');
+    const writes = s.f.metrics().attemptedWrites;
+    await s.users.change(s.trainerSession, 'belt', command); assert.equal(s.f.metrics().attemptedWrites, writes);
+    await assert.rejects(s.users.change(s.trainerSession, 'belt', { ...command, cinturon: 'Morado', operationId: crypto.randomUUID() }), /VERSION_CONFLICT/);
+});
+
+test('Belt permission does not grant foreign profile editing, role changes or invalid/student-originated writes', async () => {
+    const s = await setup(), registered = await s.users.register(s.registration), pupil = await s.sessionOf(registered.token);
+    const profile = (await s.store.read<Profile>({ kind: 'profile', id: pupil.mail }))!;
+    const command = { mail: pupil.mail, cinturon: 'Azul', expected: profile.version, operationId: crypto.randomUUID() };
+    const writes = s.f.metrics().attemptedWrites;
+    await assert.rejects(s.users.change(pupil, 'belt', command), /TRAINER_REQUIRED/);
+    await assert.rejects(s.users.change(s.trainerSession, 'belt', { ...command, perfil: 'entrenador' }), /UNEXPECTED_FIELD/);
+    await assert.rejects(s.users.change(s.trainerSession, 'belt', { ...command, cinturon: 'Naranja' }), /PROFILE_INVALID/);
+    await assert.rejects(s.users.change(s.trainerSession, 'profile', { mail: pupil.mail, data: profile.data, expected: profile.version, operationId: crypto.randomUUID() }), /OWN_PROFILE_ONLY/);
+    const trainer = (await s.store.read<Profile>({ kind: 'profile', id: s.trainer.mail }))!;
+    await assert.rejects(s.users.change(s.trainerSession, 'belt', { ...command, mail: s.trainer.mail, expected: trainer.version }), /STUDENT_REQUIRED/);
+    assert.equal(s.f.metrics().attemptedWrites, writes);
+});
 test('Registration atomically creates the entire account, independent UUIDs and student-only role', async () => {
     const s = await setup(), a = await s.users.register(s.registration);
     const b = await s.users.register({ ...s.registration, mail: 'other@example.test' });

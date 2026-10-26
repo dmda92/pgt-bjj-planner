@@ -23,7 +23,7 @@ export class V2Api {
     }
     async fetch(request: Request): Promise<Response> {
         const url = new URL(request.url);
-        const route = url.pathname.match(/^\/api\/v2\/(auth\/(login|register|logout)|commands\/(text|profile|password|role|repertoire|comments|competition|assignment|delete-competition|prepare))$/);
+        const route = url.pathname.match(/^\/api\/v2\/(auth\/(login|register|logout)|commands\/(text|profile|password|role|belt|repertoire|comments|competition|assignment|delete-competition|prepare))$/);
         if (!route) return this.reads.fetch(request);
         const reply = (value: unknown, status = 200) => Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
         if (request.method !== 'POST') return new Response(null, { status: 405, headers: { Allow: 'POST', 'Cache-Control': 'no-store' } });
@@ -54,7 +54,7 @@ export class V2Api {
             }
             if (route[3] !== 'text') {
                 if (!this.users) throw new ApiError(503, 'SESSION_STORAGE_REQUIRED');
-                return reply(await this.users.change(session, route[3] as 'profile' | 'password' | 'role', input));
+                return reply(await this.users.change(session, route[3] as 'profile' | 'password' | 'role' | 'belt', input));
             }
             return reply(await this.texts.execute(session, input as TextCommand));
         } catch (error) {
