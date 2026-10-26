@@ -60,14 +60,15 @@ export class UserService {
             return this.mint(p);
         });
     }
-    async change(session: QuerySession, kind: 'profile' | 'password' | 'role', input: Record<string, unknown>) {
+    async change(session: QuerySession, kind: 'profile' | 'password' | 'role' | 'belt', input: Record<string, unknown>) {
         onlyFields(input, kind === 'profile' ? ['mail', 'data', 'expected', 'operationId'] :
-            kind === 'password' ? ['mail', 'password', 'confirm', 'expected', 'operationId'] : ['mail', 'perfil', 'expected', 'operationId']);
+            kind === 'password' ? ['mail', 'password', 'confirm', 'expected', 'operationId'] :
+                kind === 'belt' ? ['mail', 'cinturon', 'expected', 'operationId'] : ['mail', 'perfil', 'expected', 'operationId']);
         const mail = normalizedMail(input.mail || session.mail);
         const operationId = typeof input.operationId === 'string' ? input.operationId : crypto.randomUUID();
         await this.coordinator.command(session, async (actor, read) => {
             if (kind === 'profile' && mail !== actor.mail) throw new ApiError(403, 'OWN_PROFILE_ONLY');
-            if ((kind === 'role' || mail !== actor.mail) && actor.perfil !== 'entrenador') throw new ApiError(403, 'TRAINER_REQUIRED');
+            if ((kind === 'role' || kind === 'belt' || mail !== actor.mail) && actor.perfil !== 'entrenador') throw new ApiError(403, 'TRAINER_REQUIRED');
             const ref = { kind: 'profile' as const, id: mail }, current = await read<Profile>(ref);
             if (!current) throw new ApiError(404, 'USER_NOT_FOUND');
             if (input.expected !== current.version) throw new ApiError(409, 'VERSION_CONFLICT');
@@ -76,6 +77,10 @@ export class UserService {
                 if (!input.data || typeof input.data !== 'object' || Array.isArray(input.data)) throw new ApiError(400, 'PROFILE_INVALID');
                 const p = input.data as Profile;
                 next = { ...next, nombre: p.nombre, apellidos: p.apellidos, peso: p.peso, cinturon: p.cinturon, fecha_nacimiento: p.fecha_nacimiento };
+                validate(next);
+            } else if (kind === 'belt') {
+                if (current.data.perfil !== 'alumno') throw new ApiError(400, 'STUDENT_REQUIRED');
+                next.cinturon = input.cinturon as Profile['cinturon'];
                 validate(next);
             } else if (kind === 'password') {
                 if (mail !== actor.mail && current.data.perfil !== 'alumno') throw new ApiError(400, 'STUDENT_REQUIRED');
@@ -99,6 +104,6 @@ export class UserService {
         }, { operationId, requestHash: blockDigest([normalizedMail(session.mail), kind, input]) });
         // Credential/role changes invalidate the cached profile before another request;
         // every existing session's fingerprint/role then fails without scanning sessions.
-        return kind === 'profile' ? this.coordinator.user(session, { kind: 'profile', owner: mail }) : { status: kind === 'password' ? 'PASSWORD_CHANGED_SESSION_REVOKED' : 'ROLE_CHANGED' };
+        return kind === 'profile' || kind === 'belt' ? this.coordinator.user(session, { kind: 'profile', owner: mail }) : { status: kind === 'password' ? 'PASSWORD_CHANGED_SESSION_REVOKED' : 'ROLE_CHANGED' };
     }
 }

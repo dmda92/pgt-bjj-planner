@@ -72,6 +72,29 @@ test('Going offline and reconnecting before the deadline cannot replay the throt
     await assert.rejects(d.flush()); assert.equal(attempts, 1); assert.equal(d.hasFailed, true);
     throttle = false; await d.retry(); assert.equal(attempts, 2); assert.equal(d.hasDraft, false); d.discard();
 });
+
+test('Incomplete names never reach save and completing the draft resumes from its unchanged base', async () => {
+    const saved: [string, string | null][] = [];
+    const d = new OnlineDraft<string>(async (value, base) => { saved.push([value, base]); return 'ack'; }, () => assert.fail(), () => {},
+        100000, () => true, () => 0, value => value.trim() ? null : 'Name required');
+    d.update('', 'base'); await d.flush();
+    assert.equal(d.validationMessage, 'Name required'); assert.equal(d.hasFailed, false); assert.equal(d.hasDraft, true);
+    assert.deepEqual(saved, []);
+    d.update('Complete', 'foreign'); await d.flush();
+    assert.deepEqual(saved, [['Complete', 'base']]); assert.equal(d.hasDraft, false);
+});
+
+test('An incomplete edit arriving during an ACK stays local and later uses that ACK as its base', async () => {
+    let release!: () => void;
+    const barrier = new Promise<void>(resolve => { release = resolve; }), saved: [string, string | null][] = [];
+    const d = new OnlineDraft<string>(async (value, base) => {
+        saved.push([value, base]); if (saved.length === 1) await barrier; return 'ack' + saved.length;
+    }, () => assert.fail(), () => {}, 100000, () => true, () => 0, value => value.trim() ? null : 'Name required');
+    d.update('Initial', 'base'); const first = d.flush(); d.update('', 'foreign'); release(); await first;
+    assert.deepEqual(saved, [['Initial', 'base']]); assert.equal(d.value, ''); assert.equal(d.hasFailed, false);
+    d.update('Final', 'foreign'); await d.flush();
+    assert.deepEqual(saved, [['Initial', 'base'], ['Final', 'ack1']]); assert.equal(d.hasDraft, false);
+});
 test('Failure retains volatile draft and prevents automatic replay; explicit retry is required', async () => {
     let attempts = 0, fail = true;
     const d = new OnlineDraft<number>(async (v) => {

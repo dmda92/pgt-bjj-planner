@@ -1,9 +1,14 @@
 import {onlinePresentation} from './application/online-presentation.ts';
 import {OnlineDraft} from './application/online-draft.ts';
 import {DRAFT_SAVE_WAITING} from './application/save-throttled.ts';
+import {techniqueDraftMessage, POSITION_NAME_REQUIRED, TECHNIQUE_NAME_REQUIRED} from './application/technique-draft-validation.ts';
 import {ownTrainingDay} from "./domain/own-training-day.ts";
 import {Notifications} from "./ui-notifications.tsx";
 import {CommentEditor} from './ui-comment-editor.tsx';
+import {RepertoirePosition} from './ui-repertoire-position.tsx';
+import {StudentBeltEditor} from './ui-student-belt.tsx';
+import {ParticipantChoices} from './ui-participants.tsx';
+import {sortedUsers} from './application/user-presentation.ts';
 import {TrainerPreparation, TrainerDay, Loading} from "./ui-trainer-reports.tsx";
 import {listedCompetitions} from "./domain/trainer-reports.ts";
 import {madridDate} from "./domain/plan-text-updates.ts";
@@ -177,7 +182,7 @@ function App() {
         try {
             if (onlineMode && flushDraft && !onlineDraft.current?.hasFailed) {
                 await onlineDraft.current?.flush();
-                if (onlineDraft.current?.hasDraft) throw Error(DRAFT_SAVE_WAITING);
+                if (onlineDraft.current?.hasDraft) throw Error(onlineDraft.current.validationMessage || DRAFT_SAVE_WAITING);
             }
             await techniqueSaves.current;
             await action();
@@ -208,12 +213,15 @@ function App() {
                     await client.edit('techniques', data, base);
                     return client.lastConfirmedRevision.get('techniques') || base!;
                 }, error => setError(error instanceof Error ? error.message : 'No se pudo guardar'), () => {
-                    if (!onlineDraft.current?.hasDraft) setError(previous => previous === DRAFT_SAVE_WAITING ? '' : previous);
+                    if (!onlineDraft.current?.hasDraft) setError(previous => [DRAFT_SAVE_WAITING, POSITION_NAME_REQUIRED, TECHNIQUE_NAME_REQUIRED].includes(previous) ? '' : previous);
                     setVersion(v => v + 1);
                 },
-                    undefined, () => navigator.onLine && client.identity?.mail === mail && !client.locked, () => client.retryGeneration);
+                    undefined, () => navigator.onLine && client.identity?.mail === mail && !client.locked, () => client.retryGeneration,
+                    techniqueDraftMessage);
             }
+            const previousValidation = onlineDraft.current.validationMessage;
             onlineDraft.current.update(next, entries.find(e => e.key === 'techniques')?.sha || null);
+            if (previousValidation && !onlineDraft.current.validationMessage) setError(previous => previous === previousValidation ? '' : previous);
             setEntries(values => values.map(e => e.key === 'techniques' ? {...e, data: next, dirty: true} : e));
             setVersion(v => v + 1);
             return;
@@ -286,7 +294,7 @@ function App() {
 
     async function trainers() {
         const data = await client.request("/api/app/students");
-        setStudents(data.users);
+        setStudents(sortedUsers(data.users));
         setCatalog(await client.request("/api/app/catalog"));
     }
 
@@ -496,6 +504,9 @@ function App() {
                                 ))}
                             {tab === "techniques" && techniques && (
                                 <>
+                                    {onlineDraft.current?.validationMessage && <p id="technique-draft-validation" role="status" className="note">
+                                        {onlineDraft.current.validationMessage}
+                                    </p>}
                                     <section className="section-head">
                                         <div>
                                             <h2>Tu repertorio</h2>
@@ -525,11 +536,7 @@ function App() {
                                                 p.posicion.toLowerCase().includes(search.toLowerCase()),
                                             )
                                             .map((p) => (
-                                                <details
-                                                    className={`position repertoire-position ${p.tecnicas.length > 0 && p.tecnicas.every(t => t.descripcion_del_alumno.trim()) ? "is-complete" : "is-incomplete"}`}
-                                                    data-position-id={p.id} key={p.id}
-                                                    open={expandedPositions.has(p.id)} onToggle={e => {
-                                                    const open = e.currentTarget.open;
+                                                <RepertoirePosition key={p.id} position={p} open={expandedPositions.has(p.id)} onToggle={open => {
                                                     setExpandedPositions(previous => {
                                                         if (previous.has(p.id) === open) return previous;
                                                         const next = new Set(previous);
@@ -537,39 +544,13 @@ function App() {
                                                         return next;
                                                     });
                                                 }}>
-                                                    <summary className="position-summary">
-                                                        <span className="position-summary-heading"><span
-                                                            className="position-name-block"><strong>{p.posicion || "Sin nombre"}</strong><small
-                                                            className="priority-caption">Prioridad {p.prioridad}</small></span><span
-                                                            className="position-chevron"
-                                                            aria-hidden="true">⌄</span></span>
-                                                        <span
-                                                            className="position-summary-meta"><span>{p.tecnicas.length} {p.tecnicas.length === 1 ? "técnica" : "técnicas"}</span><span
-                                                            className="position-status">{!p.tecnicas.length ? "Sin técnicas" : p.tecnicas.every(t => t.descripcion_del_alumno.trim()) ? "✓ Completa" : `${p.tecnicas.filter(t => !t.descripcion_del_alumno.trim()).length} sin descripción`}</span></span>
-                                                        <span className="position-progress" role="progressbar"
-                                                              aria-label={`Descripciones de ${p.posicion}`}
-                                                              aria-valuemin={0}
-                                                              aria-valuemax={Math.max(1, p.tecnicas.length)}
-                                                              aria-valuenow={p.tecnicas.filter(t => t.descripcion_del_alumno.trim()).length}
-                                                              aria-valuetext={`${p.tecnicas.filter(t => t.descripcion_del_alumno.trim()).length} de ${p.tecnicas.length} técnicas con descripción`}><span
-                                                            style={{width: `${p.tecnicas.length ? p.tecnicas.filter(t => t.descripcion_del_alumno.trim()).length / p.tecnicas.length * 100 : 0}%`}}/></span>
-                                                        <span className="technique-marks"
-                                                              aria-label="Estado de cada técnica">{p.tecnicas.map((t, i) =>
-                                                            <span key={t.id}
-                                                                  className={t.descripcion_del_alumno.trim() ? "is-described" : "is-missing"}
-                                                                  title={`${t.tipo}: ${t.descripcion_del_alumno.trim() ? "con descripción" : "sin descripción"}`}
-                                                                  aria-label={`${t.tipo}: ${t.descripcion_del_alumno.trim() ? "con descripción" : "sin descripción"}`}><span
-                                                                className="technique-mark-name"
-                                                                aria-hidden="true">{i + 1}. {t.tipo || "Sin nombre"}</span><span
-                                                                aria-hidden="true">{t.descripcion_del_alumno.trim() ? "✓" : "○"}</span></span>)}</span>
-                                                        <span
-                                                            className="position-open-hint">{expandedPositions.has(p.id) ? "Cerrar posición" : p.tecnicas.length > 0 && p.tecnicas.every(t => t.descripcion_del_alumno.trim()) ? "Ver técnicas" : "Abrir y completar"}</span>
-                                                    </summary>
                                                     <div className="position-editor">
                                                         <div className="position-title">
                                                             <div>
                                                                 <input
                                                                     aria-label="Nombre de posición"
+                                                                    required aria-invalid={!p.posicion.trim() || p.posicion.length > 500}
+                                                                    aria-describedby={!p.posicion.trim() || p.posicion.length > 500 ? `position-name-validation-${p.id}` : undefined}
                                                                     value={p.posicion}
                                                                     onChange={(e) =>
                                                                         void saveTech({
@@ -582,6 +563,9 @@ function App() {
                                                                         })
                                                                     }
                                                                 />
+                                                                {(!p.posicion.trim() || p.posicion.length > 500) && <small className="field-error" id={`position-name-validation-${p.id}`}>
+                                                                    {!p.posicion.trim() ? POSITION_NAME_REQUIRED : 'El nombre de la posición admite como máximo 500 caracteres.'}
+                                                                </small>}
                                                             </div>
                                                             <div className="priority" role="group"
                                                                  aria-label={`Prioridad de ${p.posicion}`}>
@@ -630,6 +614,8 @@ function App() {
                                                                            htmlFor={`type-${t.id}`}>Técnica</label>
                                                                     <input id={`type-${t.id}`}
                                                                            aria-label="Tipo de técnica"
+                                                                           required aria-invalid={!t.tipo.trim() || t.tipo.length > 500}
+                                                                           aria-describedby={!t.tipo.trim() || t.tipo.length > 500 ? `technique-name-validation-${t.id}` : undefined}
                                                                            value={t.tipo}
                                                                            onChange={(e) =>
                                                                                void saveTech({
@@ -653,6 +639,9 @@ function App() {
                                                                                })
                                                                            }
                                                                     />
+                                                                    {(!t.tipo.trim() || t.tipo.length > 500) && <small className="field-error" id={`technique-name-validation-${t.id}`}>
+                                                                        {!t.tipo.trim() ? TECHNIQUE_NAME_REQUIRED : 'El nombre de la técnica admite como máximo 500 caracteres.'}
+                                                                    </small>}
                                                                     <label className="technique-label"
                                                                            htmlFor={`description-${t.id}`}>Tu
                                                                         descripción o enlace de vídeo</label>
@@ -812,7 +801,7 @@ function App() {
                                                             </button>
                                                         </div>
                                                     </div>
-                                                </details>
+                                                </RepertoirePosition>
                                             ))}
                                     </div>
                                     <button onClick={() => {
@@ -1100,6 +1089,7 @@ function App() {
                                                         choosePlan={(id) => selectStudent(selectedStudent, "plans", false, id)}
                                                         changeSection={(section) => selectStudent(selectedStudent, section)}
                                                         run={run}
+                                                        reloadTeam={trainers}
                                                         reload={async () => {
                                                             const sequence = studentSequence.current;
                                                             const data = await client.trainerView(selectedStudent, studentSection, true, studentPlanId);
@@ -1647,6 +1637,7 @@ function TrainerStudent({
                             changeSection,
                             run,
                             reload,
+                            reloadTeam,
                         }: {
     snapshot: TrainerView;
     section: TrainerSection;
@@ -1656,8 +1647,10 @@ function TrainerStudent({
     changeSection: (section: TrainerSection) => void;
     run: (a: () => Promise<unknown>) => Promise<void>;
     reload: () => Promise<void>;
+    reloadTeam: () => Promise<void>;
 }) {
     const [commentIssues, setCommentIssues] = useState<PlanIssue[]>([]);
+    const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
     useEffect(() => setCommentIssues([]), [snapshot.profile.data.mail]);
     const p = snapshot.profile.data,
         t = snapshot.techniques?.data as Techniques | undefined,
@@ -1717,35 +1710,45 @@ function TrainerStudent({
                     onChange={(e) => setSearch(e.target.value)}
                     aria-label="Buscar posición del alumno"
                 />
-                {t.positions
-                    .filter((p) => p.posicion.toLowerCase().includes(search.toLowerCase()))
-                    .map((p) => (
-                        <details key={p.id}>
-                            <summary>
-                                <span>{p.posicion}<small
-                                    className="priority-caption">Prioridad {p.prioridad}</small></span>
-                            </summary>
-                            {p.tecnicas.map((tech) => (
-                                <div key={tech.id} className="exercise">
-                                    <strong>{tech.tipo}</strong>
-                                    <textarea className="student-description" aria-label="Descripción del alumno"
-                                              readOnly value={tech.descripcion_del_alumno} placeholder="Sin descripción"
-                                              rows={3}/>
+                <div className="positions-grid trainer-repertoire">
+                {t.positions.map((position) => <RepertoirePosition key={position.id} position={position} open={expanded.has(position.id)}
+                    hidden={!position.posicion.toLowerCase().includes(search.toLowerCase())} onToggle={open => setExpanded(previous => {
+                        if (previous.has(position.id) === open) return previous;
+                        const next = new Set(previous); if (open) next.add(position.id); else next.delete(position.id); return next;
+                    })}>
+                    <div className="position-editor">
+                        <div className="position-title"><div><input aria-label="Nombre de posición del alumno" readOnly value={position.posicion}/></div>
+                            <small className="priority-caption">Prioridad {position.prioridad}</small></div>
+                        {position.tecnicas.map((tech, index) => <div key={tech.id} className={`technique ${tech.descripcion_del_alumno.trim() ? 'technique-ready' : 'technique-pending'}`}>
+                            <span className="number">{index + 1}</span><div>
+                                <div className="technique-state">{tech.descripcion_del_alumno.trim() ? '✓ Con descripción' : '○ Descripción pendiente'}</div>
+                                <label className="technique-label" htmlFor={`trainer-type-${tech.id}`}>Técnica</label>
+                                <input id={`trainer-type-${tech.id}`} aria-label="Tipo de técnica del alumno" readOnly value={tech.tipo}/>
+                                <label className="technique-label" htmlFor={`trainer-description-${tech.id}`}>Descripción del alumno</label>
+                                <textarea id={`trainer-description-${tech.id}`} className="student-description" aria-label="Descripción del alumno"
+                                    readOnly value={tech.descripcion_del_alumno} placeholder="Sin descripción" rows={3}/>
                                     <CommentEditor source={notes} version={snapshot.comments!.sha} techniqueId={tech.id} run={run}
                                         save={async (data, sha) => {
-                                            const saved = await client.request<{ planIssues?: PlanIssue[] }>(
+                                            const saved = await client.request<{ data: Comments; sha: string; planIssues?: PlanIssue[] }>(
                                                 `/api/app/users/${encodeURIComponent(snapshot.profile.data.mail)}/comments`,
                                                 "PUT", { data, sha });
                                             setCommentIssues(saved.planIssues || []);
                                             if (saved.planIssues?.length) client.status = planIssueMessage(saved.planIssues);
                                             await reload();
+                                            return saved;
                                         }} />
-                                </div>
-                            ))}
-                        </details>
-                    ))}
+                            </div>
+                        </div>)}
+                    </div>
+                </RepertoirePosition>)}
+                </div>
             </>}
             {section === "administration" && <>
+                {p.perfil === 'alumno' && <StudentBeltEditor profile={p} version={snapshot.profile.sha} run={run}
+                    save={async (cinturon, sha) => {
+                        await client.request('/api/app/belt', 'POST', { mail: p.mail, cinturon, sha });
+                        await reload(); await reloadTeam();
+                    }} />}
                 <label>
                     Rol
                     <select
@@ -1814,13 +1817,12 @@ function CompetitionCard({competition: c, students, sha, run, reload}: {
             días {c.dias_de_entrenamiento.join(', ')}</p>
         <p>Configuración fijada al crear la competición.</p>
         <p>Al guardar, desasignar un participante elimina su plan individual.</p>
-        {students.map(s => <label className="check" key={s.profile.mail}>
-            <input type="checkbox" checked={selected.includes(s.profile.mail)} disabled={saving || deleting}
-                   onChange={e => {
-                       const checked = e.currentTarget.checked;
+        <fieldset><legend>Participantes</legend>
+            <ParticipantChoices users={students} selected={selected} disabled={saving || deleting}
+                   onChange={(mail, checked) => {
                        setDraft(previous => {
                            const current = previous?.alumnos ?? c.alumnos;
-                           const alumnos = checked ? [...current, s.profile.mail] : current.filter(mail => mail !== s.profile.mail);
+                           const alumnos = checked ? [...current, mail] : current.filter(value => value !== mail);
                            const unchanged = alumnos.length === c.alumnos.length && alumnos.every(mail => c.alumnos.includes(mail));
                            return unchanged ? null : {
                                alumnos,
@@ -1828,8 +1830,8 @@ function CompetitionCard({competition: c, students, sha, run, reload}: {
                                sha: previous?.sha ?? sha
                            };
                        });
-                   }}/>{s.profile.nombre || s.profile.mail}
-        </label>)}
+                   }}/>
+        </fieldset>
         <div className="competition-submit">
             <button disabled={!changed || saving || deleting} onClick={() => {
                 if (!draft || saving) return;
@@ -2037,12 +2039,7 @@ function CompetitionForm({
                 </fieldset>
                 <fieldset>
                     <legend>Participantes (alumnos y entrenadores)</legend>
-                    {students.map((s) => (
-                        <label className="check" key={s.profile.mail}>
-                            <input name="student" type="checkbox" value={s.profile.mail}/>
-                            {s.profile.nombre || s.profile.mail} · {s.profile.perfil}
-                        </label>
-                    ))}
+                    <ParticipantChoices users={students}/>
                 </fieldset>
                 <div className="competition-submit">
                     <button disabled={creating}>Crear competición</button>

@@ -50,6 +50,8 @@ try{
         const value=await response.json();assert.ok(response.ok,JSON.stringify(value));return value;
     };
     const pupil=await call('auth/register',{mail:'browser-v2@example.test',password,confirm:password,nombre:'Browser',apellidos:'Synthetic'});
+    await call('auth/register',{mail:'ana-v2@example.test',password,confirm:password,nombre:'Ana',apellidos:'Fernández de la Torre y García'});
+    await call('auth/register',{mail:'alvaro-v2@example.test',password,confirm:password,nombre:'Álvaro',apellidos:'García'});
     const trainer=await call('auth/login',{mail,password}),today=madridDate(),date=days=>{const d=new Date(today+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10);};
     await call('commands/competition',{competition:{fecha_comienzo:date(-5),fecha_torneo:date(30),alumnos:[pupil.profile.mail,mail],dias_de_entrenamiento:[1,2,3,4,5,6,7],
         ejercicios_por_sesion:5,tiempo_por_tecnica_segundos:180,descanso_entre_ciclos_segundos:10,descanso_entre_tecnicas_segundos:20},expected:'1',operationId:crypto.randomUUID()},trainer.token);
@@ -93,19 +95,40 @@ try{
         coaches.push(page);page.on('pageerror',e=>errors.push(e.message));
         await login(page,mail);
         await page.getByRole('button',{name:'Entrenador',exact:true}).click();
+        assert.deepEqual(await page.locator('.student-grid .student-info strong').allTextContents(),
+            ['Álvaro García','Ana Fernández de la Torre y García','Browser Synthetic','Trainer Synthetic']);
         await page.locator('.student-card').filter({hasText:'Browser Synthetic'}).click();
+        assert.equal(await page.locator('.student-detail details[open]').count(),0);
         await page.locator('.student-detail details > summary').first().click();
+        assert.equal(await page.getByLabel('Nombre de posición del alumno').first().getAttribute('readonly'),'');
+        assert.equal(await page.getByLabel('Tipo de técnica del alumno').first().getAttribute('readonly'),'');
+        assert.equal(await page.getByLabel('Descripción del alumno',{exact:true}).first().getAttribute('readonly'),'');
+        assert.equal(await page.getByLabel('Comentario',{exact:true}).first().isEnabled(),true);
     }
+    let commentRequests=0;coaches[0].on('request',r=>{if(r.url().endsWith('/api/v2/commands/comments'))commentRequests++;});
     await coaches[1].getByLabel('Comentario',{exact:true}).first().fill('Draft on another device');
     await coaches[0].getByLabel('Comentario',{exact:true}).first().fill('Confirmed remote comment');
+    await new Promise(resolve=>setTimeout(resolve,1500));assert.equal(commentRequests,0);
     let lostAck = false;
+    let releaseCommentAck,commentCommitted;
+    const heldCommentAck=new Promise(resolve=>{releaseCommentAck=resolve;});
+    const committedComment=new Promise(resolve=>{commentCommitted=resolve;});
     await coaches[0].route('**/api/v2/commands/comments', async route => {
         const response = await route.fetch(); assert.ok(response.ok());
+        commentCommitted();await heldCommentAck;
         lostAck = true; await route.abort('failed');
     }, {times:1});
     await coaches[0].getByRole('button',{name:'Guardar comentario remoto'}).first().click();
+    await committedComment;
+    await coaches[0].getByLabel('Comentario',{exact:true}).first().press('ControlOrMeta+A');
+    await coaches[0].getByLabel('Comentario',{exact:true}).first().pressSequentially('New unsent draft while saving');
+    releaseCommentAck();
     await coaches[1].getByText('Los comentarios han cambiado.',{exact:false}).waitFor();
     assert.equal(lostAck,true);
+    await coaches[0].waitForFunction(()=>document.querySelector('.student-detail form button')?.disabled===false);
+    assert.equal(await coaches[0].getByLabel('Comentario',{exact:true}).first().inputValue(),'New unsent draft while saving');
+    assert.equal(commentRequests,2); // one save, original operationId retry after lost HTTP ACK
+    await coaches[0].getByLabel('Comentario',{exact:true}).first().fill('Confirmed remote comment');
     const conflictingForm = coaches[1].locator('.student-detail form').filter({has:coaches[1].getByText('Los comentarios han cambiado.',{exact:false})});
     assert.equal(await conflictingForm.getByRole('textbox').inputValue(),'Draft on another device');
     assert.equal(await conflictingForm.getByRole('button',{name:'Guardar comentario remoto'}).isDisabled(),true);
@@ -119,6 +142,77 @@ try{
     const position = a.locator('details.repertoire-position').filter({has:a.locator('#technique-'+savedComment.techniqueId)});
     if (!await position.evaluate(n=>n.open)) await position.locator('summary').click();
     await a.locator('#technique-'+savedComment.techniqueId).getByText('Confirmed remote comment',{exact:false}).waitFor();
+    await a.getByRole('button',{name:'Notificaciones, 1 pendientes',exact:true}).waitFor();
+    // Belt changes are explicit, preserve a failed draft, then update both the
+    // student detail and the roster. The pupil's existing session stays valid.
+    const coach=coaches[0];
+    await coach.getByRole('button',{name:'Administración',exact:true}).click();
+    let beltRequests=0;coach.on('request',r=>{if(r.url().endsWith('/api/v2/commands/belt'))beltRequests++;});
+    await coach.getByLabel('Cinturón del alumno',{exact:true}).selectOption('Azul');assert.equal(beltRequests,0);
+    await coach.route('**/api/v2/commands/belt',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'SYNTHETIC_BELT_FAILURE'})}),{times:1});
+    const failedBelt=coach.waitForResponse(r=>r.url().endsWith('/api/v2/commands/belt')&&r.status()===503);
+    await coach.getByRole('button',{name:'Guardar cinturón',exact:true}).click();await failedBelt;
+    await coach.waitForFunction(()=>!document.querySelector('.student-belt-editor button')?.disabled);
+    assert.equal(await coach.getByLabel('Cinturón del alumno',{exact:true}).inputValue(),'Azul');
+    const savedBelt=coach.waitForResponse(r=>r.url().endsWith('/api/v2/commands/belt')&&r.status()===200);
+    await coach.getByRole('button',{name:'Guardar cinturón',exact:true}).click();await savedBelt;
+    await coach.locator('.student-detail .pill').filter({hasText:'Azul'}).waitFor();
+    await coach.locator('.student-card').filter({hasText:'Browser Synthetic'}).filter({hasText:'Azul'}).waitFor();
+    assert.equal(beltRequests,2);
+    await a.locator('.sync-success').waitFor();
+    await coach.locator('.student-belt-editor').screenshot({path:'.browser-artifacts/v2-student-belt.png'});
+    // Complete names and the same alphabetical order in list and creation form.
+    await coach.getByRole('button',{name:'Competiciones',exact:true}).click();
+    const orderedNames=['Álvaro García','Ana Fernández de la Torre y García','Browser Synthetic','Trainer Synthetic'];
+    assert.deepEqual(await coach.locator('.competition-card .participant-choice strong').allTextContents(),orderedNames);
+    let assignments=0;coach.on('request',r=>{if(r.url().endsWith('/api/v2/commands/assignment'))assignments++;});
+    const ana=coach.locator('.competition-card .participant-choice').filter({hasText:'Ana Fernández de la Torre y García'}).getByRole('checkbox');
+    await ana.check();assert.equal(assignments,0);await ana.uncheck();
+    assert.equal(await coach.getByRole('button',{name:'Guardar datos',exact:true}).isDisabled(),true);
+    await coach.locator('.competition-card').screenshot({path:'.browser-artifacts/v2-competitions-desktop.png'});
+    await coach.setViewportSize({width:390,height:844});
+    await coach.locator('.competition-card').screenshot({path:'.browser-artifacts/v2-competitions-mobile.png'});
+    assert.equal(await coach.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false);
+    await coach.setViewportSize({width:1440,height:1000});
+    await coach.getByRole('button',{name:'Nueva competición',exact:true}).click();
+    assert.deepEqual(await coach.locator('.competition-create .participant-choice strong').allTextContents(),orderedNames);
+    assert.equal(await coach.locator('.competition-create .participant-choice').filter({hasText:'Trainer Synthetic'}).count(),1);
+    await coach.getByRole('button',{name:'Equipo',exact:true}).click();
+    await coach.getByRole('button',{name:'Técnicas',exact:true}).click();
+    await coach.locator('.student-detail details > summary').first().click();
+    await coach.locator('.student-detail').screenshot({path:'.browser-artifacts/v2-team-techniques-desktop.png'});
+    await coach.setViewportSize({width:390,height:844});
+    await coach.locator('.student-detail').screenshot({path:'.browser-artifacts/v2-team-techniques-mobile.png'});
+    assert.equal(await coach.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false);
+    await coach.setViewportSize({width:1440,height:1000});
+    // Empty names while replacing placeholder text are incomplete editor input,
+    // not failed HTTP writes. Exercise the exact reported creation sequence.
+    const submittedDrafts=[];
+    const trackDraft=request=>{if(request.method()==='POST'&&request.url().endsWith('/api/v2/commands/repertoire'))submittedDrafts.push(request.postDataJSON());};
+    b.on('request',trackDraft);
+    await b.getByRole('button',{name:'Añadir posición',exact:true}).click();
+    const newPosition=b.locator('details.repertoire-position').last();
+    await newPosition.getByRole('button',{name:'Añadir técnica',exact:true}).click();
+    await newPosition.getByLabel('Tipo de técnica',{exact:true}).fill('');
+    await b.locator('#technique-draft-validation').filter({hasText:'Completa el nombre de la técnica para guardar los cambios.'}).waitFor();
+    await new Promise(resolve=>setTimeout(resolve,1500));assert.equal(submittedDrafts.length,0);
+    assert.equal(await b.getByRole('button',{name:'Reintentar guardado',exact:true}).count(),0);
+    await newPosition.getByLabel('Tipo de técnica',{exact:true}).fill('Técnica nueva validada');
+    await newPosition.getByLabel('Descripción de técnica o enlace de vídeo').fill('Descripción nueva conservada');
+    await newPosition.getByLabel('Nombre de posición',{exact:true}).fill('');
+    await b.locator('#technique-draft-validation').filter({hasText:'Completa el nombre de la posición para guardar los cambios.'}).waitFor();
+    await new Promise(resolve=>setTimeout(resolve,1500));assert.equal(submittedDrafts.length,0);
+    await newPosition.screenshot({path:'.browser-artifacts/v2-draft-invalid-desktop.png'});
+    await b.setViewportSize({width:390,height:844});
+    await newPosition.screenshot({path:'.browser-artifacts/v2-draft-invalid-mobile.png'});
+    await b.setViewportSize({width:1440,height:1000});
+    const validDraft=b.waitForResponse(r=>r.url().endsWith('/api/v2/commands/repertoire')&&r.status()===200);
+    await newPosition.getByLabel('Nombre de posición',{exact:true}).fill('Posición nueva validada');
+    await validDraft;await b.locator('.sync-success').waitFor();
+    assert.equal(submittedDrafts.length,1);
+    assert.equal(submittedDrafts[0].data.positions.at(-1).tecnicas[0].descripcion_del_alumno,'Descripción nueva conservada');
+    assert.equal(await b.locator('#technique-draft-validation').count(),0);
+    b.off('request',trackDraft);
     assert.deepEqual(errors,[]);
     console.log('Actual PWA + DEV V2 Worker + intercepted Firestore: two-device live text, trainer concurrent comment draft/CAS conflict, screenshots, offline complete plan/PDF, focus/idle zero database operations PASS.');
 }finally{await browser.close();for(const socket of connections)socket.destroy();await new Promise(r=>server.close(r));await runtime.dispose();}

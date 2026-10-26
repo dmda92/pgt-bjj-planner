@@ -33,6 +33,20 @@ async function setup(count = 2) {
         descanso_entre_ciclos_segundos: 10, descanso_entre_tecnicas_segundos: 20 };
     return { f, paths, store, views, q, business, sessions, repertoires, competition };
 }
+
+test('Empty position or technique names remain invalid on the server before any database IO', async () => {
+    const s = await setup(1);
+    for (const kind of ['position', 'technique']) {
+        const data = structuredClone(s.repertoires[0]);
+        if (kind === 'position') data.positions[0].posicion = ' ';
+        else data.positions[0].tecnicas[0].tipo = '';
+        const before = s.f.metrics();
+        assert.throws(() => s.business.repertoire(s.sessions[0], { data, expected: '1', operationId: crypto.randomUUID() }),
+            (error: any) => error.status === 400 && error.message === 'PAYLOAD_INVALID');
+        assert.equal(s.f.metrics().estimatedReads, before.estimatedReads);
+        assert.equal(s.f.metrics().attemptedWrites, before.attemptedWrites);
+    }
+});
 test('Competition, participant plans, indexes and shared agenda publish together including a competing trainer', async () => {
     const s = await setup(), input = { competition: s.competition, expected: null, operationId: crypto.randomUUID() };
     const ack = await s.business.competition(s.sessions[0], 'competition', input), id = ack.metadata!.planId;

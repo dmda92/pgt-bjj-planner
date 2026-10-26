@@ -175,6 +175,15 @@ fuera del repositorio. El propietario reportó RATE_LIMIT durante edición; diag
 corrección y pruebas aisladas en [FIX_AUTOGUARDADO_RATE_LIMIT.md](FIX_AUTOGUARDADO_RATE_LIMIT.md).
 No se modifican sus datos para reproducir ni verificar esta incidencia.
 
+## Nombres incompletos en edición — 26/10/2026
+
+Reproducción local de PAYLOAD_INVALID al vaciar el nombre durante el autoguardado,
+corrección del borrador y 336 pruebas en [FIX_PAYLOAD_INVALID_EDITOR.md](FIX_PAYLOAD_INVALID_EDITOR.md).
+La pausa inicial para agrupar cambios ha sido sustituida por autorización de entrega
+con Equipo/Competiciones. Validación conjunta y estado operativo en
+[CAMBIOS_EQUIPO_2026-10-26.md](CAMBIOS_EQUIPO_2026-10-26.md).
+No se han alterado datos DEV para QA ni recursos PRO.
+
 Límites de diseño explícitos en [contratos](FIRESTORE_V2_CONTRATOS.md): commits
 acotados, extremo remoto de memoria no medido y lectura compacta completa para
 estructuras. No presentar esta implementación como óptimo matemático demostrado.

@@ -96,7 +96,7 @@ export class FirestoreClient {
             return { users: value.data.users.map((profile: Profile) => ({ profile })) } as T;
         }
         if (path === '/api/app/catalog') return record(await this.raw('/api/v2/catalog')) as T;
-        const command = path.match(/^\/api\/app\/(password|role|competition|assignment|delete-competition)$/);
+        const command = path.match(/^\/api\/app\/(password|role|belt|competition|assignment|delete-competition)$/);
         if (command && method === 'POST') {
             const actor = this.current();
             const { sha, ...input } = body, operationId = crypto.randomUUID();

@@ -2474,3 +2474,34 @@ input[aria-invalid="true"] {
 .positions-grid .repertoire-position .position-title .priority {
     align-self: flex-start;
 }
+.participant-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+    gap: 10px;
+    margin: 12px 0;
+}
+
+.participant-choice {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px;
+    min-height: 64px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: white;
+    cursor: pointer;
+}
+
+.participant-choice:has(input:checked) {
+    border-color: var(--accent);
+    background: #f0f5f9;
+}
+
+.participant-choice:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.participant-choice input { flex: 0 0 20px; width: 20px; height: 20px; margin: 3px 0 0; }
+.participant-choice > span { min-width: 0; overflow-wrap: anywhere; }
+.participant-choice strong { display: block; font-size: 16px; font-weight: 600; }
+.participant-choice small { display: block; color: var(--muted); margin-top: 3px; }
+.repertoire-position[hidden] { display: none; }
+.student-belt-editor { margin: 18px 0 24px; }
