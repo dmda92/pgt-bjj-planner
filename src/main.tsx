@@ -1,5 +1,6 @@
 import {onlinePresentation} from './application/online-presentation.ts';
 import {OnlineDraft} from './application/online-draft.ts';
+import {DRAFT_SAVE_WAITING} from './application/save-throttled.ts';
 import {ownTrainingDay} from "./domain/own-training-day.ts";
 import {Notifications} from "./ui-notifications.tsx";
 import {CommentEditor} from './ui-comment-editor.tsx';
@@ -174,7 +175,10 @@ function App() {
         setError("");
         setBusy(true);
         try {
-            if (onlineMode && flushDraft && !onlineDraft.current?.hasFailed) await onlineDraft.current?.flush();
+            if (onlineMode && flushDraft && !onlineDraft.current?.hasFailed) {
+                await onlineDraft.current?.flush();
+                if (onlineDraft.current?.hasDraft) throw Error(DRAFT_SAVE_WAITING);
+            }
             await techniqueSaves.current;
             await action();
             setVersion((v) => v + 1);
@@ -203,7 +207,10 @@ function App() {
                     if (client.identity?.mail !== mail || client.locked) throw Error('Sesión cambiada');
                     await client.edit('techniques', data, base);
                     return client.lastConfirmedRevision.get('techniques') || base!;
-                }, error => setError(error instanceof Error ? error.message : 'No se pudo guardar'), () => setVersion(v => v + 1),
+                }, error => setError(error instanceof Error ? error.message : 'No se pudo guardar'), () => {
+                    if (!onlineDraft.current?.hasDraft) setError(previous => previous === DRAFT_SAVE_WAITING ? '' : previous);
+                    setVersion(v => v + 1);
+                },
                     undefined, () => navigator.onLine && client.identity?.mail === mail && !client.locked, () => client.retryGeneration);
             }
             onlineDraft.current.update(next, entries.find(e => e.key === 'techniques')?.sha || null);

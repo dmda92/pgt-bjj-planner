@@ -69,7 +69,12 @@ try{
     const throttle=a.waitForResponse(r=>r.url().endsWith('/api/v2/commands/repertoire')&&r.status()===429);
     await a.getByLabel('Descripción de técnica o enlace de vídeo').first().fill(text);
     await throttle;
+    // An action awaiting flush must not silently log out and discard the draft
+    // while the background editor respects Retry-After.
+    await a.getByRole('button',{name:'Salir',exact:true}).click();
+    await a.getByRole('heading',{name:'Tu repertorio'}).waitFor();
     await a.locator('.sync-success').waitFor();await b.getByLabel('Descripción de técnica o enlace de vídeo').first().filter({visible:true}).waitFor();
+    assert.equal(await a.getByText('El guardado está esperando al servidor. Conserva la sesión hasta que se confirme.',{exact:true}).count(),0);
     await assert.doesNotReject(async()=>{for(let i=0;i<40;i++){if(await b.getByLabel('Descripción de técnica o enlace de vídeo').first().inputValue()===text)return;await new Promise(r=>setTimeout(r,100));}throw Error('Second device did not receive update');});
     assert.equal(throttledAttempts,2);await a.unroute('**/api/v2/commands/repertoire');
     await mkdir('.browser-artifacts',{recursive:true});await a.screenshot({path:'.browser-artifacts/v2-mobile.png',fullPage:true});await b.screenshot({path:'.browser-artifacts/v2-desktop.png',fullPage:true});

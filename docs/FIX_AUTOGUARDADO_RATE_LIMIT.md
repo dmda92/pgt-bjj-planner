@@ -20,6 +20,9 @@ escrituras de negocio para la petición rechazada. No era cuota Firestore agotad
 - Un cambio de sesión o cualquier paso offline, aunque reconecte antes del plazo,
   invalida el reintento automático. No se crea una cola offline. Logout/descartar
   cancelan el temporizador y se mantiene la política de borradores volátiles.
+- Las acciones que esperan el guardado, incluida Salir, no continúan mientras el
+  borrador esté esperando confirmación. El aviso temporal se retira tras su ACK;
+  no se descarta silenciosamente un borrador por resolver flush durante la espera.
 
 ## Validación y límites
 
