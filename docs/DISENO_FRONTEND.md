@@ -2,18 +2,27 @@
 
 ## Dirección aprobada por el propietario
 
-El 14/10/2026 el propietario rechazó la paleta del logo PGT y eligió como referencia cuatro capturas: navegación lateral oscura, fondo claro, superficies blancas, títulos legibles, espacios generosos y detalle por posición. Esta petición prevalece sobre la dirección verde/dorada anterior. Se adopta una paleta pizarra con acento azul suave; el logo original se conserva para el PDF y, por decisión del propietario el 16/10/2026, para el icono de instalación PWA. No define la paleta de la interfaz.
+El 14/10/2026 el propietario rechazó la paleta del logo PGT y eligió como referencia cuatro capturas: navegación lateral
+oscura, fondo claro, superficies blancas, títulos legibles, espacios generosos y detalle por posición. Esta petición
+prevalece sobre la dirección verde/dorada anterior. Se adopta una paleta pizarra con acento azul suave; el logo original
+se conserva para el PDF y, por decisión del propietario el 16/10/2026, para el icono de instalación PWA. No define la
+paleta de la interfaz.
 
-La app es un espacio de preparación de competición: repertorio personal editable, sesiones, perfiles y trabajo del entrenador. No añadir actividad, tendencias, asistencia ni gráficos ficticios. Los datos existentes determinan el contenido; las capturas son referencia de composición, no una nueva especificación funcional.
+La app es un espacio de preparación de competición: repertorio personal editable, sesiones, perfiles y trabajo del
+entrenador. No añadir actividad, tendencias, asistencia ni gráficos ficticios. Los datos existentes determinan el
+contenido; las capturas son referencia de composición, no una nueva especificación funcional.
 
 ## Skill de referencia
 
-Consultar [.agents/skills/frontend-design/SKILL.md](../.agents/skills/frontend-design/SKILL.md), skill original de Anthropic con licencia incluida. Fuente: https://github.com/anthropics/skills/tree/main/skills/frontend-design. Integración local en el repositorio, no instalación global en Work. Seguir la referencia elegida por el propietario y sus instrucciones más recientes.
+Consultar [.agents/skills/frontend-design/SKILL.md](../.agents/skills/frontend-design/SKILL.md), skill original de
+Anthropic con licencia incluida. Fuente: https://github.com/anthropics/skills/tree/main/skills/frontend-design.
+Integración local en el repositorio, no instalación global en Work. Seguir la referencia elegida por el propietario y
+sus instrucciones más recientes.
 
 ## Sistema visual
 
 | Token      | Valor   | Función                             |
-| ---------- | ------- | ----------------------------------- |
+|------------|---------|-------------------------------------|
 | Tinta      | #20313f | Texto principal                     |
 | Pizarra    | #202f3b | Navegación y acciones estructurales |
 | Azul       | #365e7d | Acciones y progreso                 |
@@ -21,100 +30,173 @@ Consultar [.agents/skills/frontend-design/SKILL.md](../.agents/skills/frontend-d
 | Fondo      | #f6f7f9 | Canvas                              |
 | Superficie | #ffffff | Lectura y formularios               |
 
-Barlow local regular y semibold, también en títulos. Títulos principales 28–38 px, títulos de zona 23–28 px, lectura 16 px, metadatos 12–14 px. Texto alineado a la izquierda, cifras tabulares. Bordes finos y radios 6–10 px; no sombras repetidas ni gradientes. Los estados llevan texto, no dependen solo del color.
+Barlow local regular y semibold, también en títulos. Títulos principales 28–38 px, títulos de zona 23–28 px, lectura 16
+px, metadatos 12–14 px. Texto alineado a la izquierda, cifras tabulares. Bordes finos y radios 6–10 px; no sombras
+repetidas ni gradientes. Los estados llevan texto, no dependen solo del color.
 
-En escritorio, lateral pizarra persistente de 220 px y cabecera de sesión discreta. Repertorio en dos columnas cuando hay espacio, una en pantallas estrechas. Sesiones en dos columnas y apertura individual; conserva consulta de solo lectura, exportación y orden. Hasta 850 px, navegación superior; hasta 640 px, controles y sesiones en una columna. La tabla de cobertura tiene scroll interno en móvil sin desbordar la página.
+En escritorio, lateral pizarra persistente de 220 px y cabecera de sesión discreta. Repertorio en dos columnas cuando
+hay espacio, una en pantallas estrechas. Sesiones en dos columnas y apertura individual; conserva consulta de solo
+lectura, exportación y orden. Hasta 850 px, navegación superior; hasta 640 px, controles y sesiones en una columna. La
+tabla de cobertura tiene scroll interno en móvil sin desbordar la página.
 
 ## Entrenador
 
-Tres áreas separadas: Equipo, Competiciones y Cobertura por fecha. Equipo conserva selección, búsqueda, perfiles, roles, contraseñas, descripciones y comentarios. Competiciones conserva creación, asignación y borrado con sus confirmaciones. Resumen calculado exclusivamente de los datos autorizados.
+Tres áreas separadas: Equipo, Competiciones y Cobertura por fecha. Equipo conserva selección, búsqueda, perfiles, roles,
+contraseñas, descripciones y comentarios. Competiciones conserva creación, asignación y borrado con sus confirmaciones.
+Resumen calculado exclusivamente de los datos autorizados.
 
-Cobertura es lectura exclusiva del entrenador: selecciona alumno y plan, fecha y opción de incluir ese día. Muestra técnicas diferentes, sesiones, ejercicios con repeticiones, posiciones completas, posiciones sin empezar, primeras fechas y apariciones; filtros de pendientes/parciales/sin empezar. Calcula desde el plan individual guardado, no desde las técnicas actuales ni un plan regenerado.
+Cobertura es lectura exclusiva del entrenador: selecciona alumno y plan, fecha y opción de incluir ese día. Muestra
+técnicas diferentes, sesiones, ejercicios con repeticiones, posiciones completas, posiciones sin empezar, primeras
+fechas y apariciones; filtros de pendientes/parciales/sin empezar. Calcula desde el plan individual guardado, no desde
+las técnicas actuales ni un plan regenerado.
 
-Los snapshots existentes no contienen una copia completa del catálogo original. El universo y denominador se limitan a técnicas presentes en las sesiones guardadas. Explicar este alcance en pantalla, sin confundirlo con cobertura del catálogo completo. Pasadas completas requieren todas las técnicas programadas de esa pasada y la marca de finalización guardada; distinguir parciales aunque exista alguna pasada completa anterior. No equivale a asistencia real.
+Los snapshots existentes no contienen una copia completa del catálogo original. El universo y denominador se limitan a
+técnicas presentes en las sesiones guardadas. Explicar este alcance en pantalla, sin confundirlo con cobertura del
+catálogo completo. Pasadas completas requieren todas las técnicas programadas de esa pasada y la marca de finalización
+guardada; distinguir parciales aunque exista alguna pasada completa anterior. No equivale a asistencia real.
 
 ## Accesibilidad y continuidad
 
-Foco visible, controles táctiles de al menos 44 px, etiquetas reales, SVG decorativo oculto a lectores, navegación activa accesible y `prefers-reduced-motion`. Transiciones de color de 140 ms. Conservar errores, conflictos, sincronización y cambios pendientes. Recursos y fuentes locales precacheados; no CDN ni dependencias nuevas de ejecución.
+Foco visible, controles táctiles de al menos 44 px, etiquetas reales, SVG decorativo oculto a lectores, navegación
+activa accesible y `prefers-reduced-motion`. Transiciones de color de 140 ms. Conservar errores, conflictos,
+sincronización y cambios pendientes. Recursos y fuentes locales precacheados; no CDN ni dependencias nuevas de
+ejecución.
 
-No cambiar autenticación, permisos de API, modelos guardados, generador, sincronización, IndexedDB ni exportación PDF para obtener efectos visuales. La cobertura añade un cálculo puro de lectura y usa el endpoint de snapshot autorizado ya existente. No acceder a Cloudflare ni desplegar desde Work.
+No cambiar autenticación, permisos de API, modelos guardados, generador, sincronización, IndexedDB ni exportación PDF
+para obtener efectos visuales. La cobertura añade un cálculo puro de lectura y usa el endpoint de snapshot autorizado ya
+existente. No acceder a Cloudflare ni desplegar desde Work.
 
 ## Verificación
 
-Ejecutar todas las verificaciones de AGENTS.md y `npm run test:browser`. Revisar acceso, repertorio, planes, perfil, equipo, competiciones y cobertura a 360, 390, 768, 1280 y 1440 px. Validar fechas inclusivas/exclusivas, repeticiones, parciales y que alumnos no vean el apartado exclusivo. Los datos sintéticos y anchos emulados no acreditan aceptación en dispositivos físicos o Safari/iOS.
+Ejecutar todas las verificaciones de AGENTS.md y `npm run test:browser`. Revisar acceso, repertorio, planes, perfil,
+equipo, competiciones y cobertura a 360, 390, 768, 1280 y 1440 px. Validar fechas inclusivas/exclusivas, repeticiones,
+parciales y que alumnos no vean el apartado exclusivo. Los datos sintéticos y anchos emulados no acreditan aceptación en
+dispositivos físicos o Safari/iOS.
 
 ## Exportación PDF del plan (petición expresa 14/10/2026)
 
-La exportación adopta la misma paleta pizarra/azul y Barlow embebida. Resumen inicial con datos del snapshot, introducción literal y Tábata; sesiones en tarjetas por orden de lectura izquierda-derecha y arriba-abajo. Cada tarjeta muestra fecha, ordinal, posición/prioridad/pasada, tipos destacados y todos los textos guardados. No se imprimen encabezados del navegador ni URL de hosting. Logo original arriba a la derecha y páginas numeradas. Una sesión densa ocupa ancho completo y nunca se divide; si no cabe tras compactar, se informa antes de descargar. Esta autorización específica permite modificar el diseño PDF sin tocar datos ni planificación.
+La exportación adopta la misma paleta pizarra/azul y Barlow embebida. Resumen inicial con datos del snapshot,
+introducción literal y Tábata; sesiones en tarjetas por orden de lectura izquierda-derecha y arriba-abajo. Cada tarjeta
+muestra fecha, ordinal, posición/prioridad/pasada, tipos destacados y todos los textos guardados. No se imprimen
+encabezados del navegador ni URL de hosting. Logo original arriba a la derecha y páginas numeradas. Una sesión densa
+ocupa ancho completo y nunca se divide; si no cabe tras compactar, se informa antes de descargar. Esta autorización
+específica permite modificar el diseño PDF sin tocar datos ni planificación.
 
 ### PDF con sesiones largas
 
-Las sesiones que exceden una página usan ancho completo y continúan en páginas adicionales a 10 pt, con fecha, número de sesión y Parte/Continuación. Se conserva íntegro el contenido y el orden; las sesiones cortas mantienen las tarjetas habituales. Se elimina el bloqueo que pedía acortar descripciones.
+Las sesiones que exceden una página usan ancho completo y continúan en páginas adicionales a 10 pt, con fecha, número de
+sesión y Parte/Continuación. Se conserva íntegro el contenido y el orden; las sesiones cortas mantienen las tarjetas
+habituales. Se elimina el bloqueo que pedía acortar descripciones.
 
 ### Eliminaciones de catálogo y planes bloqueados
 
-Los diálogos de eliminación explican que se recalculan sesiones futuras y se conserva el histórico. PlanView muestra un aviso accesible con role=alert cuando la actualización está bloqueada; el estado de sincronización indica que queda incompleta. Conservar la presentación de solo lectura y el diseño actual.
+Los diálogos de eliminación explican que se recalculan sesiones futuras y se conserva el histórico. PlanView muestra un
+aviso accesible con role=alert cuando la actualización está bloqueada; el estado de sincronización indica que queda
+incompleta. Conservar la presentación de solo lectura y el diseño actual.
 
 ### Secciones de la ficha del alumno
 
-Panel derecho con botones Técnicas, Planes y Administración. La ficha de identidad permanece; el contenido se muestra por sección. Técnicas es la vista inicial de cada selección. El selector conserva el resaltado durante carga; spinner y texto accesible sustituyen temporalmente el mensaje inicial, con movimiento reducido respetado. Error de carga conserva selección y ofrece reintento.
+Panel derecho con botones Técnicas, Planes y Administración. La ficha de identidad permanece; el contenido se muestra
+por sección. Técnicas es la vista inicial de cada selección. El selector conserva el resaltado durante carga; spinner y
+texto accesible sustituyen temporalmente el mensaje inicial, con movimiento reducido respetado. Error de carga conserva
+selección y ofrece reintento.
 
 ### Fichas locales y detalle de planes
 
-La ficha guardada se muestra inmediatamente, con indicador discreto «Actualizando en segundo plano» durante la comprobación remota. La falta de copia usa el spinner del panel y no deshabilita toda la interfaz. Planes muestra primero un selector con fechas de competición y carga solo el plan elegido. Métricas del repertorio memoizadas. Mantener selección, secciones, permisos y textos completos.
+La ficha guardada se muestra inmediatamente, con indicador discreto «Actualizando en segundo plano» durante la
+comprobación remota. La falta de copia usa el spinner del panel y no deshabilita toda la interfaz. Planes muestra
+primero un selector con fechas de competición y carga solo el plan elegido. Métricas del repertorio memoizadas. Mantener
+selección, secciones, permisos y textos completos.
 
 ### Feedback de acciones y lectura del repertorio
 
-Verde de éxito #397354, solo en texto «Sincronizado» con peso 600: sin fondo llamativo. Pendientes, offline, errores, bloqueos y borradores sin guardar conservan estados distintos del éxito. Spinner de 20 px junto a «Crear competición», con texto accesible mientras se procesa; respetar movimiento reducido. Descripción del alumno en caja textarea readOnly con fondo canvas, tamaño táctil y texto seleccionable.
-
+Verde de éxito #397354, solo en texto «Sincronizado» con peso 600: sin fondo llamativo. Pendientes, offline, errores,
+bloqueos y borradores sin guardar conservan estados distintos del éxito. Spinner de 20 px junto a «Crear competición»,
+con texto accesible mientras se procesa; respetar movimiento reducido. Descripción del alumno en caja textarea readOnly
+con fondo canvas, tamaño táctil y texto seleccionable.
 
 ### Feedback de borrado y espera del entrenador (15/10/2026)
 
-Borrado de competición con estado inmediato y spinner accesible en su tarjeta; impedir doble envío y ediciones durante borrado, retirar estado ante fallo. Placeholder de alumno más compacto, título 21 px, texto 15 px; carga horizontal con spinner 28 px y título 18 px. Mantener diseño pizarra/azul y movimiento reducido. Prueba Chromium con petición de borrado retenida y confirmación de retirada de tarjeta.
-
+Borrado de competición con estado inmediato y spinner accesible en su tarjeta; impedir doble envío y ediciones durante
+borrado, retirar estado ante fallo. Placeholder de alumno más compacto, título 21 px, texto 15 px; carga horizontal con
+spinner 28 px y título 18 px. Mantener diseño pizarra/azul y movimiento reducido. Prueba Chromium con petición de
+borrado retenida y confirmación de retirada de tarjeta.
 
 ### Visibilidad de contraseña en login (15/10/2026)
 
-Botón de ojo integrado en el campo, accesible Mostrar/Ocultar contraseña, type=button; contraseña oculta inicialmente y al cambiar a registro. Cambia solo type del input, sin modificar valor ni enviar formulario. Chromium verifica mostrar/ocultar y conservación del texto antes de login.
-
+Botón de ojo integrado en el campo, accesible Mostrar/Ocultar contraseña, type=button; contraseña oculta inicialmente y
+al cambiar a registro. Cambia solo type del input, sin modificar valor ni enviar formulario. Chromium verifica
+mostrar/ocultar y conservación del texto antes de login.
 
 ### Trabajo por alumno en minutos y segundos (16/10/2026)
 
-Crear competición presenta Trabajo por alumno (min:seg), con valor inicial 3:00 y formato m:ss/mm:ss, entre 0:01 y 60:00. Convertir a segundos al enviar; conservar modelo, API, Tábata y planes existentes. Rechazar cero, segundos >=60 y duraciones superiores al máximo sin petición. Pruebas de conversión exacta y formulario, persistencia de 3:00 como 180 segundos.
+Crear competición presenta Trabajo por alumno (min:seg), con valor inicial 3:00 y formato m:ss/mm:ss, entre 0:01 y 60:
+00. Convertir a segundos al enviar; conservar modelo, API, Tábata y planes existentes. Rechazar cero, segundos >=60 y
+duraciones superiores al máximo sin petición. Pruebas de conversión exacta y formulario, persistencia de 3:00 como 180
+segundos.
 
 ### Validación del icono de instalación (16/10/2026)
 
-PNG 192/512 derivados sin recorte del logo oficial; manifest y apple-touch-icon usan rutas nuevas. SHA256 de public/logo-pgt.jpg conservado: c95889f631ca4183ae8108679aed72b4e1a8ead5969108b5e98ae0c518675dd3. Sin cambios en src/, estilos ni PDF. 105/105 unitarias, typecheck, build, check:worker, test:runtime y test:browser correctos; tamaños/referencias de iconos y precaché verificados. La actualización de un icono ya instalado depende del sistema; una instalación nueva usa los recursos nuevos.
+PNG 192/512 derivados sin recorte del logo oficial; manifest y apple-touch-icon usan rutas nuevas. SHA256 de
+public/logo-pgt.jpg conservado: c95889f631ca4183ae8108679aed72b4e1a8ead5969108b5e98ae0c518675dd3. Sin cambios en src/,
+estilos ni PDF. 105/105 unitarias, typecheck, build, check:worker, test:runtime y test:browser correctos;
+tamaños/referencias de iconos y precaché verificados. La actualización de un icono ya instalado depende del sistema; una
+instalación nueva usa los recursos nuevos.
 
 ### Selector en Mis planes (16/10/2026)
 
-Petición del propietario: Mis planes usa el mismo comportamiento que Planes en la ficha del alumno del entrenador: desplegable con torneos, opción inicial «Selecciona un plan» y solo el plan elegido visible. Mantener lectura, exportación PDF, offline y estado sin planes. Al desaparecer el plan o cerrar sesión se limpia la selección; no modificar datos, sincronización ni permisos.
+Petición del propietario: Mis planes usa el mismo comportamiento que Planes en la ficha del alumno del entrenador:
+desplegable con torneos, opción inicial «Selecciona un plan» y solo el plan elegido visible. Mantener lectura,
+exportación PDF, offline y estado sin planes. Al desaparecer el plan o cerrar sesión se limpia la selección; no
+modificar datos, sincronización ni permisos.
 
-Validación: 105/105 unitarias, typecheck, build, check:worker, test:runtime, test:browser y test:performance correctos. Chromium verifica estado inicial sin ficha, selección, volver al placeholder, cambio entre dos torneos con una sola ficha visible y exportación PDF offline; capturas 1440/390 revisadas sin desbordamiento. Fixtures locales, sin cambios remotos de usuarios ni aceptación en Safari/iOS físico.
+Validación: 105/105 unitarias, typecheck, build, check:worker, test:runtime, test:browser y test:performance correctos.
+Chromium verifica estado inicial sin ficha, selección, volver al placeholder, cambio entre dos torneos con una sola
+ficha visible y exportación PDF offline; capturas 1440/390 revisadas sin desbordamiento. Fixtures locales, sin cambios
+remotos de usuarios ni aceptación en Safari/iOS físico.
 
 ### Panel del entrenador — 16/10/2026
 
-Se conserva Barlow y paleta pizarra/azul. Competiciones presenta Listado/Nueva competición, filtro de pasadas y tarjetas por fecha. Preparación del plan retira fecha de referencia y usa tres resúmenes, tabla por prioridad, técnicas pendientes más frecuentes y detalle completo. Entrenamiento del día usa calendario y tarjetas agrupadas, contador de alumnos destacado arriba a la derecha y nombres. Spinners en operaciones/carga/actualización; móvil con tarjetas apiladas y tablas dentro de región desplazable. Semántica y caché según apartado 21 de requisitos.
+Se conserva Barlow y paleta pizarra/azul. Competiciones presenta Listado/Nueva competición, filtro de pasadas y tarjetas
+por fecha. Preparación del plan retira fecha de referencia y usa tres resúmenes, tabla por prioridad, técnicas
+pendientes más frecuentes y detalle completo. Entrenamiento del día usa calendario y tarjetas agrupadas, contador de
+alumnos destacado arriba a la derecha y nombres. Spinners en operaciones/carga/actualización; móvil con tarjetas
+apiladas y tablas dentro de región desplazable. Semántica y caché según apartado 21 de requisitos.
 
 ### Nombre y ratio de cobertura (16/10/2026)
 
-Corrección del propietario: «Preparación del plan» pasa a «Cobertura por alumno». La tabla por prioridad sustituye «Repeticiones adicionales» por «Veces por prioridad»: Apariciones / Repertorio actual de esa prioridad, con dos decimales y formato español. Denominador cero muestra «—». No cambiar otros cálculos ni datos del plan.
-
+Corrección del propietario: «Preparación del plan» pasa a «Cobertura por alumno». La tabla por prioridad sustituye
+«Repeticiones adicionales» por «Veces por prioridad»: Apariciones / Repertorio actual de esa prioridad, con dos
+decimales y formato español. Denominador cero muestra «—». No cambiar otros cálculos ni datos del plan.
 
 ### Tarjetas compactas de Mis técnicas (16/10/2026)
 
-Petición del propietario: posiciones cerradas inicialmente, con nombre, prioridad, cantidad de técnicas, progreso de descripciones y marca con número/nombre por técnica. Descripción no vacía tras trim define completada. Ámbar, círculo y texto para pendientes; verde, check y texto para completadas. Una posición sin técnicas no se considera completa. Abrir por resumen nativo accesible; editor inline a ancho completo con campos etiquetados, bloques por técnica, estado individual y comentarios con su autor. Conservar orden, prioridad, altas, borrado y guardado existentes. Nueva posición se abre para editar.
+Petición del propietario: posiciones cerradas inicialmente, con nombre, prioridad, cantidad de técnicas, progreso de
+descripciones y marca con número/nombre por técnica. Descripción no vacía tras trim define completada. Ámbar, círculo y
+texto para pendientes; verde, check y texto para completadas. Una posición sin técnicas no se considera completa. Abrir
+por resumen nativo accesible; editor inline a ancho completo con campos etiquetados, bloques por técnica, estado
+individual y comentarios con su autor. Conservar orden, prioridad, altas, borrado y guardado existentes. Nueva posición
+se abre para editar.
 
-Mantener guía visual pizarra/azul, foco, teclado, 44 px y movimiento reducido. Estado de apertura por UUID solo en sesión UI, conservado entre búsquedas y pestañas, reiniciado al cerrar sesión/recargar. Notificación abre la posición cerrada antes de desplazar y enfocar su técnica. Sin cambios en API, persistencia, permisos, generador, planes ni PDF.
-
+Mantener guía visual pizarra/azul, foco, teclado, 44 px y movimiento reducido. Estado de apertura por UUID solo en
+sesión UI, conservado entre búsquedas y pestañas, reiniciado al cerrar sesión/recargar. Notificación abre la posición
+cerrada antes de desplazar y enfocar su técnica. Sin cambios en API, persistencia, permisos, generador, planes ni PDF.
 
 ### Control de prioridad discreto (16/10/2026)
 
-El propietario pide compactar el control y permite sustituir +/− si es necesario. Se conservan ambos dentro de una sola cápsula neutra, sin botones azules independientes, con etiqueta en línea y número centrado. Mantener áreas táctiles 44 px, foco, mínimo 1 y pasos enteros. Retirar el distintivo P duplicado de la cabecera editable; conservarlo en el resumen. Solo CSS, sin cambiar guardado ni comportamiento.
-
+El propietario pide compactar el control y permite sustituir +/− si es necesario. Se conservan ambos dentro de una sola
+cápsula neutra, sin botones azules independientes, con etiqueta en línea y número centrado. Mantener áreas táctiles 44
+px, foco, mínimo 1 y pasos enteros. Retirar el distintivo P duplicado de la cabecera editable; conservarlo en el
+resumen. Solo CSS, sin cambiar guardado ni comportamiento.
 
 ### Prioridad como subtítulo discreto (16/10/2026)
 
-Petición del propietario: retirar abreviaturas P1/P2 de posiciones/técnicas en toda la app y PDF. Mostrar «Prioridad N» debajo del nombre, en letra menor y tono secundario: resumen de Mis técnicas, sesiones completas/día y planes del entrenador, ficha de técnicas del alumno y detalle de cobertura. Control editable conserva su cápsula, situada debajo del nombre. En la tabla agregada Cobertura por prioridad, la columna Prioridad muestra solo el número; no hay nombre al que asociar un subtítulo.
+Petición del propietario: retirar abreviaturas P1/P2 de posiciones/técnicas en toda la app y PDF. Mostrar «Prioridad N»
+debajo del nombre, en letra menor y tono secundario: resumen de Mis técnicas, sesiones completas/día y planes del
+entrenador, ficha de técnicas del alumno y detalle de cobertura. Control editable conserva su cápsula, situada debajo
+del nombre. En la tabla agregada Cobertura por prioridad, la columna Prioridad muestra solo el número; no hay nombre al
+que asociar un subtítulo.
 
-PDF: nombre de posición y pasada, seguido de Prioridad N en 7,5 pt frente a 10 pt del nombre. Medir, paginar y dibujar cada fila con su tamaño real; mantener nombre/prioridad/técnica juntos cuando caben y conservar continuación para sesiones largas. No modificar prioridades guardadas, orden, distribución ni textos de las instantáneas.
+PDF: nombre de posición y pasada, seguido de Prioridad N en 7,5 pt frente a 10 pt del nombre. Medir, paginar y dibujar
+cada fila con su tamaño real; mantener nombre/prioridad/técnica juntos cuando caben y conservar continuación para
+sesiones largas. No modificar prioridades guardadas, orden, distribución ni textos de las instantáneas.

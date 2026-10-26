@@ -2,15 +2,15 @@ name: Validate and deploy PGT DEV
 
 on:
   push:
-    branches: [develop]
+    branches: [ develop ]
   pull_request:
-    branches: [develop]
+    branches: [ develop ]
   workflow_dispatch:
     inputs:
       operation:
         description: 'Solo develop: verificar runtime, desplegar o smoke explícito con cuota'
         type: choice
-        options: [verify, deploy, smoke]
+        options: [ verify, deploy, smoke ]
         default: verify
       quota_evidence:
         description: 'Solo smoke: JSON de cuota actual fiable; vacío impide cualquier prueba real'
@@ -125,7 +125,7 @@ jobs:
           retention-days: 7
 
   deploy-dev:
-    needs: [validate, validate-online]
+    needs: [ validate, validate-online ]
     if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/develop' && vars.DEV_DEPLOY_ENABLED == 'true'
     environment: development
     # Live QA installs the same Playwright Chromium as validation.

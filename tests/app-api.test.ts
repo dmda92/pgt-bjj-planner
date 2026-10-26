@@ -1,709 +1,938 @@
-import { test } from "node:test";
+import {test} from "node:test";
 import assert from "node:assert/strict";
-import { AppApi } from "../worker/application.ts";
-import { ApiError } from "../worker/security.ts";
-import type { CloudStorageProvider, CloudRecord } from "../worker/storage.ts";
-import { template } from "./template-fixture.ts";
+import {AppApi} from "../worker/application.ts";
+import {ApiError} from "../worker/security.ts";
+import type {CloudStorageProvider, CloudRecord} from "../worker/storage.ts";
+import {template} from "./template-fixture.ts";
+
 function fixture() {
-  const files = new Map<string, CloudRecord<unknown>>([
-    [
-      "PGT/master_data/tecnics_base.json",
-      { data: template, sha: "1".repeat(40) },
-    ],
-  ]);
-  const sessions = new Map<string, unknown>();
-  const reads=new Map<string,number>();
-  let revision = 1;
-  const store = {
-    get: async (k: string) => sessions.get(k),
-    put: async (k: string, v: unknown) => {
-      sessions.set(k, v);
-    },
-    delete: async (k: string) => sessions.delete(k),
-    list: async ({ prefix }: { prefix: string }) =>
-      new Map([...sessions].filter(([k]) => k.startsWith(prefix))),
-  };
-  const cloud: CloudStorageProvider = {
-    verifyPrivate: async () => {},
-    read: async <T>(path: string) => {reads.set(path,(reads.get(path)||0)+1);return (files.get(path) as CloudRecord<T>) || null;},
-    write: async (path, data, sha) => {
-      assert.equal(files.get(path)?.sha ?? null, sha);
-      const next = (++revision).toString(16).padStart(40, "0");
-      files.set(path, {
-        data: structuredClone(data) as Record<string, unknown>,
-        sha: next,
-      });
-      return next;
-    },
-    remove: async (path, sha) => {
-      assert.equal(files.get(path)?.sha, sha);
-      files.delete(path);
-    },
-    list: async (directory) =>
-      [
-        ...new Set(
-          [...files.keys()]
-            .filter((p) => p.startsWith(directory + "/"))
-            .map((p) => p.slice(directory.length + 1).split("/")[0]),
-        ),
-      ].map((name) => ({
-        name,
-        type: name.endsWith(".json") ? "file" : "dir",
-        sha:files.get(directory+'/'+name)?.sha,
-      })),
-  };
-  const api = new AppApi(store as unknown as DurableObjectStorage, cloud);
-  const call = async (
-    path: string,
-    method: string,
-    body?: unknown,
-    token = "",
-  ) => {
-    const request = new Request("https://example" + path, {
-      method,
-      headers: {
-        ...(token ? { Authorization: "Bearer " + token } : {}),
-        ...(body ? { "Content-Type": "application/json" } : {}),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    try {
-      return await api.handle(request, new URL(request.url));
-    } catch (e) {
-      if (e instanceof ApiError)
-        return Response.json({ error: e.message }, { status: e.status });
-      throw e;
-    }
-  };
-  return { call, files, reads, promote: (mail: string) => { const p = files.get(`PGT/users_data/${mail}/user_data.json`)!; (p.data as any).perfil = "entrenador"; } };
+    const files = new Map<string, CloudRecord<unknown>>([
+        [
+            "PGT/master_data/tecnics_base.json",
+            {data: template, sha: "1".repeat(40)},
+        ],
+    ]);
+    const sessions = new Map<string, unknown>();
+    const reads = new Map<string, number>();
+    let revision = 1;
+    const store = {
+        get: async (k: string) => sessions.get(k),
+        put: async (k: string, v: unknown) => {
+            sessions.set(k, v);
+        },
+        delete: async (k: string) => sessions.delete(k),
+        list: async ({prefix}: { prefix: string }) =>
+            new Map([...sessions].filter(([k]) => k.startsWith(prefix))),
+    };
+    const cloud: CloudStorageProvider = {
+        verifyPrivate: async () => {
+        },
+        read: async <T>(path: string) => {
+            reads.set(path, (reads.get(path) || 0) + 1);
+            return (files.get(path) as CloudRecord<T>) || null;
+        },
+        write: async (path, data, sha) => {
+            assert.equal(files.get(path)?.sha ?? null, sha);
+            const next = (++revision).toString(16).padStart(40, "0");
+            files.set(path, {
+                data: structuredClone(data) as Record<string, unknown>,
+                sha: next,
+            });
+            return next;
+        },
+        remove: async (path, sha) => {
+            assert.equal(files.get(path)?.sha, sha);
+            files.delete(path);
+        },
+        list: async (directory) =>
+            [
+                ...new Set(
+                    [...files.keys()]
+                        .filter((p) => p.startsWith(directory + "/"))
+                        .map((p) => p.slice(directory.length + 1).split("/")[0]),
+                ),
+            ].map((name) => ({
+                name,
+                type: name.endsWith(".json") ? "file" : "dir",
+                sha: files.get(directory + '/' + name)?.sha,
+            })),
+    };
+    const api = new AppApi(store as unknown as DurableObjectStorage, cloud);
+    const call = async (
+        path: string,
+        method: string,
+        body?: unknown,
+        token = "",
+    ) => {
+        const request = new Request("https://example" + path, {
+            method,
+            headers: {
+                ...(token ? {Authorization: "Bearer " + token} : {}),
+                ...(body ? {"Content-Type": "application/json"} : {}),
+            },
+            body: body ? JSON.stringify(body) : undefined,
+        });
+        try {
+            return await api.handle(request, new URL(request.url));
+        } catch (e) {
+            if (e instanceof ApiError)
+                return Response.json({error: e.message}, {status: e.status});
+            throw e;
+        }
+    };
+    return {
+        call, files, reads, promote: (mail: string) => {
+            const p = files.get(`PGT/users_data/${mail}/user_data.json`)!;
+            (p.data as any).perfil = "entrenador";
+        }
+    };
 }
+
 test("Registro completo, plantilla sintética, UUID exclusivos, roles manuales y permisos", async () => {
-  const f = fixture();
-  const register = async (mail: string) => {
-    const r = await f.call("/api/app/register", "POST", {
-      mail,
-      password: "synthetic-test-password",
-      confirm: "synthetic-test-password",
-      nombre: "Test",
-      apellidos: "",
-    });
-    assert.equal(r.status, 201);
-    return (await r.json()) as { token: string; profile: any };
-  };
-  const a = await register("app-a@example.com"),
-    b = await register("app-b@example.com");
-  assert.ok(!JSON.stringify(a).includes("pbkdf2"));
-  assert.equal(
-    (f.files.get("PGT/users_data/app-a@example.com/tecnics.json")!.data as any)
-      .positions.length,
-    17,
-  );
-  assert.notEqual(
-    (f.files.get("PGT/users_data/app-a@example.com/tecnics.json")!.data as any)
-      .positions[0].id,
-    (f.files.get("PGT/users_data/app-b@example.com/tecnics.json")!.data as any)
-      .positions[0].id,
-  );
-  assert.equal(
-    (
-      await f.call(
-        "/api/app/users/app-b@example.com/snapshot",
-        "GET",
-        undefined,
-        a.token,
-      )
-    ).status,
-    403,
-  );
-  assert.equal(a.profile.perfil, "alumno");
-  assert.equal(b.profile.perfil, "alumno");
-  for (const credential of ["", "admin-key", a.token]) {
-    assert.equal((await f.call("/api/app/bootstrap", "POST", {mail: "app-a@example.com"}, credential)).status, 404);
-  }
-  assert.equal((f.files.get("PGT/users_data/app-a@example.com/user_data.json")!.data as any).perfil, "alumno");
+    const f = fixture();
+    const register = async (mail: string) => {
+        const r = await f.call("/api/app/register", "POST", {
+            mail,
+            password: "synthetic-test-password",
+            confirm: "synthetic-test-password",
+            nombre: "Test",
+            apellidos: "",
+        });
+        assert.equal(r.status, 201);
+        return (await r.json()) as { token: string; profile: any };
+    };
+    const a = await register("app-a@example.com"),
+        b = await register("app-b@example.com");
+    assert.ok(!JSON.stringify(a).includes("pbkdf2"));
+    assert.equal(
+        (f.files.get("PGT/users_data/app-a@example.com/tecnics.json")!.data as any)
+            .positions.length,
+        17,
+    );
+    assert.notEqual(
+        (f.files.get("PGT/users_data/app-a@example.com/tecnics.json")!.data as any)
+            .positions[0].id,
+        (f.files.get("PGT/users_data/app-b@example.com/tecnics.json")!.data as any)
+            .positions[0].id,
+    );
+    assert.equal(
+        (
+            await f.call(
+                "/api/app/users/app-b@example.com/snapshot",
+                "GET",
+                undefined,
+                a.token,
+            )
+        ).status,
+        403,
+    );
+    assert.equal(a.profile.perfil, "alumno");
+    assert.equal(b.profile.perfil, "alumno");
+    for (const credential of ["", "admin-key", a.token]) {
+        assert.equal((await f.call("/api/app/bootstrap", "POST", {mail: "app-a@example.com"}, credential)).status, 404);
+    }
+    assert.equal((f.files.get("PGT/users_data/app-a@example.com/user_data.json")!.data as any).perfil, "alumno");
 });
 test("Contraseña cambia solo pwd, revoca sesiones y conserva técnicas y perfil", async () => {
-  const f = fixture();
-  const r = await f.call("/api/app/register", "POST", {
-    mail: "test@example.com",
-    password: "synthetic-test-password",
-    confirm: "synthetic-test-password",
-    nombre: "Test",
-    apellidos: "",
-  });
-  const { token } = (await r.json()) as any;
-  const old = f.files.get("PGT/users_data/test@example.com/user_data.json")!;
-  const t = f.files.get("PGT/users_data/test@example.com/tecnics.json")!;
-  assert.equal(
-    (
-      await f.call(
-        "/api/app/password",
-        "POST",
-        {
-          mail: "test@example.com",
-          password: "synthetic-new-password",
-          confirm: "wrong",
-          sha: old.sha,
-        },
-        token,
-      )
-    ).status,
-    400,
-  );
-  assert.equal(
-    (
-      await f.call(
-        "/api/app/password",
-        "POST",
-        {
-          mail: "test@example.com",
-          password: "synthetic-new-password",
-          confirm: "synthetic-new-password",
-          sha: old.sha,
-        },
-        token,
-      )
-    ).status,
-    200,
-  );
-  const next = f.files.get("PGT/users_data/test@example.com/user_data.json")!;
-  const { pwd: x, ...before } = old.data as any,
-    { pwd: y, ...after } = next.data as any;
-  assert.deepEqual(before, after);
-  assert.notEqual(x, y);
-  assert.deepEqual(
-    f.files.get("PGT/users_data/test@example.com/tecnics.json"),
-    t,
-  );
-  assert.equal(
-    (await f.call("/api/app/catalog", "GET", undefined, token)).status,
-    401,
-  );
-  assert.equal(
-    (
-      await f.call("/api/app/login", "POST", {
+    const f = fixture();
+    const r = await f.call("/api/app/register", "POST", {
         mail: "test@example.com",
-        password: "synthetic-new-password",
-      })
-    ).status,
-    200,
-  );
+        password: "synthetic-test-password",
+        confirm: "synthetic-test-password",
+        nombre: "Test",
+        apellidos: "",
+    });
+    const {token} = (await r.json()) as any;
+    const old = f.files.get("PGT/users_data/test@example.com/user_data.json")!;
+    const t = f.files.get("PGT/users_data/test@example.com/tecnics.json")!;
+    assert.equal(
+        (
+            await f.call(
+                "/api/app/password",
+                "POST",
+                {
+                    mail: "test@example.com",
+                    password: "synthetic-new-password",
+                    confirm: "wrong",
+                    sha: old.sha,
+                },
+                token,
+            )
+        ).status,
+        400,
+    );
+    assert.equal(
+        (
+            await f.call(
+                "/api/app/password",
+                "POST",
+                {
+                    mail: "test@example.com",
+                    password: "synthetic-new-password",
+                    confirm: "synthetic-new-password",
+                    sha: old.sha,
+                },
+                token,
+            )
+        ).status,
+        200,
+    );
+    const next = f.files.get("PGT/users_data/test@example.com/user_data.json")!;
+    const {pwd: x, ...before} = old.data as any,
+        {pwd: y, ...after} = next.data as any;
+    assert.deepEqual(before, after);
+    assert.notEqual(x, y);
+    assert.deepEqual(
+        f.files.get("PGT/users_data/test@example.com/tecnics.json"),
+        t,
+    );
+    assert.equal(
+        (await f.call("/api/app/catalog", "GET", undefined, token)).status,
+        401,
+    );
+    assert.equal(
+        (
+            await f.call("/api/app/login", "POST", {
+                mail: "test@example.com",
+                password: "synthetic-new-password",
+            })
+        ).status,
+        200,
+    );
 });
 test("Competición: asignación, snapshot histórico protegido, comentarios, bloqueo de edición manual, CAS, desasignación y tombstone", async () => {
-  const f = fixture(),
-    password = "synthetic-test-password";
-  for (const mail of ["trainer@example.com", "student@example.com"])
+    const f = fixture(),
+        password = "synthetic-test-password";
+    for (const mail of ["trainer@example.com", "student@example.com"])
+        assert.equal(
+            (
+                await f.call("/api/app/register", "POST", {
+                    mail,
+                    password,
+                    confirm: password,
+                    nombre: "Test",
+                    apellidos: "",
+                })
+            ).status,
+            201,
+        );
+    f.promote("trainer@example.com");
+    const login = async (mail: string) =>
+        (
+            (await (
+                await f.call("/api/app/login", "POST", {mail, password})
+            ).json()) as any
+        ).token;
+    const trainer = await login("trainer@example.com"),
+        student = await login("student@example.com");
+    const path = "/api/app/users/student@example.com/";
+    let snapshot = (await (
+        await f.call(path + "snapshot", "GET", undefined, student)
+    ).json()) as any;
     assert.equal(
-      (
-        await f.call("/api/app/register", "POST", {
-          mail,
-          password,
-          confirm: password,
-          nombre: "Test",
-          apellidos: "",
-        })
-      ).status,
-      201,
+        (
+            await f.call(
+                path + "comments",
+                "PUT",
+                {data: snapshot.comments.data, sha: snapshot.comments.sha},
+                student,
+            )
+        ).status,
+        403,
     );
-  f.promote("trainer@example.com");
-  const login = async (mail: string) =>
-    (
-      (await (
-        await f.call("/api/app/login", "POST", { mail, password })
-      ).json()) as any
-    ).token;
-  const trainer = await login("trainer@example.com"),
-    student = await login("student@example.com");
-  const path = "/api/app/users/student@example.com/";
-  let snapshot = (await (
-    await f.call(path + "snapshot", "GET", undefined, student)
-  ).json()) as any;
-  assert.equal(
-    (
-      await f.call(
-        path + "comments",
-        "PUT",
-        { data: snapshot.comments.data, sha: snapshot.comments.sha },
-        student,
-      )
-    ).status,
-    403,
-  );
-  const notes = {
-    ...snapshot.comments.data,
-    comments: [
-      {
-        techniqueId: snapshot.techniques.data.positions[0].tecnicas[0].id,
-        comment: "Entrenador",
-      },
-    ],
-  };
-  assert.equal(
-    (
-      await f.call(
-        path + "comments",
-        "PUT",
-        { data: notes, sha: snapshot.comments.sha },
-        trainer,
-      )
-    ).status,
-    200,
-  );
-  const competition = {
-    fecha_comienzo: "2026-10-13",
-    fecha_torneo: "2026-10-21",
-    dias_de_entrenamiento: [2, 4],
-    ejercicios_por_sesion: 3,
-    tiempo_por_tecnica_segundos: 60,
-    descanso_entre_ciclos_segundos: 1,
-    descanso_entre_tecnicas_segundos: 1,
-    alumnos: ["student@example.com"],
-  };
-  for(const field of ['descanso_entre_ciclos_segundos','descanso_entre_tecnicas_segundos']) {
-    const before=JSON.stringify([...f.files]);
-    assert.equal((await f.call('/api/app/competition','POST',{competition:{...competition,[field]:0},sha:null},trainer)).status,400);
-    assert.equal(JSON.stringify([...f.files]),before);
-  }
-  assert.equal(
-    (
-      await f.call(
-        "/api/app/competition",
-        "POST",
-        {
-          competition: { ...competition, ejercicios_por_sesion: 0 },
-          sha: null,
-        },
-        trainer,
-      )
-    ).status,
-    400,
-  );
-  assert.equal(
-    (
-      await f.call(
-        "/api/app/competition",
-        "POST",
-        { competition, sha: null },
-        student,
-      )
-    ).status,
-    403,
-  );
-  assert.equal(
-    (
-      await f.call(
-        "/api/app/competition",
-        "POST",
-        { competition, sha: null },
-        trainer,
-      )
-    ).status,
-    200,
-  );
-  snapshot = (await (
-    await f.call(path + "snapshot", "GET", undefined, student)
-  ).json()) as any;
-  assert.equal(snapshot.plans.length, 1);
-  assert.ok(
-    snapshot.plans[0].data.sessions.every((s: any) => s.exercises.length === 3),
-  );
-  assert.equal(
-    snapshot.plans[0].data.sessions[0].exercises[0].comment,
-    "Entrenador",
-  );
-  const known = {
-    profile: snapshot.profile.sha,
-    techniques: snapshot.techniques.sha,
-    comments: snapshot.comments.sha,
-    index: snapshot.index.sha,
-    ["plan:" + snapshot.plans[0].data.planId]: snapshot.plans[0].sha,
-  };
-  const inc = (await (
-    await f.call(
-      path + "snapshot?known=" + encodeURIComponent(JSON.stringify(known)),
-      "GET",
-      undefined,
-      student,
-    )
-  ).json()) as any;
-  assert.equal(inc.techniques.unchanged, true);
-  assert.equal("data" in inc.plans[0], false);
-  const original = structuredClone(snapshot.plans[0]);
-  const edited = structuredClone(snapshot.techniques.data);
-  edited.positions[0].tecnicas[0].descripcion_del_alumno = "Después";
-  assert.equal(
-    (
-      await f.call(
-        path + "techniques",
-        "PUT",
-        { data: edited, sha: snapshot.techniques.sha },
-        student,
-      )
-    ).status,
-    200,
-  );
-  snapshot = (await (
-    await f.call(path + "snapshot", "GET", undefined, student)
-  ).json()) as any;
-  assert.deepEqual(snapshot.plans[0], original);
-  const manual = structuredClone(original.data);
-  manual.sessions[0].exercises[0].descripcion_del_alumno = "Manual";
-  assert.equal(
-    (
-      await f.call(
-        path + "plan",
-        "PUT",
-        { data: manual, sha: original.sha },
-        student,
-      )
-    ).status,
-    403,
-  );
-  assert.equal(
-    (
-      await f.call(
-        path + "plan",
-        "PUT",
-        { data: manual, sha: original.sha },
-        student,
-      )
-    ).status,
-    403,
-  );
-  let catalog = (await (
-    await f.call("/api/app/catalog", "GET", undefined, trainer)
-  ).json()) as any;
-  const id = catalog.data.plans[0].planId;
-  assert.equal(
-    (
-      await f.call(
-        "/api/app/assignment",
-        "POST",
-        { planId: id, alumnos: [], sha: catalog.sha },
-        trainer,
-      )
-    ).status,
-    200,
-  );
-  snapshot = (await (
-    await f.call(path + "snapshot", "GET", undefined, student)
-  ).json()) as any;
-  assert.equal(snapshot.index.data.planIds.length, 0);
-  assert.equal(snapshot.plans.length, 0);
-  assert.ok(snapshot.deletedPlanIds.includes(id));
-  catalog = (await (
-    await f.call("/api/app/catalog", "GET", undefined, trainer)
-  ).json()) as any;
-  assert.equal(
-    (
-      await f.call(
-        "/api/app/delete-competition",
-        "POST",
-        { planId: id, sha: catalog.sha },
-        trainer,
-      )
-    ).status,
-    200,
-  );
-  snapshot = (await (
-    await f.call(path + "snapshot", "GET", undefined, student)
-  ).json()) as any;
-  assert.equal(snapshot.plans.length, 0);
-  assert.ok(snapshot.deletedPlanIds.includes(id));
+    const notes = {
+        ...snapshot.comments.data,
+        comments: [
+            {
+                techniqueId: snapshot.techniques.data.positions[0].tecnicas[0].id,
+                comment: "Entrenador",
+            },
+        ],
+    };
+    assert.equal(
+        (
+            await f.call(
+                path + "comments",
+                "PUT",
+                {data: notes, sha: snapshot.comments.sha},
+                trainer,
+            )
+        ).status,
+        200,
+    );
+    const competition = {
+        fecha_comienzo: "2026-10-13",
+        fecha_torneo: "2026-10-21",
+        dias_de_entrenamiento: [2, 4],
+        ejercicios_por_sesion: 3,
+        tiempo_por_tecnica_segundos: 60,
+        descanso_entre_ciclos_segundos: 1,
+        descanso_entre_tecnicas_segundos: 1,
+        alumnos: ["student@example.com"],
+    };
+    for (const field of ['descanso_entre_ciclos_segundos', 'descanso_entre_tecnicas_segundos']) {
+        const before = JSON.stringify([...f.files]);
+        assert.equal((await f.call('/api/app/competition', 'POST', {
+            competition: {...competition, [field]: 0},
+            sha: null
+        }, trainer)).status, 400);
+        assert.equal(JSON.stringify([...f.files]), before);
+    }
+    assert.equal(
+        (
+            await f.call(
+                "/api/app/competition",
+                "POST",
+                {
+                    competition: {...competition, ejercicios_por_sesion: 0},
+                    sha: null,
+                },
+                trainer,
+            )
+        ).status,
+        400,
+    );
+    assert.equal(
+        (
+            await f.call(
+                "/api/app/competition",
+                "POST",
+                {competition, sha: null},
+                student,
+            )
+        ).status,
+        403,
+    );
+    assert.equal(
+        (
+            await f.call(
+                "/api/app/competition",
+                "POST",
+                {competition, sha: null},
+                trainer,
+            )
+        ).status,
+        200,
+    );
+    snapshot = (await (
+        await f.call(path + "snapshot", "GET", undefined, student)
+    ).json()) as any;
+    assert.equal(snapshot.plans.length, 1);
+    assert.ok(
+        snapshot.plans[0].data.sessions.every((s: any) => s.exercises.length === 3),
+    );
+    assert.equal(
+        snapshot.plans[0].data.sessions[0].exercises[0].comment,
+        "Entrenador",
+    );
+    const known = {
+        profile: snapshot.profile.sha,
+        techniques: snapshot.techniques.sha,
+        comments: snapshot.comments.sha,
+        index: snapshot.index.sha,
+        ["plan:" + snapshot.plans[0].data.planId]: snapshot.plans[0].sha,
+    };
+    const inc = (await (
+        await f.call(
+            path + "snapshot?known=" + encodeURIComponent(JSON.stringify(known)),
+            "GET",
+            undefined,
+            student,
+        )
+    ).json()) as any;
+    assert.equal(inc.techniques.unchanged, true);
+    assert.equal("data" in inc.plans[0], false);
+    const original = structuredClone(snapshot.plans[0]);
+    const edited = structuredClone(snapshot.techniques.data);
+    edited.positions[0].tecnicas[0].descripcion_del_alumno = "Después";
+    assert.equal(
+        (
+            await f.call(
+                path + "techniques",
+                "PUT",
+                {data: edited, sha: snapshot.techniques.sha},
+                student,
+            )
+        ).status,
+        200,
+    );
+    snapshot = (await (
+        await f.call(path + "snapshot", "GET", undefined, student)
+    ).json()) as any;
+    assert.deepEqual(snapshot.plans[0], original);
+    const manual = structuredClone(original.data);
+    manual.sessions[0].exercises[0].descripcion_del_alumno = "Manual";
+    assert.equal(
+        (
+            await f.call(
+                path + "plan",
+                "PUT",
+                {data: manual, sha: original.sha},
+                student,
+            )
+        ).status,
+        403,
+    );
+    assert.equal(
+        (
+            await f.call(
+                path + "plan",
+                "PUT",
+                {data: manual, sha: original.sha},
+                student,
+            )
+        ).status,
+        403,
+    );
+    let catalog = (await (
+        await f.call("/api/app/catalog", "GET", undefined, trainer)
+    ).json()) as any;
+    const id = catalog.data.plans[0].planId;
+    assert.equal(
+        (
+            await f.call(
+                "/api/app/assignment",
+                "POST",
+                {planId: id, alumnos: [], sha: catalog.sha},
+                trainer,
+            )
+        ).status,
+        200,
+    );
+    snapshot = (await (
+        await f.call(path + "snapshot", "GET", undefined, student)
+    ).json()) as any;
+    assert.equal(snapshot.index.data.planIds.length, 0);
+    assert.equal(snapshot.plans.length, 0);
+    assert.ok(snapshot.deletedPlanIds.includes(id));
+    catalog = (await (
+        await f.call("/api/app/catalog", "GET", undefined, trainer)
+    ).json()) as any;
+    assert.equal(
+        (
+            await f.call(
+                "/api/app/delete-competition",
+                "POST",
+                {planId: id, sha: catalog.sha},
+                trainer,
+            )
+        ).status,
+        200,
+    );
+    snapshot = (await (
+        await f.call(path + "snapshot", "GET", undefined, student)
+    ).json()) as any;
+    assert.equal(snapshot.plans.length, 0);
+    assert.ok(snapshot.deletedPlanIds.includes(id));
 });
 test("Trainer reset: inexistente, confirmación, CAS, hash nuevo y roles sin auto degradación", async () => {
-  const f = fixture(),
-    password = "synthetic-test-password";
-  for (const mail of ["trainer@example.com", "student@example.com"])
-    await f.call("/api/app/register", "POST", {
-      mail,
-      password,
-      confirm: password,
-      nombre: "Test",
-      apellidos: "",
-    });
-  f.promote("trainer@example.com");
-  const trainer = (
-    (await (
-      await f.call("/api/app/login", "POST", {
-        mail: "trainer@example.com",
-        password,
-      })
-    ).json()) as any
-  ).token;
-  const p = f.files.get("PGT/users_data/student@example.com/user_data.json")!,
-    t = f.files.get("PGT/users_data/student@example.com/tecnics.json")!;
-  const reset = {
-    mail: "student@example.com",
-    password: "synthetic-new-password",
-    confirm: "synthetic-new-password",
-    sha: p.sha,
-  };
-  assert.equal(
-    (
-      await f.call(
-        "/api/app/password",
-        "POST",
-        { ...reset, mail: "missing@example.com" },
-        trainer,
-      )
-    ).status,
-    404,
-  );
-  assert.equal(
-    (
-      await f.call(
-        "/api/app/password",
-        "POST",
-        { ...reset, confirm: "different" },
-        trainer,
-      )
-    ).status,
-    400,
-  );
-  assert.equal(
-    (
-      await f.call(
-        "/api/app/password",
-        "POST",
-        { ...reset, sha: "0".repeat(40) },
-        trainer,
-      )
-    ).status,
-    409,
-  );
-  assert.equal(
-    (await f.call("/api/app/password", "POST", reset, trainer)).status,
-    200,
-  );
-  assert.deepEqual(
-    f.files.get("PGT/users_data/student@example.com/tecnics.json"),
-    t,
-  );
-  assert.equal(
-    (
-      await f.call("/api/app/login", "POST", {
+    const f = fixture(),
+        password = "synthetic-test-password";
+    for (const mail of ["trainer@example.com", "student@example.com"])
+        await f.call("/api/app/register", "POST", {
+            mail,
+            password,
+            confirm: password,
+            nombre: "Test",
+            apellidos: "",
+        });
+    f.promote("trainer@example.com");
+    const trainer = (
+        (await (
+            await f.call("/api/app/login", "POST", {
+                mail: "trainer@example.com",
+                password,
+            })
+        ).json()) as any
+    ).token;
+    const p = f.files.get("PGT/users_data/student@example.com/user_data.json")!,
+        t = f.files.get("PGT/users_data/student@example.com/tecnics.json")!;
+    const reset = {
         mail: "student@example.com",
-        password,
-      })
-    ).status,
-    401,
-  );
-  const student = (
-    (await (
-      await f.call("/api/app/login", "POST", {
-        mail: "student@example.com",
-        password: reset.password,
-      })
-    ).json()) as any
-  ).token;
-  const tp = f.files.get("PGT/users_data/trainer@example.com/user_data.json")!;
-  assert.equal(
-    (
-      await f.call(
-        "/api/app/role",
-        "POST",
-        { mail: "trainer@example.com", perfil: "alumno", sha: tp.sha },
-        trainer,
-      )
-    ).status,
-    400,
-  );
-  const sp = f.files.get("PGT/users_data/student@example.com/user_data.json")!;
-  assert.equal(
-    (
-      await f.call(
-        "/api/app/role",
-        "POST",
-        { mail: "student@example.com", perfil: "entrenador", sha: sp.sha },
-        trainer,
-      )
-    ).status,
-    200,
-  );
-  assert.equal(
-    (await f.call("/api/app/catalog", "GET", undefined, student)).status,
-    401,
-  );
+        password: "synthetic-new-password",
+        confirm: "synthetic-new-password",
+        sha: p.sha,
+    };
+    assert.equal(
+        (
+            await f.call(
+                "/api/app/password",
+                "POST",
+                {...reset, mail: "missing@example.com"},
+                trainer,
+            )
+        ).status,
+        404,
+    );
+    assert.equal(
+        (
+            await f.call(
+                "/api/app/password",
+                "POST",
+                {...reset, confirm: "different"},
+                trainer,
+            )
+        ).status,
+        400,
+    );
+    assert.equal(
+        (
+            await f.call(
+                "/api/app/password",
+                "POST",
+                {...reset, sha: "0".repeat(40)},
+                trainer,
+            )
+        ).status,
+        409,
+    );
+    assert.equal(
+        (await f.call("/api/app/password", "POST", reset, trainer)).status,
+        200,
+    );
+    assert.deepEqual(
+        f.files.get("PGT/users_data/student@example.com/tecnics.json"),
+        t,
+    );
+    assert.equal(
+        (
+            await f.call("/api/app/login", "POST", {
+                mail: "student@example.com",
+                password,
+            })
+        ).status,
+        401,
+    );
+    const student = (
+        (await (
+            await f.call("/api/app/login", "POST", {
+                mail: "student@example.com",
+                password: reset.password,
+            })
+        ).json()) as any
+    ).token;
+    const tp = f.files.get("PGT/users_data/trainer@example.com/user_data.json")!;
+    assert.equal(
+        (
+            await f.call(
+                "/api/app/role",
+                "POST",
+                {mail: "trainer@example.com", perfil: "alumno", sha: tp.sha},
+                trainer,
+            )
+        ).status,
+        400,
+    );
+    const sp = f.files.get("PGT/users_data/student@example.com/user_data.json")!;
+    assert.equal(
+        (
+            await f.call(
+                "/api/app/role",
+                "POST",
+                {mail: "student@example.com", perfil: "entrenador", sha: sp.sha},
+                trainer,
+            )
+        ).status,
+        200,
+    );
+    assert.equal(
+        (await f.call("/api/app/catalog", "GET", undefined, student)).status,
+        401,
+    );
 });
 test("Guardado sin cambios confirma SHA sin crear otro commit", async () => {
-  const f = fixture();
-  const auth = (await (
-    await f.call("/api/app/register", "POST", {
-      mail: "same@example.com",
-      password: "synthetic-test-password",
-      confirm: "synthetic-test-password",
-      nombre: "Test",
-      apellidos: "",
-    })
-  ).json()) as any;
-  const path = "/api/app/users/same@example.com/";
-  const snap = (await (
-    await f.call(path + "snapshot", "GET", undefined, auth.token)
-  ).json()) as any;
-  for (const key of ["profile", "techniques"]) {
-    const record = snap[key];
-    const r = await f.call(
-      path + key,
-      "PUT",
-      { data: record.data, sha: record.sha },
-      auth.token,
-    );
-    assert.equal(r.status, 200);
-    const result = (await r.json()) as any;
-    assert.equal(result.status, "UNCHANGED_NO_COMMIT");
-    assert.equal(result.sha, record.sha);
-  }
-  f.reads.clear();const known={profile:snap.profile.sha,techniques:snap.techniques.sha,comments:snap.comments.sha,index:snap.index.sha};const incremental=await (await f.call(path+'snapshot?known='+encodeURIComponent(JSON.stringify(known)),'GET',undefined,auth.token)).json() as any;assert.equal(incremental.techniques.unchanged,true);assert.equal(f.reads.get('PGT/users_data/same@example.com/tecnics.json')||0,0);assert.equal(f.reads.get('PGT/users_data/same@example.com/trainer_comments.json')||0,0);
+    const f = fixture();
+    const auth = (await (
+        await f.call("/api/app/register", "POST", {
+            mail: "same@example.com",
+            password: "synthetic-test-password",
+            confirm: "synthetic-test-password",
+            nombre: "Test",
+            apellidos: "",
+        })
+    ).json()) as any;
+    const path = "/api/app/users/same@example.com/";
+    const snap = (await (
+        await f.call(path + "snapshot", "GET", undefined, auth.token)
+    ).json()) as any;
+    for (const key of ["profile", "techniques"]) {
+        const record = snap[key];
+        const r = await f.call(
+            path + key,
+            "PUT",
+            {data: record.data, sha: record.sha},
+            auth.token,
+        );
+        assert.equal(r.status, 200);
+        const result = (await r.json()) as any;
+        assert.equal(result.status, "UNCHANGED_NO_COMMIT");
+        assert.equal(result.sha, record.sha);
+    }
+    f.reads.clear();
+    const known = {
+        profile: snap.profile.sha,
+        techniques: snap.techniques.sha,
+        comments: snap.comments.sha,
+        index: snap.index.sha
+    };
+    const incremental = await (await f.call(path + 'snapshot?known=' + encodeURIComponent(JSON.stringify(known)), 'GET', undefined, auth.token)).json() as any;
+    assert.equal(incremental.techniques.unchanged, true);
+    assert.equal(f.reads.get('PGT/users_data/same@example.com/tecnics.json') || 0, 0);
+    assert.equal(f.reads.get('PGT/users_data/same@example.com/trainer_comments.json') || 0, 0);
 });
 
 test("Entrenador puede participar, recibir su propio plan y borrarse al desasignar y regenerarse al reasignar", async () => {
-  const f = fixture();
-  const mail = "competing-trainer@example.com";
-  await f.call("/api/app/register", "POST", { mail, password: "synthetic-test-password", confirm: "synthetic-test-password", nombre: "Coach", apellidos: "" });
-  const other='other-competitor@example.com';
-  const otherAuth=await (await f.call('/api/app/register','POST',{mail:other,password:'synthetic-test-password',confirm:'synthetic-test-password',nombre:'Other',apellidos:''})).json() as any;
-  f.promote(mail);
-  const { token } = await (await f.call("/api/app/login", "POST", { mail, password: "synthetic-test-password" })).json() as any;
-  const competition = { fecha_comienzo: "2026-10-13", fecha_torneo: "2026-10-23", dias_de_entrenamiento: [2,4], ejercicios_por_sesion: 5, tiempo_por_tecnica_segundos: 180, descanso_entre_ciclos_segundos: 10, descanso_entre_tecnicas_segundos: 20, alumnos: [mail,other] };
-  assert.equal((await f.call("/api/app/competition", "POST", { competition, sha: null }, token)).status, 200);
-  const path = `/api/app/users/${encodeURIComponent(mail)}/snapshot`;
-  const snapshot = await (await f.call(path, "GET", undefined, token)).json() as any;
-  assert.equal(snapshot.profile.data.perfil, "entrenador");
-  assert.equal(snapshot.plans.length, 1);
-  assert.equal(snapshot.plans[0].data.mail, mail);
-  assert.equal((await f.call(path.replace("snapshot", "plan"), "PUT", { data: snapshot.plans[0].data, sha: snapshot.plans[0].sha }, token)).status, 403);
-  assert.ok(snapshot.plans[0].data.sessions.every((s: any) => s.exercises.length === 5));
-  const catalog = await (await f.call("/api/app/catalog", "GET", undefined, token)).json() as any;
-  assert.equal((await f.call("/api/app/assignment", "POST", { planId: catalog.data.plans[0].planId, alumnos: [other], sha: catalog.sha }, token)).status, 200);
-  const otherPath=`/api/app/users/${other}/snapshot`;
-  const otherSnapshot=await (await f.call(otherPath,'GET',undefined,otherAuth.token)).json() as any;
-  assert.equal(otherSnapshot.plans.length,1);
-  assert.deepEqual(otherSnapshot.deletedPlanIds,[]);
-  const detached = await (await f.call(path, "GET", undefined, token)).json() as any;
-  assert.deepEqual(detached.index.data.planIds, []);
-  assert.equal(detached.plans.length,0);
-  assert.ok(detached.deletedPlanIds.includes(snapshot.plans[0].data.planId));
-  assert.equal(f.files.has(`PGT/users_data/${mail}/training_plans/plan_${snapshot.plans[0].data.planId}.json`),false);
-  const repeated=await (await f.call(path,'GET',undefined,token)).json() as any;
-  assert.deepEqual(repeated.deletedPlanIds,detached.deletedPlanIds);
-  assert.equal(repeated.plans.length,0);
-  const latest = await (await f.call("/api/app/catalog", "GET", undefined, token)).json() as any;
-  assert.equal((await f.call("/api/app/assignment", "POST", { planId: latest.data.plans[0].planId, alumnos: [mail,other], sha: latest.sha }, token)).status, 200);
-  const reassigned=await (await f.call(path,'GET',undefined,token)).json() as any;
-  assert.equal(reassigned.index.data.planIds.length,1);
-  assert.equal(reassigned.plans.length,1);
-  assert.equal(reassigned.deletedPlanIds.includes(snapshot.plans[0].data.planId),false);
+    const f = fixture();
+    const mail = "competing-trainer@example.com";
+    await f.call("/api/app/register", "POST", {
+        mail,
+        password: "synthetic-test-password",
+        confirm: "synthetic-test-password",
+        nombre: "Coach",
+        apellidos: ""
+    });
+    const other = 'other-competitor@example.com';
+    const otherAuth = await (await f.call('/api/app/register', 'POST', {
+        mail: other,
+        password: 'synthetic-test-password',
+        confirm: 'synthetic-test-password',
+        nombre: 'Other',
+        apellidos: ''
+    })).json() as any;
+    f.promote(mail);
+    const {token} = await (await f.call("/api/app/login", "POST", {
+        mail,
+        password: "synthetic-test-password"
+    })).json() as any;
+    const competition = {
+        fecha_comienzo: "2026-10-13",
+        fecha_torneo: "2026-10-23",
+        dias_de_entrenamiento: [2, 4],
+        ejercicios_por_sesion: 5,
+        tiempo_por_tecnica_segundos: 180,
+        descanso_entre_ciclos_segundos: 10,
+        descanso_entre_tecnicas_segundos: 20,
+        alumnos: [mail, other]
+    };
+    assert.equal((await f.call("/api/app/competition", "POST", {competition, sha: null}, token)).status, 200);
+    const path = `/api/app/users/${encodeURIComponent(mail)}/snapshot`;
+    const snapshot = await (await f.call(path, "GET", undefined, token)).json() as any;
+    assert.equal(snapshot.profile.data.perfil, "entrenador");
+    assert.equal(snapshot.plans.length, 1);
+    assert.equal(snapshot.plans[0].data.mail, mail);
+    assert.equal((await f.call(path.replace("snapshot", "plan"), "PUT", {
+        data: snapshot.plans[0].data,
+        sha: snapshot.plans[0].sha
+    }, token)).status, 403);
+    assert.ok(snapshot.plans[0].data.sessions.every((s: any) => s.exercises.length === 5));
+    const catalog = await (await f.call("/api/app/catalog", "GET", undefined, token)).json() as any;
+    assert.equal((await f.call("/api/app/assignment", "POST", {
+        planId: catalog.data.plans[0].planId,
+        alumnos: [other],
+        sha: catalog.sha
+    }, token)).status, 200);
+    const otherPath = `/api/app/users/${other}/snapshot`;
+    const otherSnapshot = await (await f.call(otherPath, 'GET', undefined, otherAuth.token)).json() as any;
+    assert.equal(otherSnapshot.plans.length, 1);
+    assert.deepEqual(otherSnapshot.deletedPlanIds, []);
+    const detached = await (await f.call(path, "GET", undefined, token)).json() as any;
+    assert.deepEqual(detached.index.data.planIds, []);
+    assert.equal(detached.plans.length, 0);
+    assert.ok(detached.deletedPlanIds.includes(snapshot.plans[0].data.planId));
+    assert.equal(f.files.has(`PGT/users_data/${mail}/training_plans/plan_${snapshot.plans[0].data.planId}.json`), false);
+    const repeated = await (await f.call(path, 'GET', undefined, token)).json() as any;
+    assert.deepEqual(repeated.deletedPlanIds, detached.deletedPlanIds);
+    assert.equal(repeated.plans.length, 0);
+    const latest = await (await f.call("/api/app/catalog", "GET", undefined, token)).json() as any;
+    assert.equal((await f.call("/api/app/assignment", "POST", {
+        planId: latest.data.plans[0].planId,
+        alumnos: [mail, other],
+        sha: latest.sha
+    }, token)).status, 200);
+    const reassigned = await (await f.call(path, 'GET', undefined, token)).json() as any;
+    assert.equal(reassigned.index.data.planIds.length, 1);
+    assert.equal(reassigned.plans.length, 1);
+    assert.equal(reassigned.deletedPlanIds.includes(snapshot.plans[0].data.planId), false);
 });
 
 
 test("Invalid weight is rejected without writes; null and decimal can subsequently synchronize", async () => {
-  const f=fixture(), mail="weight@example.com", password="synthetic-test-password";
-  const auth=await (await f.call("/api/app/register","POST",{mail,password,confirm:password,nombre:"Weight",apellidos:""})).json() as any;
-  const path=`PGT/users_data/${mail}/user_data.json`;
-  const endpoint=`/api/app/users/${mail}/profile`;
-  const before=JSON.stringify([...f.files]);
-  const record=f.files.get(path)!;
-  for (const peso of [-5,0,500,"bad"]) {
-    const res=await f.call(endpoint,"PUT",{data:{...record.data as any,peso},sha:record.sha},auth.token);
-    assert.equal(res.status,400);
-    assert.equal(JSON.stringify([...f.files]),before);
-  }
-  for (const peso of [72.5,null]) {
-    const current=f.files.get(path)!;
-    assert.equal((await f.call(endpoint,"PUT",{data:{...current.data as any,peso},sha:current.sha},auth.token)).status,200);
-    assert.equal((f.files.get(path)!.data as any).peso,peso);
-  }
+    const f = fixture(), mail = "weight@example.com", password = "synthetic-test-password";
+    const auth = await (await f.call("/api/app/register", "POST", {
+        mail,
+        password,
+        confirm: password,
+        nombre: "Weight",
+        apellidos: ""
+    })).json() as any;
+    const path = `PGT/users_data/${mail}/user_data.json`;
+    const endpoint = `/api/app/users/${mail}/profile`;
+    const before = JSON.stringify([...f.files]);
+    const record = f.files.get(path)!;
+    for (const peso of [-5, 0, 500, "bad"]) {
+        const res = await f.call(endpoint, "PUT", {data: {...record.data as any, peso}, sha: record.sha}, auth.token);
+        assert.equal(res.status, 400);
+        assert.equal(JSON.stringify([...f.files]), before);
+    }
+    for (const peso of [72.5, null]) {
+        const current = f.files.get(path)!;
+        assert.equal((await f.call(endpoint, "PUT", {
+            data: {...current.data as any, peso},
+            sha: current.sha
+        }, auth.token)).status, 200);
+        assert.equal((f.files.get(path)!.data as any).peso, peso);
+    }
 });
 
-test('Large tecnics request persists and restores identical descriptions across positions',async()=>{
- const {jsonBytes}=await import('../src/domain/json-limits.ts');
- const f=fixture(),mail='large@example.com',password='synthetic-test-password';
- const auth=await (await f.call('/api/app/register','POST',{mail,password,confirm:password,nombre:'QA',apellidos:''})).json() as any;
- const path=`/api/app/users/${mail}/`;
- const snap=await (await f.call(path+'snapshot','GET',undefined,auth.token)).json() as any;
- const techniques=structuredClone(snap.techniques.data);
- for(const p of techniques.positions)for(const t of p.tecnicas)t.descripcion_del_alumno=`${t.id}\n`+('Ángulo, ñ, 日本語 y enlace https://video.example/?v=é&x=1\n').repeat(500);
- const bytes=jsonBytes(techniques);assert.ok(bytes>98304);assert.ok(bytes<4194304);
- assert.equal((await f.call(path+'techniques','PUT',{data:techniques,sha:snap.techniques.sha},auth.token)).status,200);
- const restored=await (await f.call(path+'snapshot','GET',undefined,auth.token)).json() as any;
- assert.deepEqual(restored.techniques.data.positions,techniques.positions);
- console.log(`Fixture tecnics.json: ${bytes} bytes UTF-8 antes de metadatos servidor`);
+test('Large tecnics request persists and restores identical descriptions across positions', async () => {
+    const {jsonBytes} = await import('../src/domain/json-limits.ts');
+    const f = fixture(), mail = 'large@example.com', password = 'synthetic-test-password';
+    const auth = await (await f.call('/api/app/register', 'POST', {
+        mail,
+        password,
+        confirm: password,
+        nombre: 'QA',
+        apellidos: ''
+    })).json() as any;
+    const path = `/api/app/users/${mail}/`;
+    const snap = await (await f.call(path + 'snapshot', 'GET', undefined, auth.token)).json() as any;
+    const techniques = structuredClone(snap.techniques.data);
+    for (const p of techniques.positions) for (const t of p.tecnicas) t.descripcion_del_alumno = `${t.id}\n` + ('Ángulo, ñ, 日本語 y enlace https://video.example/?v=é&x=1\n').repeat(500);
+    const bytes = jsonBytes(techniques);
+    assert.ok(bytes > 98304);
+    assert.ok(bytes < 4194304);
+    assert.equal((await f.call(path + 'techniques', 'PUT', {
+        data: techniques,
+        sha: snap.techniques.sha
+    }, auth.token)).status, 200);
+    const restored = await (await f.call(path + 'snapshot', 'GET', undefined, auth.token)).json() as any;
+    assert.deepEqual(restored.techniques.data.positions, techniques.positions);
+    console.log(`Fixture tecnics.json: ${bytes} bytes UTF-8 antes de metadatos servidor`);
 });
 
-test('Training day authorizes trainers, reuses SHA indexes, rebuilds changed sources and removes derived files with assignment',async()=>{
- const f=fixture(),mail='day-pupil@example.com',trainer='day-trainer@example.com';
- const register=async(mail:string)=>(await(await f.call('/api/app/register','POST',{mail,password:'synthetic-test-password',confirm:'synthetic-test-password',nombre:mail,apellidos:''})).json()) as any;
- const pupil=await register(mail),teacher=await register(trainer);f.promote(trainer);
- assert.equal((await f.call('/api/app/training-day','GET')).status,401);
- assert.equal((await f.call('/api/app/training-day','GET',undefined,pupil.token)).status,403);
- assert.equal((await f.call('/api/app/training-day?date=2026-02-30','GET',undefined,teacher.token)).status,400);
- const id=crypto.randomUUID(),path=`PGT/users_data/${mail}/training_plans/plan_${id}.json`,derived=`PGT/users_data/${mail}/training_plans/structure_${id}.json`,catalog='PGT/master_data/plans.json';
- const source={schemaVersion:1,revision:1,updatedAt:new Date().toISOString(),planId:id,mail,fecha_comienzo:'2099-01-01',fecha_torneo:'2099-02-01',alumnos:[mail],dias_de_entrenamiento:[1],ejercicios_por_sesion:1,tiempo_por_tecnica_segundos:180,descanso_entre_ciclos_segundos:10,descanso_entre_tecnicas_segundos:20,generatedAt:new Date().toISOString(),sessions:[{date:'2099-01-05',exercises:[{positionId:crypto.randomUUID(),techniqueId:crypto.randomUUID(),posicion:'Cerrada',prioridad:1,tipo:'Sumisión',descripcion_del_alumno:'privado'.repeat(10000),comment:'privado',pass:1,positionComplete:true}]}]};
- f.files.set(path,{data:source,sha:'a'.repeat(40)});f.files.set(catalog,{data:{schemaVersion:1,revision:1,updatedAt:new Date().toISOString(),deletedPlanIds:[],plans:[source]},sha:'b'.repeat(40)});
- const before=JSON.stringify(f.files.get(path));let r=await f.call('/api/app/training-day','GET',undefined,teacher.token);assert.equal(r.status,200);const report=await r.json() as any;
- assert.equal(report.date,'2099-01-05');assert.equal(report.groups[0].students.length,1);assert.equal(JSON.stringify(report).includes('privado'),false);assert.ok(f.files.has(derived));assert.ok(JSON.stringify(f.files.get(derived)).length<JSON.stringify(source).length/20);console.log('Training-day synthetic bytes:',{source:JSON.stringify(source).length,index:JSON.stringify(f.files.get(derived)).length});assert.equal(JSON.stringify(f.files.get(path)),before);
- f.reads.clear();r=await f.call('/api/app/training-day?date=2099-01-05','GET',undefined,teacher.token);assert.equal(r.status,200);assert.equal(f.reads.get(path)||0,0,'warm date must not read full plan');
- const changed=structuredClone(source);changed.sessions[0].exercises[0].tipo='Raspada';f.files.set(path,{data:changed,sha:'c'.repeat(40)});
- r=await f.call('/api/app/training-day?date=2099-01-05','GET',undefined,teacher.token);assert.equal((await r.json() as any).groups[0].exercises[0][1],'Raspada');assert.equal((f.files.get(derived)!.data as any).sourceSha,'c'.repeat(40));
- f.files.set(catalog,{data:{schemaVersion:1,revision:2,updatedAt:new Date().toISOString(),deletedPlanIds:[],plans:[{...source,alumnos:[]}]},sha:'d'.repeat(40)});
- r=await f.call('/api/app/training-day?date=2099-01-05','GET',undefined,teacher.token);assert.deepEqual((await r.json() as any).groups,[]);
- assert.equal((await f.call(`/api/app/users/${mail}/snapshot`,'GET',undefined,pupil.token)).status,200);assert.equal(f.files.has(path),false);assert.equal(f.files.has(derived),false);
- f.files.set(catalog,{data:{schemaVersion:1,revision:3,updatedAt:new Date().toISOString(),deletedPlanIds:[],plans:[source]},sha:'e'.repeat(40)});f.files.delete(`PGT/users_data/${mail}/user_data.json`);
- const missing=await f.call('/api/app/training-day?date=2099-01-05','GET',undefined,teacher.token);assert.equal((await missing.json() as any).missing,1);
+test('Training day authorizes trainers, reuses SHA indexes, rebuilds changed sources and removes derived files with assignment', async () => {
+    const f = fixture(), mail = 'day-pupil@example.com', trainer = 'day-trainer@example.com';
+    const register = async (mail: string) => (await (await f.call('/api/app/register', 'POST', {
+        mail,
+        password: 'synthetic-test-password',
+        confirm: 'synthetic-test-password',
+        nombre: mail,
+        apellidos: ''
+    })).json()) as any;
+    const pupil = await register(mail), teacher = await register(trainer);
+    f.promote(trainer);
+    assert.equal((await f.call('/api/app/training-day', 'GET')).status, 401);
+    assert.equal((await f.call('/api/app/training-day', 'GET', undefined, pupil.token)).status, 403);
+    assert.equal((await f.call('/api/app/training-day?date=2026-02-30', 'GET', undefined, teacher.token)).status, 400);
+    const id = crypto.randomUUID(), path = `PGT/users_data/${mail}/training_plans/plan_${id}.json`,
+        derived = `PGT/users_data/${mail}/training_plans/structure_${id}.json`, catalog = 'PGT/master_data/plans.json';
+    const source = {
+        schemaVersion: 1,
+        revision: 1,
+        updatedAt: new Date().toISOString(),
+        planId: id,
+        mail,
+        fecha_comienzo: '2099-01-01',
+        fecha_torneo: '2099-02-01',
+        alumnos: [mail],
+        dias_de_entrenamiento: [1],
+        ejercicios_por_sesion: 1,
+        tiempo_por_tecnica_segundos: 180,
+        descanso_entre_ciclos_segundos: 10,
+        descanso_entre_tecnicas_segundos: 20,
+        generatedAt: new Date().toISOString(),
+        sessions: [{
+            date: '2099-01-05',
+            exercises: [{
+                positionId: crypto.randomUUID(),
+                techniqueId: crypto.randomUUID(),
+                posicion: 'Cerrada',
+                prioridad: 1,
+                tipo: 'Sumisión',
+                descripcion_del_alumno: 'privado'.repeat(10000),
+                comment: 'privado',
+                pass: 1,
+                positionComplete: true
+            }]
+        }]
+    };
+    f.files.set(path, {data: source, sha: 'a'.repeat(40)});
+    f.files.set(catalog, {
+        data: {
+            schemaVersion: 1,
+            revision: 1,
+            updatedAt: new Date().toISOString(),
+            deletedPlanIds: [],
+            plans: [source]
+        }, sha: 'b'.repeat(40)
+    });
+    const before = JSON.stringify(f.files.get(path));
+    let r = await f.call('/api/app/training-day', 'GET', undefined, teacher.token);
+    assert.equal(r.status, 200);
+    const report = await r.json() as any;
+    assert.equal(report.date, '2099-01-05');
+    assert.equal(report.groups[0].students.length, 1);
+    assert.equal(JSON.stringify(report).includes('privado'), false);
+    assert.ok(f.files.has(derived));
+    assert.ok(JSON.stringify(f.files.get(derived)).length < JSON.stringify(source).length / 20);
+    console.log('Training-day synthetic bytes:', {
+        source: JSON.stringify(source).length,
+        index: JSON.stringify(f.files.get(derived)).length
+    });
+    assert.equal(JSON.stringify(f.files.get(path)), before);
+    f.reads.clear();
+    r = await f.call('/api/app/training-day?date=2099-01-05', 'GET', undefined, teacher.token);
+    assert.equal(r.status, 200);
+    assert.equal(f.reads.get(path) || 0, 0, 'warm date must not read full plan');
+    const changed = structuredClone(source);
+    changed.sessions[0].exercises[0].tipo = 'Raspada';
+    f.files.set(path, {data: changed, sha: 'c'.repeat(40)});
+    r = await f.call('/api/app/training-day?date=2099-01-05', 'GET', undefined, teacher.token);
+    assert.equal((await r.json() as any).groups[0].exercises[0][1], 'Raspada');
+    assert.equal((f.files.get(derived)!.data as any).sourceSha, 'c'.repeat(40));
+    f.files.set(catalog, {
+        data: {
+            schemaVersion: 1,
+            revision: 2,
+            updatedAt: new Date().toISOString(),
+            deletedPlanIds: [],
+            plans: [{...source, alumnos: []}]
+        }, sha: 'd'.repeat(40)
+    });
+    r = await f.call('/api/app/training-day?date=2099-01-05', 'GET', undefined, teacher.token);
+    assert.deepEqual((await r.json() as any).groups, []);
+    assert.equal((await f.call(`/api/app/users/${mail}/snapshot`, 'GET', undefined, pupil.token)).status, 200);
+    assert.equal(f.files.has(path), false);
+    assert.equal(f.files.has(derived), false);
+    f.files.set(catalog, {
+        data: {
+            schemaVersion: 1,
+            revision: 3,
+            updatedAt: new Date().toISOString(),
+            deletedPlanIds: [],
+            plans: [source]
+        }, sha: 'e'.repeat(40)
+    });
+    f.files.delete(`PGT/users_data/${mail}/user_data.json`);
+    const missing = await f.call('/api/app/training-day?date=2099-01-05', 'GET', undefined, teacher.token);
+    assert.equal((await missing.json() as any).missing, 1);
 });
 
 
-test("Comment author comes from authenticated trainer; unchanged comments retain author and legacy stays unknown",async()=>{
- const f=fixture(), password="synthetic-author-password";
- const tokens=new Map<string,string>();
- for(const [mail,nombre,apellidos] of [["author-a@example.com","Ana","García"],["author-b@example.com","Bea","Pérez"],["author-pupil@example.com","Alumno",""]]) {
-  const r=await f.call("/api/app/register","POST",{mail,password,confirm:password,nombre,apellidos});assert.equal(r.status,201);tokens.set(mail,((await r.json()) as any).token);
- }
- f.promote("author-a@example.com");f.promote("author-b@example.com");
- const base="/api/app/users/author-pupil@example.com/";
- const snapshot=await (await f.call(base+"snapshot","GET",undefined,tokens.get("author-pupil@example.com"))).json() as any;
- const [first,second]=snapshot.techniques.data.positions[0].tecnicas;
- const path="PGT/users_data/author-pupil@example.com/trainer_comments.json";
- // Pre-existing comments carry no author. No attribution may be guessed on a no-op.
- (f.files.get(path)!.data as any).comments=[{techniqueId:first.id,comment:"Legado"}];
- async function save(mail:string,comments:any[]) {
-  const old=f.files.get(path)!;
-  const r=await f.call(base+"comments","PUT",{sha:old.sha,data:{...structuredClone(old.data as any),comments}},tokens.get(mail));assert.equal(r.status,200);return await r.json() as any;
- }
- let result=await save("author-a@example.com",[{techniqueId:first.id,comment:"Legado",trainerName:"Falso"}]);
- assert.equal(result.status,"UNCHANGED_NO_COMMIT");assert.equal(result.data.comments[0].trainerName,undefined);
- result=await save("author-a@example.com",[{techniqueId:first.id,comment:"Revisa agarre",trainerName:"Falso"}]);
- assert.equal(result.data.comments[0].trainerName,"Ana García");
- const version=result.data.commentUpdates[first.id];
- result=await save("author-b@example.com",[{techniqueId:first.id,comment:"Revisa agarre",trainerName:"Bea falsa"},{techniqueId:second.id,comment:"Gira cadera"}]);
- assert.equal(result.data.comments[0].trainerName,"Ana García");assert.equal(result.data.comments[1].trainerName,"Bea Pérez");assert.equal(result.data.commentUpdates[first.id],version);
- result=await save("author-b@example.com",[{techniqueId:first.id,comment:"Nuevo agarre"},{techniqueId:second.id,comment:"Gira cadera"}]);
- assert.equal(result.data.comments[0].trainerName,"Bea Pérez");
- const own=await f.call(base+"comments","PUT",{sha:result.sha,data:result.data},tokens.get("author-pupil@example.com"));assert.equal(own.status,403);
+test("Comment author comes from authenticated trainer; unchanged comments retain author and legacy stays unknown", async () => {
+    const f = fixture(), password = "synthetic-author-password";
+    const tokens = new Map<string, string>();
+    for (const [mail, nombre, apellidos] of [["author-a@example.com", "Ana", "García"], ["author-b@example.com", "Bea", "Pérez"], ["author-pupil@example.com", "Alumno", ""]]) {
+        const r = await f.call("/api/app/register", "POST", {mail, password, confirm: password, nombre, apellidos});
+        assert.equal(r.status, 201);
+        tokens.set(mail, ((await r.json()) as any).token);
+    }
+    f.promote("author-a@example.com");
+    f.promote("author-b@example.com");
+    const base = "/api/app/users/author-pupil@example.com/";
+    const snapshot = await (await f.call(base + "snapshot", "GET", undefined, tokens.get("author-pupil@example.com"))).json() as any;
+    const [first, second] = snapshot.techniques.data.positions[0].tecnicas;
+    const path = "PGT/users_data/author-pupil@example.com/trainer_comments.json";
+    // Pre-existing comments carry no author. No attribution may be guessed on a no-op.
+    (f.files.get(path)!.data as any).comments = [{techniqueId: first.id, comment: "Legado"}];
+
+    async function save(mail: string, comments: any[]) {
+        const old = f.files.get(path)!;
+        const r = await f.call(base + "comments", "PUT", {
+            sha: old.sha,
+            data: {...structuredClone(old.data as any), comments}
+        }, tokens.get(mail));
+        assert.equal(r.status, 200);
+        return await r.json() as any;
+    }
+
+    let result = await save("author-a@example.com", [{techniqueId: first.id, comment: "Legado", trainerName: "Falso"}]);
+    assert.equal(result.status, "UNCHANGED_NO_COMMIT");
+    assert.equal(result.data.comments[0].trainerName, undefined);
+    result = await save("author-a@example.com", [{
+        techniqueId: first.id,
+        comment: "Revisa agarre",
+        trainerName: "Falso"
+    }]);
+    assert.equal(result.data.comments[0].trainerName, "Ana García");
+    const version = result.data.commentUpdates[first.id];
+    result = await save("author-b@example.com", [{
+        techniqueId: first.id,
+        comment: "Revisa agarre",
+        trainerName: "Bea falsa"
+    }, {techniqueId: second.id, comment: "Gira cadera"}]);
+    assert.equal(result.data.comments[0].trainerName, "Ana García");
+    assert.equal(result.data.comments[1].trainerName, "Bea Pérez");
+    assert.equal(result.data.commentUpdates[first.id], version);
+    result = await save("author-b@example.com", [{
+        techniqueId: first.id,
+        comment: "Nuevo agarre"
+    }, {techniqueId: second.id, comment: "Gira cadera"}]);
+    assert.equal(result.data.comments[0].trainerName, "Bea Pérez");
+    const own = await f.call(base + "comments", "PUT", {
+        sha: result.sha,
+        data: result.data
+    }, tokens.get("author-pupil@example.com"));
+    assert.equal(own.status, 403);
 });
 
 
-test("New participants appear in daily training without pupil login; repair missing plans preserves existing snapshots",async()=>{
- const f=fixture(),password="synthetic-assignment-password";const tokens=new Map<string,string>();
- for(const mail of ["daily-trainer@example.com","daily-a@example.com","daily-b@example.com"]){const r=await f.call("/api/app/register","POST",{mail,password,confirm:password,nombre:mail,apellidos:""});assert.equal(r.status,201);tokens.set(mail,((await r.json()) as any).token);}
- f.promote("daily-trainer@example.com");const trainer=tokens.get("daily-trainer@example.com");
- const c={fecha_comienzo:"2099-01-01",fecha_torneo:"2099-01-30",alumnos:["daily-a@example.com"],dias_de_entrenamiento:[1,2,3,4,5,6,7],ejercicios_por_sesion:2,tiempo_por_tecnica_segundos:180,descanso_entre_ciclos_segundos:10,descanso_entre_tecnicas_segundos:20};
- assert.equal((await f.call("/api/app/competition","POST",{competition:c,sha:null},trainer)).status,200);
- let catalog=await (await f.call("/api/app/catalog","GET",undefined,trainer)).json() as any;const id=catalog.data.plans[0].planId;
- const path=(mail:string)=>`PGT/users_data/${mail}/training_plans/plan_${id}.json`;
- assert.ok(f.files.has(path("daily-a@example.com")));
- const original=structuredClone(f.files.get(path("daily-a@example.com")));
- assert.equal((await f.call("/api/app/assignment","POST",{planId:id,alumnos:[...c.alumnos,"daily-b@example.com"],sha:catalog.sha},trainer)).status,200);
- assert.ok(f.files.has(path("daily-b@example.com")));assert.deepEqual(f.files.get(path("daily-a@example.com")),original);
- const endpoint="/api/app/training-day?date=2099-01-05";
- let report=await (await f.call(endpoint,"POST",{},trainer)).json() as any;assert.equal(new Set(report.groups.flatMap((g:any)=>g.students.map((s:any)=>s.mail))).size,2);
- f.files.delete(path("daily-b@example.com"));
- assert.equal((await f.call(endpoint,"POST",{},tokens.get("daily-a@example.com"))).status,403);
- assert.equal((await (await f.call(endpoint,"GET",undefined,trainer)).json() as any).missing,1,"GET stays read-only");
- report=await (await f.call(endpoint,"POST",{},trainer)).json() as any;assert.equal(report.missing,0);assert.ok(f.files.has(path("daily-b@example.com")));assert.deepEqual(f.files.get(path("daily-a@example.com")),original);
- const stable=JSON.stringify([...f.files]);await f.call(endpoint,"POST",{},trainer);assert.equal(JSON.stringify([...f.files]),stable);
- // Empty catalogue is recoverable and never becomes a fake empty plan.
- f.files.delete(path("daily-b@example.com"));(f.files.get("PGT/users_data/daily-b@example.com/tecnics.json")!.data as any).positions=[];
- report=await (await f.call(endpoint,"POST",{},trainer)).json() as any;assert.equal(report.missing,1);assert.equal(f.files.has(path("daily-b@example.com")),false);
+test("New participants appear in daily training without pupil login; repair missing plans preserves existing snapshots", async () => {
+    const f = fixture(), password = "synthetic-assignment-password";
+    const tokens = new Map<string, string>();
+    for (const mail of ["daily-trainer@example.com", "daily-a@example.com", "daily-b@example.com"]) {
+        const r = await f.call("/api/app/register", "POST", {
+            mail,
+            password,
+            confirm: password,
+            nombre: mail,
+            apellidos: ""
+        });
+        assert.equal(r.status, 201);
+        tokens.set(mail, ((await r.json()) as any).token);
+    }
+    f.promote("daily-trainer@example.com");
+    const trainer = tokens.get("daily-trainer@example.com");
+    const c = {
+        fecha_comienzo: "2099-01-01",
+        fecha_torneo: "2099-01-30",
+        alumnos: ["daily-a@example.com"],
+        dias_de_entrenamiento: [1, 2, 3, 4, 5, 6, 7],
+        ejercicios_por_sesion: 2,
+        tiempo_por_tecnica_segundos: 180,
+        descanso_entre_ciclos_segundos: 10,
+        descanso_entre_tecnicas_segundos: 20
+    };
+    assert.equal((await f.call("/api/app/competition", "POST", {competition: c, sha: null}, trainer)).status, 200);
+    let catalog = await (await f.call("/api/app/catalog", "GET", undefined, trainer)).json() as any;
+    const id = catalog.data.plans[0].planId;
+    const path = (mail: string) => `PGT/users_data/${mail}/training_plans/plan_${id}.json`;
+    assert.ok(f.files.has(path("daily-a@example.com")));
+    const original = structuredClone(f.files.get(path("daily-a@example.com")));
+    assert.equal((await f.call("/api/app/assignment", "POST", {
+        planId: id,
+        alumnos: [...c.alumnos, "daily-b@example.com"],
+        sha: catalog.sha
+    }, trainer)).status, 200);
+    assert.ok(f.files.has(path("daily-b@example.com")));
+    assert.deepEqual(f.files.get(path("daily-a@example.com")), original);
+    const endpoint = "/api/app/training-day?date=2099-01-05";
+    let report = await (await f.call(endpoint, "POST", {}, trainer)).json() as any;
+    assert.equal(new Set(report.groups.flatMap((g: any) => g.students.map((s: any) => s.mail))).size, 2);
+    f.files.delete(path("daily-b@example.com"));
+    assert.equal((await f.call(endpoint, "POST", {}, tokens.get("daily-a@example.com"))).status, 403);
+    assert.equal((await (await f.call(endpoint, "GET", undefined, trainer)).json() as any).missing, 1, "GET stays read-only");
+    report = await (await f.call(endpoint, "POST", {}, trainer)).json() as any;
+    assert.equal(report.missing, 0);
+    assert.ok(f.files.has(path("daily-b@example.com")));
+    assert.deepEqual(f.files.get(path("daily-a@example.com")), original);
+    const stable = JSON.stringify([...f.files]);
+    await f.call(endpoint, "POST", {}, trainer);
+    assert.equal(JSON.stringify([...f.files]), stable);
+    // Empty catalogue is recoverable and never becomes a fake empty plan.
+    f.files.delete(path("daily-b@example.com"));
+    (f.files.get("PGT/users_data/daily-b@example.com/tecnics.json")!.data as any).positions = [];
+    report = await (await f.call(endpoint, "POST", {}, trainer)).json() as any;
+    assert.equal(report.missing, 1);
+    assert.equal(f.files.has(path("daily-b@example.com")), false);
 });

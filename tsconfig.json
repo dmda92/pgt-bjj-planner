@@ -8,10 +8,22 @@
     "noEmit": true,
     "resolveJsonModule": true,
     "jsx": "react-jsx",
-    "lib": ["ES2022", "DOM"],
-    "types": ["@cloudflare/workers-types", "node", "vite/client"],
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "types": [
+      "@cloudflare/workers-types",
+      "node",
+      "vite/client"
+    ],
     "skipLibCheck": true,
     "erasableSyntaxOnly": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "worker/**/*.ts", "tests/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "worker/**/*.ts",
+    "tests/**/*.ts"
+  ]
 }

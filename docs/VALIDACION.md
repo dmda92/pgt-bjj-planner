@@ -1,44 +1,105 @@
 # PGT — validación de la aplicación · 13/10/2026
 
-Corrección del gate DEV de recuperación (19/10/2026): ver `docs/CI_RECOVERY_DATES.md`. Fixtures temporales de prueba; no cambia producto ni despliegues. Resultados en la PR de corrección.
+Corrección del gate DEV de recuperación (19/10/2026): ver `docs/CI_RECOVERY_DATES.md`. Fixtures temporales de prueba; no
+cambia producto ni despliegues. Resultados en la PR de corrección.
 
 ## Estado y evidencia
 
-El propietario dio por terminada la prueba de viabilidad tras confirmar en el Worker desplegado: acceso al repositorio privado, altas de prueba, login, lectura/escritura/actualización de JSON, revisiones, UNCHANGED_NO_COMMIT, aislamiento 403, conflictos 409, borrado/recreación y sincronización móvil→ordenador. El 401 tras logout se comportó como rechazo de sesión. Esta aceptación autoriza desarrollar la aplicación; no equivale a aceptación remota de la nueva UI.
+El propietario dio por terminada la prueba de viabilidad tras confirmar en el Worker desplegado: acceso al repositorio
+privado, altas de prueba, login, lectura/escritura/actualización de JSON, revisiones, UNCHANGED_NO_COMMIT, aislamiento
+403, conflictos 409, borrado/recreación y sincronización móvil→ordenador. El 401 tras logout se comportó como rechazo de
+sesión. Esta aceptación autoriza desarrollar la aplicación; no equivale a aceptación remota de la nueva UI.
 
-Se comprobaron permisos push/admin sobre dmda92/pgt-bjj-planner antes de publicar. La plantilla real fue leída desde la biblioteca del propietario, transformada sin modificar nombres/tipos/prioridades/orden, escrita en el repo privado y releída: coincide exactamente. Commit de datos `692c2f2075d0ede793558fb401465ec380eff220`; SHA del archivo `6ee2b21eb7c3972e5dd7922c4dda17531c3fc356`. 17 posiciones / 36 técnicas, descripciones vacías, sin order ni UUID compartidos entre alumnos. SHA256 de los campos auditados: `ad30591f477db4c8f4d24575808df499fb39538651904caa48ddf7f421322de1`.
+Se comprobaron permisos push/admin sobre dmda92/pgt-bjj-planner antes de publicar. La plantilla real fue leída desde la
+biblioteca del propietario, transformada sin modificar nombres/tipos/prioridades/orden, escrita en el repo privado y
+releída: coincide exactamente. Commit de datos `692c2f2075d0ede793558fb401465ec380eff220`; SHA del archivo
+`6ee2b21eb7c3972e5dd7922c4dda17531c3fc356`. 17 posiciones / 36 técnicas, descripciones vacías, sin order ni UUID
+compartidos entre alumnos. SHA256 de los campos auditados:
+`ad30591f477db4c8f4d24575808df499fb39538651904caa48ddf7f421322de1`.
 
-No se han modificado registros reales ni los alumnos de la prueba. Los JSON de negocio/original de técnicas no se publican en el repo público de código. Las pruebas usan fixtures explícitamente sintéticos; scripts/verify-template.mjs permite volver a cotejar los archivos reales obtenidos privadamente por el propietario. Requisitos originales completos conservados en REQUISITOS_PGT_APP.md; errata de 2.1 confirmada por el propietario y documentada sin editar el adjunto.
+No se han modificado registros reales ni los alumnos de la prueba. Los JSON de negocio/original de técnicas no se
+publican en el repo público de código. Las pruebas usan fixtures explícitamente sintéticos; scripts/verify-template.mjs
+permite volver a cotejar los archivos reales obtenidos privadamente por el propietario. Requisitos originales completos
+conservados en REQUISITOS_PGT_APP.md; errata de 2.1 confirmada por el propietario y documentada sin editar el adjunto.
 
 ## Pruebas locales ejecutadas
 
-- `npm test`: **47 pruebas**, sin fallos ni omitidas. Adaptador GitHub, validación, SHA/CAS, UTF8, tokens/cuotas/errores, diagnósticos seguros, contraseña con sal y 600.000 iteraciones, permisos, roles, bootstrap, comentarios, planes/snapshots, desasignación/borrado, no-op, cambio/reset de contraseña y revocación. IndexedDB con fake-indexeddb: propietario, reemplazo atómico y rollback al interrumpir restauración.
+- `npm test`: **47 pruebas**, sin fallos ni omitidas. Adaptador GitHub, validación, SHA/CAS, UTF8,
+  tokens/cuotas/errores, diagnósticos seguros, contraseña con sal y 600.000 iteraciones, permisos, roles, bootstrap,
+  comentarios, planes/snapshots, desasignación/borrado, no-op, cambio/reset de contraseña y revocación. IndexedDB con
+  fake-indexeddb: propietario, reemplazo atómico y rollback al interrumpir restauración.
 - `npm run typecheck`: TypeScript sin errores.
-- `npm run build`: Vite genera dist; recursos locales, sin fuentes/CDN externos. PDF separado en chunk dinámico, incluido en el precache para funcionar offline. Manifest, iconos PNG/SVG, service worker versionado y aviso de actualización.
+- `npm run build`: Vite genera dist; recursos locales, sin fuentes/CDN externos. PDF separado en chunk dinámico,
+  incluido en el precache para funcionar offline. Manifest, iconos PNG/SVG, service worker versionado y aviso de
+  actualización.
 - `npm run check:worker`: bundle local mediante esbuild; no contacta con Cloudflare.
-- `npm run test:runtime`: workerd/Miniflare con SQLite Durable Object real y salida GitHub interceptada. Reproduce incompatibilidades antiguas de fetch/receptor/redirect, transporte corregido, hashes verificados contra Node/OpenSSL, flujo completo de altas, sesiones y errores. PBKDF2 probado nativo y con el límite observado inyectado; conserva SHA256/600000/256 y Unicode. Nueva API: registros completos con plantilla sintética, bootstrap, roles, comentarios, asignación, generación única, cambios posteriores sin regenerar, manual, CAS, desasignación, borrado y logout.
-- `npm run test:browser`: Chromium real, servidor y API sintéticos exclusivamente en 127.0.0.1. Registro/login; IndexedDB real; edición offline y recarga tras confirmación local; bloqueo A→B con pendientes; restauración fallida sin exponer datos anteriores; importación completa de nueva identidad; dos dispositivos con cambios independientes y colisión explícita; roles/competición; plan; PDF offline; manual; contraseña propia y sesiones de pestañas; ancho 390 px sin desbordamiento horizontal. No se ha usado el sitio desplegado ni cuentas reales.
-- PDF generado por el navegador: inspección de todas las páginas con Poppler y pypdf, introducción literal, Tábata 32:10 con 5 sets/180/10/20, cuatro sesiones completas distribuidas en tres páginas, logo en cada página. Código compacta una sesión extensa y bloquea exportación si no cabe incluso en tamaño compacto.
+- `npm run test:runtime`: workerd/Miniflare con SQLite Durable Object real y salida GitHub interceptada. Reproduce
+  incompatibilidades antiguas de fetch/receptor/redirect, transporte corregido, hashes verificados contra Node/OpenSSL,
+  flujo completo de altas, sesiones y errores. PBKDF2 probado nativo y con el límite observado inyectado; conserva
+  SHA256/600000/256 y Unicode. Nueva API: registros completos con plantilla sintética, bootstrap, roles, comentarios,
+  asignación, generación única, cambios posteriores sin regenerar, manual, CAS, desasignación, borrado y logout.
+- `npm run test:browser`: Chromium real, servidor y API sintéticos exclusivamente en 127.0.0.1. Registro/login;
+  IndexedDB real; edición offline y recarga tras confirmación local; bloqueo A→B con pendientes; restauración fallida
+  sin exponer datos anteriores; importación completa de nueva identidad; dos dispositivos con cambios independientes y
+  colisión explícita; roles/competición; plan; PDF offline; manual; contraseña propia y sesiones de pestañas; ancho 390
+  px sin desbordamiento horizontal. No se ha usado el sitio desplegado ni cuentas reales.
+- PDF generado por el navegador: inspección de todas las páginas con Poppler y pypdf, introducción literal, Tábata 32:10
+  con 5 sets/180/10/20, cuatro sesiones completas distribuidas en tres páginas, logo en cada página. Código compacta una
+  sesión extensa y bloquea exportación si no cabe incluso en tamaño compacto.
 
-La descarga habitual de Chromium no funcionó en este entorno (archivo truncado); la comprobación se completó con un ejecutable local extraído del paquete de Chromium de pruebas. Ese paquete auxiliar no forma parte de las dependencias del proyecto ni de la aplicación. El checkout del propietario usa `npx.cmd playwright install chromium` y `npm.cmd run test:browser`.
+La descarga habitual de Chromium no funcionó en este entorno (archivo truncado); la comprobación se completó con un
+ejecutable local extraído del paquete de Chromium de pruebas. Ese paquete auxiliar no forma parte de las dependencias
+del proyecto ni de la aplicación. El checkout del propietario usa `npx.cmd playwright install chromium` y
+`npm.cmd run test:browser`.
 
-La revisión automática bloqueó `wrangler deploy --dry-run` porque puede conectar con Cloudflare, prohibido por el propietario. Se sustituyó esa comprobación por compilación local esbuild y ejecución workerd, ambas completadas. No se ha desplegado ni configurado Cloudflare. La validación de Wrangler contra la cuenta/plataforma corresponde al propietario al publicar.
+La revisión automática bloqueó `wrangler deploy --dry-run` porque puede conectar con Cloudflare, prohibido por el
+propietario. Se sustituyó esa comprobación por compilación local esbuild y ejecución workerd, ambas completadas. No se
+ha desplegado ni configurado Cloudflare. La validación de Wrangler contra la cuenta/plataforma corresponde al
+propietario al publicar.
 
 ## Cobertura y alcance
 
-Medición reproducible: `node --experimental-strip-types --test --experimental-test-coverage tests/domain.test.ts`. Medición actual: planner.ts 100 % de líneas / 97,78 % de ramas; models.ts 100 % de líneas y ramas; merge.ts 100 % de líneas / 92,78 % de ramas. El único rango no cubierto del generador es el final inalcanzable de su flujo infinito (comprobado en NODE_V8_COVERAGE); sus decisiones de negocio están ejercitadas. No se confunde ese hecho con un reporte total del 100 %. Modelos y merge tienen pruebas de errores, UUID, fechas, límites, inserciones, borrado/edición, conflictos de orden y elección remota sin perder cambios locales independientes. Las cifras específicas se obtienen del reporte ejecutado; no se afirma que la cobertura de todo SyncService/UI/casos de uso cumpla aún sus objetivos de 95 %/90 %. Esos porcentajes son objetivos del documento; las pruebas de integración y navegador no se contabilizan en el reporte unitario de Node.
+Medición reproducible: `node --experimental-strip-types --test --experimental-test-coverage tests/domain.test.ts`.
+Medición actual: planner.ts 100 % de líneas / 97,78 % de ramas; models.ts 100 % de líneas y ramas; merge.ts 100 % de
+líneas / 92,78 % de ramas. El único rango no cubierto del generador es el final inalcanzable de su flujo infinito
+(comprobado en NODE_V8_COVERAGE); sus decisiones de negocio están ejercitadas. No se confunde ese hecho con un reporte
+total del 100 %. Modelos y merge tienen pruebas de errores, UUID, fechas, límites, inserciones, borrado/edición,
+conflictos de orden y elección remota sin perder cambios locales independientes. Las cifras específicas se obtienen del
+reporte ejecutado; no se afirma que la cobertura de todo SyncService/UI/casos de uso cumpla aún sus objetivos de 95
+%/90 %. Esos porcentajes son objetivos del documento; las pruebas de integración y navegador no se contabilizan en el
+reporte unitario de Node.
 
-El runtime local no valida el token privado real del Worker. Esa conexión está cubierta por las pruebas remotas del propietario en la fase de viabilidad. La nueva aplicación requiere revisión de aceptación tras su despliegue manual.
+El runtime local no valida el token privado real del Worker. Esa conexión está cubierta por las pruebas remotas del
+propietario en la fase de viabilidad. La nueva aplicación requiere revisión de aceptación tras su despliegue manual.
 
 ## Límites y cuotas
 
-GitHub autenticado: límite primario general de 5.000 llamadas/hora y límites secundarios generales de creación de contenido de 80/minuto y 500/hora, compartidos con otros usos de la cuenta. Contents admite base64 completo hasta 1 MiB y listados hasta 1.000 entradas. Registro histórico (sustituido por apartado 15 y JSON_SIZE_LIMITS.md): la app adoptaba **64 KiB por JSON de negocio**, payload API app **96 KiB** (envelope), máximo 200 posiciones / 100 técnicas por posición, 10.000 caracteres por descripción/comentario y calendario máximo de 730 días. Un plan extenso puede superar 64 KiB antes de los límites de campos; se rechaza con 413, conservando datos locales. No prometer tamaño ilimitado ni usar GitHub para vídeos.
+GitHub autenticado: límite primario general de 5.000 llamadas/hora y límites secundarios generales de creación de
+contenido de 80/minuto y 500/hora, compartidos con otros usos de la cuenta. Contents admite base64 completo hasta 1 MiB
+y listados hasta 1.000 entradas. Registro histórico (sustituido por apartado 15 y JSON_SIZE_LIMITS.md): la app adoptaba
+**64 KiB por JSON de negocio**, payload API app **96 KiB** (envelope), máximo 200 posiciones / 100 técnicas por
+posición, 10.000 caracteres por descripción/comentario y calendario máximo de 730 días. Un plan extenso puede superar 64
+KiB antes de los límites de campos; se rechaza con 413, conservando datos locales. No prometer tamaño ilimitado ni usar
+GitHub para vídeos.
 
-Límites del endpoint: 30 peticiones/IP/minuto, 300 globales/minuto, login/registro 6/IP/minuto, 10 solicitudes de mutación/minuto y 100/hora. Además se cuenta cada escritura real a GitHub (incluidas inicialización/generación/reconciliación): 70/minuto y 450/hora. Respuestas 429 con Retry-After; no reintentar en bucle. Estos presupuestos no garantizan una cuota libre si otros procesos utilizan el token/cuenta.
+Límites del endpoint: 30 peticiones/IP/minuto, 300 globales/minuto, login/registro 6/IP/minuto, 10 solicitudes de
+mutación/minuto y 100/hora. Además se cuenta cada escritura real a GitHub (incluidas
+inicialización/generación/reconciliación): 70/minuto y 450/hora. Respuestas 429 con Retry-After; no reintentar en bucle.
+Estos presupuestos no garantizan una cuota libre si otros procesos utilizan el token/cuenta.
 
-Sin polling ni commits por pulsación; cada cambio se guarda en IndexedDB y los pendientes se agrupan al sincronizar. Sincronización posterior del mismo usuario envía versiones SHA; listados de metadatos permiten omitir lecturas de JSON inalterados. Perfil/rol vigente sí se verifica remotamente por seguridad. Primer login/cambio de usuario exige restauración completa. El DO no almacena documentos de negocio; solo sesiones, límites y coordinación. El catálogo privado conserva tombstones y permite reintentar operaciones multiarchivo incompletas.
+Sin polling ni commits por pulsación; cada cambio se guarda en IndexedDB y los pendientes se agrupan al sincronizar.
+Sincronización posterior del mismo usuario envía versiones SHA; listados de metadatos permiten omitir lecturas de JSON
+inalterados. Perfil/rol vigente sí se verifica remotamente por seguridad. Primer login/cambio de usuario exige
+restauración completa. El DO no almacena documentos de negocio; solo sesiones, límites y coordinación. El catálogo
+privado conserva tombstones y permite reintentar operaciones multiarchivo incompletas.
 
-Workers Free: 100.000 peticiones/día y 10 ms CPU por request de entrada; el hash/generación/operaciones remotas se ejecutan en SQLite DO, cuyo presupuesto de CPU es distinto (30 s por invocación por defecto). DO Free: 100.000 peticiones/día, 13.000 GB-s/día, 5 millones de filas leídas/día, 100.000 escritas/día y 5 GB totales. Un endpoint puede consumir múltiples filas y subrequests. La documentación de Workers indica 50 subrequests externos por invocación en Free: restaurar muchos planes o reconciliar una competición de muchos alumnos puede superar límites. Esta versión está orientada a grupos pequeños; la escala y el coste real se revisan antes de ampliar el uso. El historial Git crece con cada commit. No activar Paid ni pedir tarjeta como respuesta a una cuota.
+Workers Free: 100.000 peticiones/día y 10 ms CPU por request de entrada; el hash/generación/operaciones remotas se
+ejecutan en SQLite DO, cuyo presupuesto de CPU es distinto (30 s por invocación por defecto). DO Free: 100.000
+peticiones/día, 13.000 GB-s/día, 5 millones de filas leídas/día, 100.000 escritas/día y 5 GB totales. Un endpoint puede
+consumir múltiples filas y subrequests. La documentación de Workers indica 50 subrequests externos por invocación en
+Free: restaurar muchos planes o reconciliar una competición de muchos alumnos puede superar límites. Esta versión está
+orientada a grupos pequeños; la escala y el coste real se revisan antes de ampliar el uso. El historial Git crece con
+cada commit. No activar Paid ni pedir tarjeta como respuesta a una cuota.
 
 Fuentes oficiales revisadas (13/10/2026):
 
@@ -52,171 +113,319 @@ Fuentes oficiales revisadas (13/10/2026):
 ## Aceptación pendiente a cargo del propietario
 
 1. Desplegar la nueva versión y configurar el primer entrenador manualmente en el perfil de GitHub privado.
-2. Dos cuentas nuevas reales, aislamiento, comentario, asignación, manual/PDF, cambio/reset de contraseña y 409 entre dispositivos.
-3. Android Chrome e iPhone Safari reales: instalación PWA, reinicio, teclado/táctil, offline, PDF, actualización y sincronización PC. La prueba responsive en Chromium no acredita Safari/iOS.
-4. Medir CPU/latencia/cuotas en su cuenta Free, con el número real de alumnos y planes, sin cambiar parámetros de autenticación.
+2. Dos cuentas nuevas reales, aislamiento, comentario, asignación, manual/PDF, cambio/reset de contraseña y 409 entre
+   dispositivos.
+3. Android Chrome e iPhone Safari reales: instalación PWA, reinicio, teclado/táctil, offline, PDF, actualización y
+   sincronización PC. La prueba responsive en Chromium no acredita Safari/iOS.
+4. Medir CPU/latencia/cuotas en su cuenta Free, con el número real de alumnos y planes, sin cambiar parámetros de
+   autenticación.
 5. Rotación/revocación real del token GitHub y recuperación tras caducidad, sin pérdida de pendientes.
 
 No se considera esta matriz terminada por el hecho de que funcionase la interfaz técnica del prototipo anterior.
 
-
 ## Ajuste de tipo de técnica en negrita — 14/10/2026
 
-El componente compartido PlanView muestra el tipo en strong tanto en Mis planes como en el plan del alumno consultado por Entrenador. Las técnicas de TrainerStudent ya usan strong; se conserva ese formato. No cambia datos ni exportación PDF.
+El componente compartido PlanView muestra el tipo en strong tanto en Mis planes como en el plan del alumno consultado
+por Entrenador. Las técnicas de TrainerStudent ya usan strong; se conserva ese formato. No cambia datos ni exportación
+PDF.
 
-Validación local: npm test (63/63), typecheck, build, check:worker, test:runtime y test:browser correctos. Chromium local mediante PGT_TEST_CHROMIUM_PATH; revisión de capturas de planes en escritorio y móvil. Fixtures locales, sin aceptación remota ni comprobación Safari/iOS. Despliegue pendiente del propietario.
-
+Validación local: npm test (63/63), typecheck, build, check:worker, test:runtime y test:browser correctos. Chromium
+local mediante PGT_TEST_CHROMIUM_PATH; revisión de capturas de planes en escritorio y móvil. Fixtures locales, sin
+aceptación remota ni comprobación Safari/iOS. Despliegue pendiente del propietario.
 
 ## Incidencia Origin, login, peso y retirada de bootstrap — 14/10/2026
 
-Causa reproducida: ALLOWED_ORIGIN único y dominio de ejemplo en wrangler.jsonc. La validación de Origin precede al payload y autenticación: POST/PUT con Origin rechazados, mientras GET sin Origin puede funcionar. No depende del peso ni del bootstrap. No se ha inspeccionado la configuración desplegada de Cloudflare; confirmación remota pendiente.
+Causa reproducida: ALLOWED_ORIGIN único y dominio de ejemplo en wrangler.jsonc. La validación de Origin precede al
+payload y autenticación: POST/PUT con Origin rechazados, mientras GET sin Origin puede funcionar. No depende del peso ni
+del bootstrap. No se ha inspeccionado la configuración desplegada de Cloudflare; confirmación remota pendiente.
 
-ALLOWED_ORIGINS permite únicamente orígenes exactos enumerados; configuración con URL real del Worker y soporte de la variable singular anterior. Sin comodines ni confianza basada en Host. Origen null, previews y dominios arbitrarios rechazados. OPTIONS permitido solo para orígenes declarados. Sesión Bearer, sin cookies; SW no cachea API y build renueva versión de assets.
+ALLOWED_ORIGINS permite únicamente orígenes exactos enumerados; configuración con URL real del Worker y soporte de la
+variable singular anterior. Sin comodines ni confianza basada en Host. Origen null, previews y dominios arbitrarios
+rechazados. OPTIONS permitido solo para orígenes declarados. Sesión Bearer, sin cookies; SW no cachea API y build
+renueva versión de assets.
 
-Retirados formulario/estado y operación de bootstrap; ruta antigua 404. AppApi no recibe clave especial. Primer entrenador configurado manualmente en GitHub; fixtures simulan ese procedimiento. PROBE_ADMIN_KEY sigue exclusivamente en endpoints heredados de viabilidad, por lo que no es un secreto exclusivo del bootstrap. No se han cambiado secretos ni datos reales.
+Retirados formulario/estado y operación de bootstrap; ruta antigua 404. AppApi no recibe clave especial. Primer
+entrenador configurado manualmente en GitHub; fixtures simulan ese procedimiento. PROBE_ADMIN_KEY sigue exclusivamente
+en endpoints heredados de viabilidad, por lo que no es un secreto exclusivo del bootstrap. No se han cambiado secretos
+ni datos reales.
 
-Peso validado en HTML, dominio y Client.edit antes de persistir; API rechaza inválidos sin escrituras. Decimal y null se sincronizan posteriormente. Se conservan pendientes antiguos y bloqueo de cambio de cuenta para evitar pérdida de datos.
+Peso validado en HTML, dominio y Client.edit antes de persistir; API rechaza inválidos sin escrituras. Decimal y null se
+sincronizan posteriormente. Se conservan pendientes antiguos y bloqueo de cambio de cuenta para evitar pérdida de datos.
 
-Validación: 66/66 tests, typecheck, build, check:worker, runtime y Chromium local correctos. Regresión de allowlist/preflight, mismatch independientemente de peso, bootstrap retirado, registro alumno y peso sin escrituras. Runtime completo alterna Worker/Pages en Origin incluso durante login/logout/escrituras. Browser prueba ausencia de formulario, peso negativo, offline, reentrada, aislamiento y perfil entre dispositivos. Producción y PWA móvil real/Safari/iOS pendientes de aceptación del propietario.
+Validación: 66/66 tests, typecheck, build, check:worker, runtime y Chromium local correctos. Regresión de
+allowlist/preflight, mismatch independientemente de peso, bootstrap retirado, registro alumno y peso sin escrituras.
+Runtime completo alterna Worker/Pages en Origin incluso durante login/logout/escrituras. Browser prueba ausencia de
+formulario, peso negativo, offline, reentrada, aislamiento y perfil entre dispositivos. Producción y PWA móvil
+real/Safari/iOS pendientes de aceptación del propietario.
 
 ## Rediseño de exportación PDF — 14/10/2026
 
-Petición expresa del propietario: mejorar la exportación inspirándose en tarjetas de sesión y resumen de sus capturas. El permiso sustituye la restricción de no modificar PDF por cambios visuales del frontend. Exportación nativa jsPDF con Barlow local embebida, paleta pizarra/azul, resumen inicial de datos guardados, configuración Tábata en cinco campos, tarjetas cronológicas en dos columnas, posición/prioridad/pasada y tipo en negrita, descripciones y comentarios diferenciados, logo y numeración en todas las páginas. No incluye porcentajes de catálogo ni convierte cobertura en asistencia.
+Petición expresa del propietario: mejorar la exportación inspirándose en tarjetas de sesión y resumen de sus capturas.
+El permiso sustituye la restricción de no modificar PDF por cambios visuales del frontend. Exportación nativa jsPDF con
+Barlow local embebida, paleta pizarra/azul, resumen inicial de datos guardados, configuración Tábata en cinco campos,
+tarjetas cronológicas en dos columnas, posición/prioridad/pasada y tipo en negrita, descripciones y comentarios
+diferenciados, logo y numeración en todas las páginas. No incluye porcentajes de catálogo ni convierte cobertura en
+asistencia.
 
-Se mide cada sesión antes de dibujar: traslado entero, ancho completo para textos densos, compactación hasta 7 pt y error explícito si aun así no cabe. Nunca se divide ni se regenera. Función buildPlanPdf devuelve posiciones para comprobar paginación; exportPlan mantiene descarga y recursos locales offline.
+Se mide cada sesión antes de dibujar: traslado entero, ancho completo para textos densos, compactación hasta 7 pt y
+error explícito si aun así no cabe. Nunca se divide ni se regenera. Función buildPlanPdf devuelve posiciones para
+comprobar paginación; exportPlan mantiene descarga y recursos locales offline.
 
-Validación: 69/69 tests; tres regresiones nuevas de no mutación/orden/páginas sin solapamiento, sesión densa de ancho completo/error por exceso y tiempos variables/descansos cero/nombres largos/plan vacío. Typecheck, build, check:worker, runtime y navegador local correctos, incluida descarga PDF offline sin exportación previa. Ejemplo de 19 sesiones y 95 ejercicios con descripciones/comentarios ilustrativos: 11 páginas renderizadas y revisadas; márgenes de todo el texto y logo de cada página verificados. No usa datos reales ni cambia técnicas, algoritmo, sincronización, permisos o planes guardados. Pendiente publicar y revisar en dispositivos físicos/Safari.
+Validación: 69/69 tests; tres regresiones nuevas de no mutación/orden/páginas sin solapamiento, sesión densa de ancho
+completo/error por exceso y tiempos variables/descansos cero/nombres largos/plan vacío. Typecheck, build, check:worker,
+runtime y navegador local correctos, incluida descarga PDF offline sin exportación previa. Ejemplo de 19 sesiones y 95
+ejercicios con descripciones/comentarios ilustrativos: 11 páginas renderizadas y revisadas; márgenes de todo el texto y
+logo de cada página verificados. No usa datos reales ni cambia técnicas, algoritmo, sincronización, permisos o planes
+guardados. Pendiente publicar y revisar en dispositivos físicos/Safari.
 
-Ejemplo reproducible local: node scripts/preview-plan-pdf.mjs. Usa plantilla oficial y descripciones ilustrativas; no constituye un plan real de alumno.
+Ejemplo reproducible local: node scripts/preview-plan-pdf.mjs. Usa plantilla oficial y descripciones ilustrativas; no
+constituye un plan real de alumno.
 
 ## TEC 04 — prioridad válida antes de guardar (14/10/2026)
 
-El campo numérico usaba min=1, pero su onChange persistía directamente Number(value); min solo afecta a la validez HTML y no impide escribir cero. Por ello el servidor rechazaba posteriormente la sincronización con PAYLOAD_INVALID.
+El campo numérico usaba min=1, pero su onChange persistía directamente Number (value); min solo afecta a la validez HTML
+y no impide escribir cero. Por ello el servidor rechazaba posteriormente la sincronización con PAYLOAD_INVALID.
 
-Se sustituye por controles −/+ con mínimo 1, incrementos enteros, sin entrada numérica por teclado y límites de enteros seguros. Conserva UUID, orden y demás campos. El botón de reducir está desactivado en 1; los botones mantienen foco y targets de 44 px. Prioridad se valida antes de modificar el estado de UI y antes de guardar IndexedDB, con mensaje explícito; el servidor mantiene su validación. Un valor antiguo inválido puede corregirse a 1 con aumentar, sin borrar documentos pendientes.
+Se sustituye por controles −/+ con mínimo 1, incrementos enteros, sin entrada numérica por teclado y límites de enteros
+seguros. Conserva UUID, orden y demás campos. El botón de reducir está desactivado en 1; los botones mantienen foco y
+targets de 44 px. Prioridad se valida antes de modificar el estado de UI y antes de guardar IndexedDB, con mensaje
+explícito; el servidor mantiene su validación. Un valor antiguo inválido puede corregirse a 1 con aumentar, sin borrar
+documentos pendientes.
 
-Validación: 69 tests, typecheck, build, check:worker y runtime correctos. Regresión de navegador: ausencia de campo editable, 1→2→1, reducción bloqueada en 1, sincronización y UUID conservado. Diseño escritorio/móvil revisado. No desplegado ni verificado en dispositivos físicos.
+Validación: 69 tests, typecheck, build, check:worker y runtime correctos. Regresión de navegador: ausencia de campo
+editable, 1→2→1, reducción bloqueada en 1, sincronización y UUID conservado. Diseño escritorio/móvil revisado. No
+desplegado ni verificado en dispositivos físicos.
 
 ## CI/CD autorizado — 14/10/2026
 
-Nuevo workflow .github/workflows/cloudflare.yml: push main, PR solo CI y ejecución manual; Node 24, npm ci, tests, typecheck, build PWA, compilación/runtime Worker y navegador offline. Credenciales solo en deploy, permisos GITHUB_TOKEN contents: read, acciones oficiales fijadas a SHA de sus tags v4 verificados. Wrangler local fijado por lockfile; una única orden deploy --keep-vars sin operaciones sobre secretos/datos. Conserva Worker con assets, namespace y migración.
+Nuevo workflow .github/workflows/cloudflare.yml: push main, PR solo CI y ejecución manual; Node 24, npm ci, tests,
+typecheck, build PWA, compilación/runtime Worker y navegador offline. Credenciales solo en deploy, permisos GITHUB_TOKEN
+contents: read, acciones oficiales fijadas a SHA de sus tags v4 verificados. Wrangler local fijado por lockfile; una
+única orden deploy --keep-vars sin operaciones sobre secretos/datos. Conserva Worker con assets, namespace y migración.
 
-Producción serializada sin cancelar uploads. Guard HEAD probado con commit actual (permitido), antiguo (omitido) y error GitHub (bloqueado). Interruptor CLOUDFLARE_DEPLOY_ENABLED=true tras configuración manual: sin activar, CI se ejecuta pero producción se omite. No pages deploy duplicado; guía de Pages Git si ya existe y desactivación de Workers Builds para el mismo Worker.
+Producción serializada sin cancelar uploads. Guard HEAD probado con commit actual (permitido), antiguo (omitido) y error
+GitHub (bloqueado). Interruptor CLOUDFLARE_DEPLOY_ENABLED=true tras configuración manual: sin activar, CI se ejecuta
+pero producción se omite. No pages deploy duplicado; guía de Pages Git si ya existe y desactivación de Workers Builds
+para el mismo Worker.
 
-Verificación: YAML parseado, orden secuencial/condiciones/secretos y ausencia de bypass validados; script guard parseado y probado en entorno sintético. 69 tests locales, typecheck, build, check:worker, runtime y navegador correctos. npm ci se ejecutará en runner limpio; no se ha ejecutado deploy ni autenticado Cloudflare, inspeccionado conexiones del panel o configurado secretos. Primera ejecución GitHub Actions y aceptación remota pendientes de activación. La guía CI_CD.md sustituye el despliegue manual por versión según autorización actual.
+Verificación: YAML parseado, orden secuencial/condiciones/secretos y ausencia de bypass validados; script guard parseado
+y probado en entorno sintético. 69 tests locales, typecheck, build, check:worker, runtime y navegador correctos. npm ci
+se ejecutará en runner limpio; no se ha ejecutado deploy ni autenticado Cloudflare, inspeccionado conexiones del panel o
+configurado secretos. Primera ejecución GitHub Actions y aceptación remota pendientes de activación. La guía CI_CD.md
+sustituye el despliegue manual por versión según autorización actual.
 
 ## JSON_TOO_LARGE — 14/10/2026
 
-Corrección documentada en JSON_SIZE_LIMITS.md: límite propio del adaptador 65.536 bytes y petición app 98.304, ahora constantes compartidas 4.194.304 por documento y 4.259.840 por petición, 100.000 unidades UTF-16 por descripción/comentario. Preflight cliente conserva datos y avisa archivo/bytes; servidor final valida también. Lectura Contents object y blob por SHA para JSON >1 MB, sin token/permisos nuevos ni truncamiento. ApiError conserva detalles de tamaño sin transformarlos en genérico.
+Corrección documentada en JSON_SIZE_LIMITS.md: límite propio del adaptador 65.536 bytes y petición app 98.304, ahora
+constantes compartidas 4.194.304 por documento y 4.259.840 por petición, 100.000 unidades UTF-16 por
+descripción/comentario. Preflight cliente conserva datos y avisa archivo/bytes; servidor final valida también. Lectura
+Contents object y blob por SHA para JSON >1 MB, sin token/permisos nuevos ni truncamiento. ApiError conserva detalles de
+tamaño sin transformarlos en genérico.
 
-73/73 tests correctos; typecheck/build/check:worker/runtime correctos. Nuevas regresiones: fixture tecnics.json de 1.177.040 bytes con textos extensos en varias posiciones y enlaces/acentos; escritura y descarga exacta; >1 MB por blob/SHA tras fallo/reintento; límites exacto/+1 byte, streaming y mensajes de archivo. Browser correcto: nueve descripciones largas, rechazo 413 simulado del antiguo límite, recuperación en la misma sesión sin borrar IndexedDB, reload y segundo contexto con textos idénticos. Se descubrió y corrigió carrera del autosave: guardados de técnicas serializados, cargas viejas descartadas y sync espera guardado local. No modificaciones ni lectura de datos reales del propietario; tamaño de su JSON pendiente desconocido, no confundido con fixture.
+73/73 tests correctos; typecheck/build/check:worker/runtime correctos. Nuevas regresiones: fixture tecnics.json de
+1.177.040 bytes con textos extensos en varias posiciones y enlaces/acentos; escritura y descarga exacta; >1 MB por
+blob/SHA tras fallo/reintento; límites exacto/+1 byte, streaming y mensajes de archivo. Browser correcto: nueve
+descripciones largas, rechazo 413 simulado del antiguo límite, recuperación en la misma sesión sin borrar IndexedDB,
+reload y segundo contexto con textos idénticos. Se descubrió y corrigió carrera del autosave: guardados de técnicas
+serializados, cargas viejas descartadas y sync espera guardado local. No modificaciones ni lectura de datos reales del
+propietario; tamaño de su JSON pendiente desconocido, no confundido con fixture.
 
-La ejecución real de Actions del nuevo commit y su paso efectivo de deploy se revisan después de subir; comprobaciones locales no equivalen a publicación en Cloudflare. No cambiar credenciales o datos de negocio.
+La ejecución real de Actions del nuevo commit y su paso efectivo de deploy se revisan después de subir; comprobaciones
+locales no equivalen a publicación en Cloudflare. No cambiar credenciales o datos de negocio.
 
 ### Continuidad de sesiones largas en PDF — 14/10/2026
 
-Eliminado el rechazo de sesiones que no caben en una página. Regresión automatizada: una sesión extensa produce varias tarjetas a ancho completo, sin desbordar el área imprimible ni modificar el plan original. 73/73 tests, typecheck, build, check:worker, runtime y navegador correctos. Validación visual adicional: PDF de seis páginas (portada y cinco partes de una sesión), con todos los marcadores de inicio y fin de las cinco descripciones recuperados del texto del PDF, sin recortes y con identificación de continuación. La publicación se verifica en la ejecución de GitHub Actions del commit correspondiente.
+Eliminado el rechazo de sesiones que no caben en una página. Regresión automatizada: una sesión extensa produce varias
+tarjetas a ancho completo, sin desbordar el área imprimible ni modificar el plan original. 73/73 tests, typecheck,
+build, check:worker, runtime y navegador correctos. Validación visual adicional: PDF de seis páginas (portada y cinco
+partes de una sesión), con todos los marcadores de inicio y fin de las cinco descripciones recuperados del texto del
+PDF, sin recortes y con identificación de continuación. La publicación se verifica en la ejecución de GitHub Actions del
+commit correspondiente.
 
 ### Eliminaciones estructurales futuras — 14/10/2026
 
-Decisión APROBADA en ANALISIS_CAMBIOS_ESTRUCTURALES.md y apartado 17 de requisitos. Antes solo se propagaban textos futuros; eliminar catálogo no retiraba UUID de la distribución de planes. Ahora se comparte el motor circular y se persiste continuidad por frontera, catálogo anterior a la primera eliminación, tombstones server-owned y checkpoints por plan. Los históricos y torneos finalizados quedan literalmente intactos. Legados ambiguos/cursor inconsistente o catálogo sin continuidad entrenable bloquean la actualización, preservan la distribución y no se anuncian como sincronizados.
+Decisión APROBADA en ANALISIS_CAMBIOS_ESTRUCTURALES.md y apartado 17 de requisitos. Antes solo se propagaban textos
+futuros; eliminar catálogo no retiraba UUID de la distribución de planes. Ahora se comparte el motor circular y se
+persiste continuidad por frontera, catálogo anterior a la primera eliminación, tombstones server-owned y checkpoints por
+plan. Los históricos y torneos finalizados quedan literalmente intactos. Legados ambiguos/cursor inconsistente o
+catálogo sin continuidad entrenable bloquean la actualización, preservan la distribución y no se anuncian como
+sincronizados.
 
-91/91 tests correctos, typecheck, build, check:worker y test:runtime correctos. 18 regresiones nuevas de dominio/API cubren eliminación de técnica pendiente o ya entrenada, posición parcial o completa, desaparición de prioridades y una sola prioridad, N exacto, fechas/Tábata, continuidad sin relleno, secuencia original del generador con prioridades no consecutivas, determinismo/idempotencia, frontera que avanza, protección de hoy/torneos finalizados, todos los planes activos, aislamiento entre alumnos, fan-out interrumpido 503 y relectura/reintento SHA 409, rechazo de tombstones falsificados, catálogo vacío y restauración compatible, migración fiable de legados completos/cortos y rechazo de distribución/cursor corruptos. El camino exclusivo de textos no regenera planes; ante bloqueo estructural tampoco altera sus snapshots.
+91/91 tests correctos, typecheck, build, check:worker y test:runtime correctos. 18 regresiones nuevas de dominio/API
+cubren eliminación de técnica pendiente o ya entrenada, posición parcial o completa, desaparición de prioridades y una
+sola prioridad, N exacto, fechas/Tábata, continuidad sin relleno, secuencia original del generador con prioridades no
+consecutivas, determinismo/idempotencia, frontera que avanza, protección de hoy/torneos finalizados, todos los planes
+activos, aislamiento entre alumnos, fan-out interrumpido 503 y relectura/reintento SHA 409, rechazo de tombstones
+falsificados, catálogo vacío y restauración compatible, migración fiable de legados completos/cortos y rechazo de
+distribución/cursor corruptos. El camino exclusivo de textos no regenera planes; ante bloqueo estructural tampoco altera
+sus snapshots.
 
-Chromium local: borrado por interfaz offline, catálogo inmediato, plan futuro proyectado sin UUID borrado, histórico intacto, N mantenido, ausencia de escrituras remotas offline, reload conservado, sync y descarga idéntica en IndexedDB de un segundo contexto/dispositivo, segundo sync idempotente. Vaciado completo mediante UI: aviso recuperable en PlanView y estado «Sincronización incompleta» en vez de «Sincronizado». Pasan también las regresiones anteriores de perfil, permisos, PWA/PDF offline, login y responsive. Todos los datos son sintéticos; no se modifican secretos ni datos de alumnos reales durante las pruebas. No afirmar validación Safari/iOS.
+Chromium local: borrado por interfaz offline, catálogo inmediato, plan futuro proyectado sin UUID borrado, histórico
+intacto, N mantenido, ausencia de escrituras remotas offline, reload conservado, sync y descarga idéntica en IndexedDB
+de un segundo contexto/dispositivo, segundo sync idempotente. Vaciado completo mediante UI: aviso recuperable en
+PlanView y estado «Sincronización incompleta» en vez de «Sincronizado». Pasan también las regresiones anteriores de
+perfil, permisos, PWA/PDF offline, login y responsive. Todos los datos son sintéticos; no se modifican secretos ni datos
+de alumnos reales durante las pruebas. No afirmar validación Safari/iOS.
 
-La ejecución del workflow y su paso efectivo de publicación en Cloudflare se comprueban después de subir este commit; los tests locales no equivalen a despliegue remoto.
+La ejecución del workflow y su paso efectivo de publicación en Cloudflare se comprueban después de subir este commit;
+los tests locales no equivalen a despliegue remoto.
 
-Regresión adicional: recuperar el catálogo tras un bloqueo y borrar nuevamente el mismo UUID dispara un nuevo evento de eliminación, sin confundirse con el checkpoint anterior.
+Regresión adicional: recuperar el catálogo tras un bloqueo y borrar nuevamente el mismo UUID dispara un nuevo evento de
+eliminación, sin confundirse con el checkpoint anterior.
 
 ### Panel derecho del entrenador por secciones — 14/10/2026
 
-Ficha del alumno separada en Técnicas (por defecto en cada selección), Planes y Administración (rol y contraseña). Identidad seleccionada independiente del snapshot; resaltado inmediato durante fetch, spinner accesible y mensaje inicial reservado a ausencia de selección. Secuencia de peticiones descarta respuestas antiguas y se invalida al cerrar sesión; recarga tras guardar comentarios conserva la sección. Fallo de carga conserva selección y ofrece reintento.
+Ficha del alumno separada en Técnicas (por defecto en cada selección), Planes y Administración (rol y contraseña).
+Identidad seleccionada independiente del snapshot; resaltado inmediato durante fetch, spinner accesible y mensaje
+inicial reservado a ausencia de selección. Secuencia de peticiones descarta respuestas antiguas y se invalida al cerrar
+sesión; recarga tras guardar comentarios conserva la sección. Fallo de carga conserva selección y ofrece reintento.
 
-91/91 tests, typecheck, build, compilación Worker y runtime correctos. Regresión de navegador añadida: petición de snapshot retenida con una promesa, alumno resaltado durante carga, spinner visible y mensaje inicial ausente; Técnicas por defecto, contenido exclusivo por sección, Planes sin asignaciones con mensaje, Administración con rol/restablecimiento y vuelta a Técnicas al seleccionar de nuevo. Se mantienen pruebas de comentarios, responsive, PWA/offline, perfil, planes y recálculos. Sin datos reales ni cambios de permisos/API.
+91/91 tests, typecheck, build, compilación Worker y runtime correctos. Regresión de navegador añadida: petición de
+snapshot retenida con una promesa, alumno resaltado durante carga, spinner visible y mensaje inicial ausente; Técnicas
+por defecto, contenido exclusivo por sección, Planes sin asignaciones con mensaje, Administración con
+rol/restablecimiento y vuelta a Técnicas al seleccionar de nuevo. Se mantienen pruebas de comentarios, responsive,
+PWA/offline, perfil, planes y recálculos. Sin datos reales ni cambios de permisos/API.
 
 ### Optimización de fichas del entrenador — 14/10/2026
 
-Causa, recorrido, instrumentación y cifras en RENDIMIENTO_ENTRENADOR.md. Snapshot completo sin caché/known, verificaciones repetidas de fuentes por cada plan y lectura secuencial de todos los planes bloqueaban incluso Técnicas. Nueva lectura parcial por sección, manifiesto/detalle de planes, IndexedDB por identidad/sección, background, SHA, marcadores de coordinación y concurrencia limitada, sin cambiar algoritmo ni trabajar con alumnos reales. Tests de API y Chromium cubren ausencia de descargas innecesarias, primera/segunda apertura, grandes textos y 20 planes, copia visible con red retenida, offline, múltiples identidades, cambios de sesión durante fetch, revocación, deduplicación y working set dirty intacto. Validación final y paso efectivo de Actions se revisan antes de dar por concluida la publicación.
+Causa, recorrido, instrumentación y cifras en RENDIMIENTO_ENTRENADOR.md. Snapshot completo sin caché/known,
+verificaciones repetidas de fuentes por cada plan y lectura secuencial de todos los planes bloqueaban incluso Técnicas.
+Nueva lectura parcial por sección, manifiesto/detalle de planes, IndexedDB por identidad/sección, background, SHA,
+marcadores de coordinación y concurrencia limitada, sin cambiar algoritmo ni trabajar con alumnos reales. Tests de API y
+Chromium cubren ausencia de descargas innecesarias, primera/segunda apertura, grandes textos y 20 planes, copia visible
+con red retenida, offline, múltiples identidades, cambios de sesión durante fetch, revocación, deduplicación y working
+set dirty intacto. Validación final y paso efectivo de Actions se revisan antes de dar por concluida la publicación.
 
-Resultado final de esta optimización: 93/93 pruebas unitarias/API correctas; typecheck/build/check:worker/runtime correctos. Chromium de app y de caché correctos, incluido detalle individual de planes, render local antes de recibir red, offline, respuesta antigua con una nueva sesión simultánea, edición y baseline local más recientes durante fetch y revocación. Banco de rendimiento ejecutado antes/después con código antiguo fe55820f y código actual; aserciones de descargas incorporadas en test:performance y en Actions antes del deploy. Métodos y cifras en RENDIMIENTO_ENTRENADOR.md; tiempos de producción no medidos.
+Resultado final de esta optimización: 93/93 pruebas unitarias/API correctas; typecheck/build/check:worker/runtime
+correctos. Chromium de app y de caché correctos, incluido detalle individual de planes, render local antes de recibir
+red, offline, respuesta antigua con una nueva sesión simultánea, edición y baseline local más recientes durante fetch y
+revocación. Banco de rendimiento ejecutado antes/después con código antiguo fe55820f y código actual; aserciones de
+descargas incorporadas en test:performance y en Actions antes del deploy. Métodos y cifras en RENDIMIENTO_ENTRENADOR.md;
+tiempos de producción no medidos.
 
 ### Selector de rol del entrenador — 14/10/2026
 
-Causa: onChange leía e.target.value dentro de run después de esperar a los guardados locales. React restauraba antes el valor del select controlado y se enviaba el rol anterior. Capturar e.currentTarget.value sincrónicamente, mostrar la selección pendiente y deshabilitar solo el selector durante el guardado. Refrescar perfil/SHA confirmados; revertir visualmente ante error. Regresión Chromium: Alumno → Entrenador → Alumno, comprobando valor visible y persistencia remota de ambas transiciones. Sin cambios de permisos ni de revocación de sesiones del usuario afectado.
+Causa: onChange leía e.target.value dentro de run después de esperar a los guardados locales. React restauraba antes el
+valor del select controlado y se enviaba el rol anterior. Capturar e.currentTarget.value sincrónicamente, mostrar la
+selección pendiente y deshabilitar solo el selector durante el guardado. Refrescar perfil/SHA confirmados; revertir
+visualmente ante error. Regresión Chromium: Alumno → Entrenador → Alumno, comprobando valor visible y persistencia
+remota de ambas transiciones. Sin cambios de permisos ni de revocación de sesiones del usuario afectado.
 
 ### Estados de sincronización y feedback de competición — 14/10/2026
 
-95/95 tests correctos, typecheck/build/check:worker/runtime correctos. Regresión de presentación: Sincronizado verde solo sin dirty/proyecciones/planes bloqueados/borradores de perfil; errores, offline y cola no muestran éxito. Guardado local y resolución local avisan pendientes; importación conserva su aviso. Chromium correcto: verde tras sync, desaparece después de edición offline, campos de perfil sin guardar preservados durante sync, textarea del alumno readOnly y contenido idéntico, petición de competición retenida para comprobar spinner y submit deshabilitado, spinner retirado tras confirmación. Revisar capturas de creación y ficha de alumno; nueva etiqueta «Crear competición». Se mantienen los permisos, los cambios locales y los tests de caché/offline/regresión de roles. Publicación efectiva se verifica en Actions del commit correspondiente.
+95/95 tests correctos, typecheck/build/check:worker/runtime correctos. Regresión de presentación: Sincronizado verde
+solo sin dirty/proyecciones/planes bloqueados/borradores de perfil; errores, offline y cola no muestran éxito. Guardado
+local y resolución local avisan pendientes; importación conserva su aviso. Chromium correcto: verde tras sync,
+desaparece después de edición offline, campos de perfil sin guardar preservados durante sync, textarea del alumno
+readOnly y contenido idéntico, petición de competición retenida para comprobar spinner y submit deshabilitado, spinner
+retirado tras confirmación. Revisar capturas de creación y ficha de alumno; nueva etiqueta «Crear competición». Se
+mantienen los permisos, los cambios locales y los tests de caché/offline/regresión de roles. Publicación efectiva se
+verifica en Actions del commit correspondiente.
 
 ## Corrección de asignación de participantes (14/10/2026)
 
-La casilla captura checked antes de esperar la cola de guardado local. Regresión Chromium: retirar y volver a añadir un participante, verificando casilla y recuento confirmado por API. Se conservan permisos, SHA y generación de planes existentes.
-
+La casilla captura checked antes de esperar la cola de guardado local. Regresión Chromium: retirar y volver a añadir un
+participante, verificando casilla y recuento confirmado por API. Se conservan permisos, SHA y generación de planes
+existentes.
 
 ### Guardado explícito de participantes (14/10/2026)
 
-Selección de participantes en borrador: Chromium verifica respuesta inmediata, ninguna petición al marcar/desmarcar, deshabilitado al revertir, y dos guardados explícitos con recuento remoto confirmado.
-
+Selección de participantes en borrador: Chromium verifica respuesta inmediata, ninguna petición al marcar/desmarcar,
+deshabilitado al revertir, y dos guardados explícitos con recuento remoto confirmado.
 
 ## Desasignación con borrado individual — corrección del propietario (14/10/2026)
 
-Sustituye todas las reglas anteriores que conservaban visible el plan desasignado. Al guardar la desasignación, borrar el JSON individual remoto del participante, sin borrar la competición ni planes de otros alumnos. El índice mantiene tombstones por alumno; sincronizar elimina la copia local limpia incluso tras trabajar offline. Reasignar elimina el tombstone y genera un plan nuevo. El borrado explícito incluye sesiones históricas de ese plan; no altera las reglas de protección ante recálculos automáticos. Persistir tombstone antes del borrado para recuperar fallos parciales.
-
+Sustituye todas las reglas anteriores que conservaban visible el plan desasignado. Al guardar la desasignación, borrar
+el JSON individual remoto del participante, sin borrar la competición ni planes de otros alumnos. El índice mantiene
+tombstones por alumno; sincronizar elimina la copia local limpia incluso tras trabajar offline. Reasignar elimina el
+tombstone y genera un plan nuevo. El borrado explícito incluye sesiones históricas de ese plan; no altera las reglas de
+protección ante recálculos automáticos. Persistir tombstone antes del borrado para recuperar fallos parciales.
 
 ### Validación de fechas de competición (15/10/2026)
 
-El formulario señala el campo de fecha incorrecto, con mensaje asociado y validación nativa accesible. Torneo estrictamente posterior al inicio y máximo 730 días, conforme al dominio. Corregir el campo retira el error; no enviar solicitudes inválidas. Mantener validación backend. Pruebas de fechas imposibles/bisiestas, igualdad, anterioridad, rango y corrección/reintento.
-
+El formulario señala el campo de fecha incorrecto, con mensaje asociado y validación nativa accesible. Torneo
+estrictamente posterior al inicio y máximo 730 días, conforme al dominio. Corregir el campo retira el error; no enviar
+solicitudes inválidas. Mantener validación backend. Pruebas de fechas imposibles/bisiestas, igualdad, anterioridad,
+rango y corrección/reintento.
 
 ### Mínimo de descansos en nuevas competiciones (15/10/2026)
 
-Corrección del propietario: Cambio de roles y Entre técnicas requieren enteros entre 1 y 3600 segundos al crear competición. Formulario señala el campo mediante min=1 y validación nativa; Worker rechaza cero antes de escribir. Sustituye admisión de descansos cero para nuevas altas. Leer/exportar/recalcular planes históricos con cero sigue permitido sin modificar sus parámetros. Regresión: cero rechazado sin petición/escritura y uno aceptado.
-
+Corrección del propietario: Cambio de roles y Entre técnicas requieren enteros entre 1 y 3600 segundos al crear
+competición. Formulario señala el campo mediante min=1 y validación nativa; Worker rechaza cero antes de escribir.
+Sustituye admisión de descansos cero para nuevas altas. Leer/exportar/recalcular planes históricos con cero sigue
+permitido sin modificar sus parámetros. Regresión: cero rechazado sin petición/escritura y uno aceptado.
 
 ### Feedback de borrado y espera del entrenador (15/10/2026)
 
-Borrado de competición con estado inmediato y spinner accesible en su tarjeta; impedir doble envío y ediciones durante borrado, retirar estado ante fallo. Placeholder de alumno más compacto, título 21 px, texto 15 px; carga horizontal con spinner 28 px y título 18 px. Mantener diseño pizarra/azul y movimiento reducido. Prueba Chromium con petición de borrado retenida y confirmación de retirada de tarjeta.
-
+Borrado de competición con estado inmediato y spinner accesible en su tarjeta; impedir doble envío y ediciones durante
+borrado, retirar estado ante fallo. Placeholder de alumno más compacto, título 21 px, texto 15 px; carga horizontal con
+spinner 28 px y título 18 px. Mantener diseño pizarra/azul y movimiento reducido. Prueba Chromium con petición de
+borrado retenida y confirmación de retirada de tarjeta.
 
 ### Visibilidad de contraseña en login (15/10/2026)
 
-Botón de ojo integrado en el campo, accesible Mostrar/Ocultar contraseña, type=button; contraseña oculta inicialmente y al cambiar a registro. Cambia solo type del input, sin modificar valor ni enviar formulario. Chromium verifica mostrar/ocultar y conservación del texto antes de login.
-
+Botón de ojo integrado en el campo, accesible Mostrar/Ocultar contraseña, type=button; contraseña oculta inicialmente y
+al cambiar a registro. Cambia solo type del input, sin modificar valor ni enviar formulario. Chromium verifica
+mostrar/ocultar y conservación del texto antes de login.
 
 ### Trabajo por alumno en minutos y segundos (16/10/2026)
 
-Crear competición presenta Trabajo por alumno (min:seg), con valor inicial 3:00 y formato m:ss/mm:ss, entre 0:01 y 60:00. Convertir a segundos al enviar; conservar modelo, API, Tábata y planes existentes. Rechazar cero, segundos >=60 y duraciones superiores al máximo sin petición. Pruebas de conversión exacta y formulario, persistencia de 3:00 como 180 segundos.
+Crear competición presenta Trabajo por alumno (min:seg), con valor inicial 3:00 y formato m:ss/mm:ss, entre 0:01 y 60:
+00. Convertir a segundos al enviar; conservar modelo, API, Tábata y planes existentes. Rechazar cero, segundos >=60 y
+duraciones superiores al máximo sin petición. Pruebas de conversión exacta y formulario, persistencia de 3:00 como 180
+segundos.
 
+Validación de notificaciones internas de comentarios (16/10/2026): ver docs/VALIDACION_NOTIFICACIONES.md. Conserva
+intactos los resultados históricos anteriores.
 
-Validación de notificaciones internas de comentarios (16/10/2026): ver docs/VALIDACION_NOTIFICACIONES.md. Conserva intactos los resultados históricos anteriores.
+Nombre del entrenador en técnicas (16/10/2026): autor por comentario asignado por Worker a partir del perfil
+autenticado; UI muestra nombre y apellidos, offline incluido. Regresión API con dos entrenadores: payload falsificado
+ignorado, autor de texto sin cambios conservado y no-op sin commit, legado sin autor no atribuido, cambio de texto
+cambia autor y alumno no puede escribir comentarios. Chromium de notificaciones comprueba autor tras sync y recarga
+offline. No modifica planes/PDF.
 
+Mis planes por día (16/10/2026): consulta pura de planes locales del propietario, próxima fecha activa estrictamente
+futura Madrid y selección libre. Pruebas de aislamiento, histórico, vacío, múltiples sesiones/competiciones, orden
+estable e inmutabilidad. Chromium con dos competiciones de un alumno: fecha inicial, 2 sesiones y 5 ejercicios, cambio
+de calendario, vacío, selector inferior independiente, reload offline y cambio de cuenta. Capturas de escritorio/móvil
+en .browser-artifacts/own-day. Sin datos remotos reales ni aceptación Safari/iOS.
 
-Nombre del entrenador en técnicas (16/10/2026): autor por comentario asignado por Worker a partir del perfil autenticado; UI muestra nombre y apellidos, offline incluido. Regresión API con dos entrenadores: payload falsificado ignorado, autor de texto sin cambios conservado y no-op sin commit, legado sin autor no atribuido, cambio de texto cambia autor y alumno no puede escribir comentarios. Chromium de notificaciones comprueba autor tras sync y recarga offline. No modifica planes/PDF.
+Mis técnicas compactas (16/10/2026): Chromium verifica tarjetas cerradas, progreso por texto no vacío, indicadores
+individuales, recompensa completa y regreso a pendiente al vaciar, teclado, abrir/cerrar sin perder borradores,
+búsqueda, persistencia offline y posición vacía. Capturas compactas/abiertas 360/390/768/1440 en
+.browser-artifacts/repertoire. Regresión de notificaciones comprueba apertura de posición antes de foco. Pruebas
+generales de edición abren explícitamente las posiciones antes de usar campos antes visibles; conservación de pruebas de
+prioridad, guardado, conflictos, borrado y perfiles. Sin cuentas remotas ni validación Safari/iOS físico.
 
+Control de prioridad compacto (16/10/2026): cambio CSS, conserva +/−, áreas táctiles, mínimo 1 y guardado. Regresión de
+prioridad en test-browser; revisión visual de tarjetas abiertas 390/1440 mediante test-repertoire-cards.
 
-Mis planes por día (16/10/2026): consulta pura de planes locales del propietario, próxima fecha activa estrictamente futura Madrid y selección libre. Pruebas de aislamiento, histórico, vacío, múltiples sesiones/competiciones, orden estable e inmutabilidad. Chromium con dos competiciones de un alumno: fecha inicial, 2 sesiones y 5 ejercicios, cambio de calendario, vacío, selector inferior independiente, reload offline y cambio de cuenta. Capturas de escritorio/móvil en .browser-artifacts/own-day. Sin datos remotos reales ni aceptación Safari/iOS.
+Prioridad como subtítulo (16/10/2026): búsqueda exhaustiva de prefijos P en src sin restos generados. Mis técnicas y
+sesiones del día tienen aserciones de subtítulo y ausencia de prefijo. PDF de QA sintético renderizado con Poppler
+(páginas compacta y continuación), revisado sin cortes/solapamientos y extracción sin P1/P2. Unitarias de PDF preservan
+snapshots, orden, límites y no solapamiento; fixture denso ajusta longitud de descripción de 12 a 10 repeticiones para
+seguir verificando el caso de una tarjeta entera con la nueva línea adicional. Sesiones extensas continúan en varias
+páginas. Artefactos de QA internos; no se modifican archivos de usuarios.
 
+Nuevos participantes en día (16/10/2026): regresión API crea competición y asigna otro alumno sin snapshots/logins de
+alumnos; ambos aparecen. GET señala pendientes sin crear; POST autorizado los recupera, preservando literalmente el
+snapshot existente y siendo idempotente. Alumno recibe 403; catálogo vacío sigue pendiente sin plan ficticio. Chromium
+guarda participantes desde tarjeta, verifica aparición del alumno nuevo, elimina solo snapshot sintético para reproducir
+legado y pulsa Actualizar; los otros planes permanecen iguales. Sin datos remotos reales.
 
-Mis técnicas compactas (16/10/2026): Chromium verifica tarjetas cerradas, progreso por texto no vacío, indicadores individuales, recompensa completa y regreso a pendiente al vaciar, teclado, abrir/cerrar sin perder borradores, búsqueda, persistencia offline y posición vacía. Capturas compactas/abiertas 360/390/768/1440 en .browser-artifacts/repertoire. Regresión de notificaciones comprueba apertura de posición antes de foco. Pruebas generales de edición abren explícitamente las posiciones antes de usar campos antes visibles; conservación de pruebas de prioridad, guardado, conflictos, borrado y perfiles. Sin cuentas remotas ni validación Safari/iOS físico.
-
-
-Control de prioridad compacto (16/10/2026): cambio CSS, conserva +/−, áreas táctiles, mínimo 1 y guardado. Regresión de prioridad en test-browser; revisión visual de tarjetas abiertas 390/1440 mediante test-repertoire-cards.
-
-
-Prioridad como subtítulo (16/10/2026): búsqueda exhaustiva de prefijos P en src sin restos generados. Mis técnicas y sesiones del día tienen aserciones de subtítulo y ausencia de prefijo. PDF de QA sintético renderizado con Poppler (páginas compacta y continuación), revisado sin cortes/solapamientos y extracción sin P1/P2. Unitarias de PDF preservan snapshots, orden, límites y no solapamiento; fixture denso ajusta longitud de descripción de 12 a 10 repeticiones para seguir verificando el caso de una tarjeta entera con la nueva línea adicional. Sesiones extensas continúan en varias páginas. Artefactos de QA internos; no se modifican archivos de usuarios.
-
-
-Nuevos participantes en día (16/10/2026): regresión API crea competición y asigna otro alumno sin snapshots/logins de alumnos; ambos aparecen. GET señala pendientes sin crear; POST autorizado los recupera, preservando literalmente el snapshot existente y siendo idempotente. Alumno recibe 403; catálogo vacío sigue pendiente sin plan ficticio. Chromium guarda participantes desde tarjeta, verifica aparición del alumno nuevo, elimina solo snapshot sintético para reproducir legado y pulsa Actualizar; los otros planes permanecen iguales. Sin datos remotos reales.
-
-
-Título de Mis técnicas (16/10/2026): cambio exclusivo del encabezado a «Tu juego, técnica a técnica». npm test (117 pruebas), typecheck, build, check:worker, test:runtime y test:browser completados correctamente. Pruebas locales con datos sintéticos; sin cambios de comportamiento.
+Título de Mis técnicas (16/10/2026): cambio exclusivo del encabezado a «Tu juego, técnica a técnica». npm test (117
+pruebas), typecheck, build, check:worker, test:runtime y test:browser completados correctamente. Pruebas locales con
+datos sintéticos; sin cambios de comportamiento.
 
 ## Preparación DEV (19/10/2026)
 
-Informe separado en `docs/DEV_ENVIRONMENT.md`: unitarias 117/117, tipos/build/Worker/performance y dry-run DEV correctos; runtime falla en fixture temporal preexistente reproducido en main y navegador bloqueado por instalación Chromium. No se despliega ni se opera sobre PRO. No considerar completa la validación hasta resolver los pendientes.
-
+Informe separado en `docs/DEV_ENVIRONMENT.md`: unitarias 117/117, tipos/build/Worker/performance y dry-run DEV
+correctos; runtime falla en fixture temporal preexistente reproducido en main y navegador bloqueado por instalación
+Chromium. No se despliega ni se opera sobre PRO. No considerar completa la validación hasta resolver los pendientes.
 
 ### Firestore estructurado DEV — 21/10/2026
 
-165 pruebas unitarias y validaciones locales obligatorias satisfactorias. Chromium histórico y online aislado satisfactorios en Actions. Despliegue rechazado por la política de ramas del Environment development; limpieza, catálogo e integración real todavía pendientes. Informe, evidencias, límites y configuración necesaria: [VALIDACION_FIRESTORE_STRUCTURED.md](VALIDACION_FIRESTORE_STRUCTURED.md).
+165 pruebas unitarias y validaciones locales obligatorias satisfactorias. Chromium histórico y online aislado
+satisfactorios en Actions. Despliegue rechazado por la política de ramas del Environment development; limpieza, catálogo
+e integración real todavía pendientes. Informe, evidencias, límites y configuración
+necesaria: [VALIDACION_FIRESTORE_STRUCTURED.md](VALIDACION_FIRESTORE_STRUCTURED.md).

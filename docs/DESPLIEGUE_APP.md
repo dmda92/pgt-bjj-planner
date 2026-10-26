@@ -1,8 +1,11 @@
 # PGT — despliegue de la aplicación
 
-**CI/CD vigente:** configurar una vez [CI_CD.md](CI_CD.md). Después cada push a main publica automáticamente. Los comandos manuales siguientes quedan como referencia y contingencia; no ejecutarlos en paralelo con Actions.
+**CI/CD vigente:** configurar una vez [CI_CD.md](CI_CD.md). Después cada push a main publica automáticamente. Los
+comandos manuales siguientes quedan como referencia y contingencia; no ejecutarlos en paralelo con Actions.
 
-Estas acciones las ejecuta exclusivamente el propietario. Work no accede a Cloudflare ni despliega. El nombre, Durable Object SQLite y secretos de la prueba se mantienen. La interfaz estática del Worker pasa a ser la aplicación; los endpoints `/api/admin/*`, `/api/auth/*` y `/api/probe/*` siguen disponibles, aunque no se muestran en la nueva UI.
+Estas acciones las ejecuta exclusivamente el propietario. Work no accede a Cloudflare ni despliega. El nombre, Durable
+Object SQLite y secretos de la prueba se mantienen. La interfaz estática del Worker pasa a ser la aplicación; los
+endpoints `/api/admin/*`, `/api/auth/*` y `/api/probe/*` siguen disponibles, aunque no se muestran en la nueva UI.
 
 ## 1. Actualizar el checkout en Windows PowerShell
 
@@ -27,11 +30,14 @@ cd pgt-bjj-planner
 npm.cmd ci
 ```
 
-Continuar con las comprobaciones del bloque anterior, omitiendo cd/git pull cuando corresponda. Si git pull informa de cambios locales (por ejemplo el origen en wrangler.jsonc), conservarlos y resolverlos; no usar reset --hard ni borrar archivos de configuración para forzar la actualización.
+Continuar con las comprobaciones del bloque anterior, omitiendo cd/git pull cuando corresponda. Si git pull informa de
+cambios locales (por ejemplo el origen en wrangler.jsonc), conservarlos y resolverlos; no usar reset --hard ni borrar
+archivos de configuración para forzar la actualización.
 
 ## 2. Publicar el Worker y abrir la aplicación por su misma URL
 
-Para la primera comprobación usar la URL del Worker existente. No hace falta cambiar los secretos ni el algoritmo de contraseña. Compilar sin URL externa para que el frontend use la API del mismo origen:
+Para la primera comprobación usar la URL del Worker existente. No hace falta cambiar los secretos ni el algoritmo de
+contraseña. Compilar sin URL externa para que el frontend use la API del mismo origen:
 
 ```powershell
 Remove-Item Env:VITE_API_BASE_URL -ErrorAction SilentlyContinue
@@ -39,17 +45,25 @@ npm.cmd run build
 npx.cmd wrangler deploy
 ```
 
-Esta es la única orden que despliega; la ejecuta el propietario. Verificar que la cuenta sigue en Free. `wrangler.jsonc` contiene el origen real del Worker en ALLOWED_ORIGINS, sin dominio de ejemplo. El secreto del token no se pone en esa opción ni en ningún archivo versionado.
+Esta es la única orden que despliega; la ejecuta el propietario. Verificar que la cuenta sigue en Free. `wrangler.jsonc`
+contiene el origen real del Worker en ALLOWED_ORIGINS, sin dominio de ejemplo. El secreto del token no se pone en esa
+opción ni en ningún archivo versionado.
 
-Abrir `https://pgt-github-probe.david-dzm5.workers.dev`. La raíz muestra la nueva aplicación PGT. Si hay caché de la versión anterior, recargar; ante futuras actualizaciones usar el aviso de la PWA, sincronizando los cambios pendientes antes.
+Abrir `https://pgt-github-probe.david-dzm5.workers.dev`. La raíz muestra la nueva aplicación PGT. Si hay caché de la
+versión anterior, recargar; ante futuras actualizaciones usar el aviso de la PWA, sincronizando los cambios pendientes
+antes.
 
 ## 3. Crear el primer entrenador
 
 1. Registrar una cuenta PGT: siempre empieza como alumno.
-2. El propietario modifica exclusivamente `perfil` a `entrenador` en `PGT/users_data/<correo>/user_data.json` del repositorio privado. Conservar pwd, UUID, campos y otros archivos; no modificar hashes.
-3. Volver a iniciar sesión. El Worker consulta el rol actual; los entrenadores autorizados gestionan los demás roles desde la app. No hay clave de propietario ni endpoint de bootstrap.
+2. El propietario modifica exclusivamente `perfil` a `entrenador` en `PGT/users_data/<correo>/user_data.json` del
+   repositorio privado. Conservar pwd, UUID, campos y otros archivos; no modificar hashes.
+3. Volver a iniciar sesión. El Worker consulta el rol actual; los entrenadores autorizados gestionan los demás roles
+   desde la app. No hay clave de propietario ni endpoint de bootstrap.
 
-La plantilla operativa ya existe en el repo privado: `PGT/master_data/tecnics_base.json`, 17 posiciones/36 técnicas. El resto de archivos de negocio se inicializa al registrar alumnos y crear competiciones. Los registros de la prueba y sus JSON no se han modificado en esta entrega.
+La plantilla operativa ya existe en el repo privado: `PGT/master_data/tecnics_base.json`, 17 posiciones/36 técnicas. El
+resto de archivos de negocio se inicializa al registrar alumnos y crear competiciones. Los registros de la prueba y sus
+JSON no se han modificado en esta entrega.
 
 ## 4. Conectar Pages manualmente cuando la UI esté verificada
 
@@ -69,9 +83,12 @@ Conocer la URL HTTPS de Pages y actualizar el origen permitido del Worker desde 
 npx.cmd wrangler deploy --var "ALLOWED_ORIGINS:https://pgt-github-probe.david-dzm5.workers.dev,https://TU-PROYECTO.pages.dev"
 ```
 
-Sustituir TU-PROYECTO por el nombre real. Utilizar entonces la URL de Pages como entrada; se autorizan exactamente Pages y Worker. Guardar ambos en ALLOWED_ORIGINS de wrangler.jsonc para que futuros despliegues mantengan la lista. Las preview URLs no están habilitadas automáticamente. No ampliar CORS con '*'.
+Sustituir TU-PROYECTO por el nombre real. Utilizar entonces la URL de Pages como entrada; se autorizan exactamente Pages
+y Worker. Guardar ambos en ALLOWED_ORIGINS de wrangler.jsonc para que futuros despliegues mantengan la lista. Las
+preview URLs no están habilitadas automáticamente. No ampliar CORS con '*'.
 
-Los cambios en main podrán activar compilaciones automáticas de Pages **solo después de que el propietario configure esa integración**. Publicar Worker sigue siendo un paso separado y manual.
+Los cambios en main podrán activar compilaciones automáticas de Pages **solo después de que el propietario configure esa
+integración**. Publicar Worker sigue siendo un paso separado y manual.
 
 ## 5. Diagnóstico y rotación
 
@@ -81,7 +98,9 @@ Para escuchar logs sin que Work acceda a la cuenta:
 npx.cmd wrangler tail pgt-github-probe --format pretty
 ```
 
-Reproducir el fallo después de conectar tail. Una respuesta INTERNAL_ERROR incluye diagnosticId, correlacionado con un log seguro; nunca contiene error crudo, stack, hash, correo ni credenciales. Errores GitHub de token/caducidad/permisos/cuota se distinguen. La UI conserva los pendientes al fallar una sincronización.
+Reproducir el fallo después de conectar tail. Una respuesta INTERNAL_ERROR incluye diagnosticId, correlacionado con un
+log seguro; nunca contiene error crudo, stack, hash, correo ni credenciales. Errores GitHub de
+token/caducidad/permisos/cuota se distinguen. La UI conserva los pendientes al fallar una sincronización.
 
 Rotar el token privado antes de su caducidad, limitándolo a pgt-bjj-data, Contents Read and write:
 
@@ -89,7 +108,8 @@ Rotar el token privado antes de su caducidad, limitándolo a pgt-bjj-data, Conte
 npx.cmd wrangler secret put GITHUB_DATA_TOKEN
 ```
 
-Introducirlo únicamente en el prompt de Wrangler. El cambio de contraseña de un alumno revoca sus sesiones, preservando todos sus otros campos y documentos.
+Introducirlo únicamente en el prompt de Wrangler. El cambio de contraseña de un alumno revoca sus sesiones, preservando
+todos sus otros campos y documentos.
 
 Pruebas del navegador local (opcionales en el checkout del propietario):
 
@@ -98,20 +118,38 @@ npx.cmd playwright install chromium
 npm.cmd run test:browser
 ```
 
-Comprobar la matriz de aceptación de docs/VALIDACION.md tras publicar, particularmente login con cuenta nueva, edición offline, comentario de entrenador, asignación, PDF, conflicto real entre dos dispositivos y eliminación/desasignación.
+Comprobar la matriz de aceptación de docs/VALIDACION.md tras publicar, particularmente login con cuenta nueva, edición
+offline, comentario de entrenador, asignación, PDF, conflicto real entre dos dispositivos y eliminación/desasignación.
 
 ## Error 100324: redirección circular
 
-La regla `/* /index.html 200` del primer commit de la aplicación fue rechazada por Workers Assets por su interacción con la normalización de index.html. Se ha eliminado public/_redirects: la aplicación actual navega entre secciones mediante estado React y no utiliza rutas de navegador que necesiten un fallback SPA. La raíz se sirve como index.html mediante ASSETS y las rutas /api/* siguen entrando primero al Worker. Ejecutar git pull --ff-only y npm.cmd run build antes de repetir el despliegue; Vite limpia dist y elimina el _redirects antiguo. No modificar secretos ni el binding SQLite.
+La regla `/* /index.html 200` del primer commit de la aplicación fue rechazada por Workers Assets por su interacción con
+la normalización de index.html. Se ha eliminado public/_redirects: la aplicación actual navega entre secciones mediante
+estado React y no utiliza rutas de navegador que necesiten un fallback SPA. La raíz se sirve como index.html mediante
+ASSETS y las rutas /api/* siguen entrando primero al Worker. Ejecutar git pull --ff-only y npm.cmd run build antes de
+repetir el despliegue; Vite limpia dist y elimina el _redirects antiguo. No modificar secretos ni el binding SQLite.
 
 ## Recuperación de ORIGIN_FORBIDDEN (14/10/2026)
 
-Un POST de navegador envía Origin incluso en el mismo sitio; un GET de lectura puede no enviarlo. Un ALLOWED_ORIGIN de ejemplo o de otro dominio reproduce lectura con sesión funcionando y login/PUT rechazados. El peso no genera ese código. La validación de Origin ocurre antes de leer JSON o autenticar.
+Un POST de navegador envía Origin incluso en el mismo sitio; un GET de lectura puede no enviarlo. Un ALLOWED_ORIGIN de
+ejemplo o de otro dominio reproduce lectura con sesión funcionando y login/PUT rechazados. El peso no genera ese código.
+La validación de Origin ocurre antes de leer JSON o autenticar.
 
-Publicar después de git pull y build. Sincronizar o reabrir la misma cuenta propietaria de los pendientes; no borrar IndexedDB ni datos del sitio. Corregir un peso inválido y guardar localmente antes de sincronizar. El nuevo cliente rechaza peso inválido antes de persistir, pero no elimina automáticamente borradores previos.
+Publicar después de git pull y build. Sincronizar o reabrir la misma cuenta propietaria de los pendientes; no borrar
+IndexedDB ni datos del sitio. Corregir un peso inválido y guardar localmente antes de sincronizar. El nuevo cliente
+rechaza peso inválido antes de persistir, pero no elimina automáticamente borradores previos.
 
-ALLOWED_ORIGINS admite una lista separada por comas de orígenes exactos (esquema, host y puerto), sin rutas, barra final ni comodines. ALLOWED_ORIGIN antiguo sigue aceptado para compatibilidad: revisar y retirar valores antiguos no deseados. No se autorizan previews ni Origin null. Las llamadas sin Origin siguen requiriendo token/rol según endpoint; CORS no es autenticación.
+ALLOWED_ORIGINS admite una lista separada por comas de orígenes exactos (esquema, host y puerto), sin rutas, barra final
+ni comodines. ALLOWED_ORIGIN antiguo sigue aceptado para compatibilidad: revisar y retirar valores antiguos no deseados.
+No se autorizan previews ni Origin null. Las llamadas sin Origin siguen requiriendo token/rol según endpoint; CORS no es
+autenticación.
 
-No hay cookies de sesión: se usa Bearer PGT. OPTIONS de orígenes autorizados devuelve los encabezados CORS sin requerir sesión. El Service Worker no cachea /api/ ni peticiones externas y el build cambia su versión; activar la actualización tras guardar/sincronizar pendientes. Un cliente antiguo puede seguir mostrando la configuración eliminada, pero su endpoint devuelve 404.
+No hay cookies de sesión: se usa Bearer PGT. OPTIONS de orígenes autorizados devuelve los encabezados CORS sin requerir
+sesión. El Service Worker no cachea /api/ ni peticiones externas y el build cambia su versión; activar la actualización
+tras guardar/sincronizar pendientes. Un cliente antiguo puede seguir mostrando la configuración eliminada, pero su
+endpoint devuelve 404.
 
-PROBE_ADMIN_KEY ya no participa en el alta de entrenadores. Sigue requerido exclusivamente por los endpoints antiguos de viabilidad /api/admin/check y /api/admin/test-user; no es un secreto exclusivo del bootstrap y no debe borrarse mientras se conserven esos endpoints. GITHUB_DATA_TOKEN sigue necesario. Work no inspecciona ni cambia secretos de Cloudflare. El registro auxiliar app-bootstrap-done antiguo queda inerte, sin uso y sin borrar datos de sesión.
+PROBE_ADMIN_KEY ya no participa en el alta de entrenadores. Sigue requerido exclusivamente por los endpoints antiguos de
+viabilidad /api/admin/check y /api/admin/test-user; no es un secreto exclusivo del bootstrap y no debe borrarse mientras
+se conserven esos endpoints. GITHUB_DATA_TOKEN sigue necesario. Work no inspecciona ni cambia secretos de Cloudflare. El
+registro auxiliar app-bootstrap-done antiguo queda inerte, sin uso y sin borrar datos de sesión.
