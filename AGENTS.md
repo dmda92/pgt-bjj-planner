@@ -413,27 +413,26 @@ informes finales pueden quedar en una PR documental para revisión sin provocar 
 ## Optimización Spark — instrucción vigente 21/10/2026
 
 Sustituye las instrucciones anteriores de ejecutar preflight CRUD/QA/inventario/limpieza reales tras cada deploy. CI y
-navegador usan transportes aislados por defecto. La batería extensa nunca puede apuntar a Google. Sin pruebas de
-carga/volumen/rendimiento reales, bucles de alta/borrado, inventarios completos por prueba ni reintentos automáticos de
-QA fallida. No ampliar facturación. Mantener feature/firestore-structured-model y PR a develop **sin merge automático**
+navegador usan transportes aislados por defecto. Las campañas E2E expresamente autorizadas por el propietario pueden
+probar DEV real; no exigir conocer la cuota actual como condición previa. Mantener las pruebas de carga/volumen y
+fallos destructivos en entornos aislados, evitar inventarios completos por prueba y reintentos agresivos.
+No ampliar facturación. Mantener feature/firestore-structured-model y PR a develop **sin merge automático**
 conforme al último encargo.
 
-Prueba real mínima solo con cuota actual fiable y plan local que incluya limpieza: 200 lecturas estimadas, 150
-escrituras (ampliación expresa del propietario para incluir alta), 50 eliminaciones, dos usuarios sintéticos y una
-ejecución por cambio relevante. Cuota desconocida/cercana al límite: continuar offline y posponer Google. El contador
-por instancia no es un presupuesto global de DO; no habilitar runner remoto hasta integrar esa garantía. Estado,
-mediciones y límites en docs/FIRESTORE_CONSUMO_DEV.md. No tocar cuentas/planes creados por el propietario ni borrar
-datos no clasificados.
+Las cifras históricas de la prueba mínima (200 lecturas estimadas, 150 escrituras, 50 eliminaciones y dos usuarios
+sintéticos) no limitan una campaña E2E completa autorizada posteriormente. Preparar inventario y limpieza de los datos
+QA propios; no exigir al propietario lecturas, escrituras o borrados actuales para comenzar o reanudar las pruebas.
+El contador por instancia no es un presupuesto global de DO. Estado y mediciones históricas en
+docs/FIRESTORE_CONSUMO_DEV.md. No tocar cuentas/planes creados por el propietario ni borrar datos no clasificados.
 
 El contador global privado ExecutionBudget ya usa un ledger SQLite compartido y una reserva de limpieza, probado en
-runtime aislado. Esto no habilita un runner público real: debe propagar el mismo contexto a todas sus operaciones y
-pasar el gate de cuota antes de activar cualquier HTTP Google. No describir la API ordinaria como presupuestada mientras
-esa entrada siga deshabilitada.
+runtime aislado. No describir la API ordinaria como presupuestada mientras esa entrada siga deshabilitada.
+El runner E2E autorizado puede usar la API ordinaria DEV sin depender del endpoint privado de smoke ni de un gate de cuota.
 
 El propietario ordena posteriormente «terminsa y despliega en desarrollo». Autoriza completar la prueba mínima, fusionar
 la PR de esta feature en develop tras CI y desplegar exclusivamente DEV; sustituye para esta entrega la espera de
-revisión sin merge. No autoriza main/PRO ni pruebas reales con cuota desconocida. La prueba mínima está conectada a
-/api/dev/budget-smoke, solo administración autenticada, un usuario por build, cuota reciente y contador compartido con
+revisión sin merge. No autoriza main/PRO. La prueba mínima histórica está conectada a
+/api/dev/budget-smoke, solo administración autenticada, un usuario por build y contador compartido con
 limpieza reservada. workflow_dispatch operation=smoke es explícito; push/deploy no ejecutan Google QA.
 
 ## Altas estructurales futuras DEV — autorización 22/10/2026
@@ -446,7 +445,7 @@ cursor esperan siguiente pasada. Una prioridad nueva entra en el anillo ordenado
 conservando fase -1/+2. Fuente normativa: apartado 11.3 y docs/PLAN_ADICIONES_DEV.md. Este encargo sustituye las
 restricciones históricas que dejaban las altas pendientes, sin activar cambios aislados de prioridad/reordenación. Se
 autoriza PR y merge a develop tras CI, exclusivamente DEV. Feature nace de main antes de incorporar develop. No
-modificar main/PRO ni ejecutar Google QA sin cuota fiable.
+modificar main/PRO; las campañas QA DEV autorizadas se rigen por la corrección vigente sobre cuota.
 
 ## Corrección de nombres en planes DEV — 22/10/2026
 
@@ -465,7 +464,7 @@ sin cambiar algoritmo ni resultados de negocio. El origen de migración es GitHu
 fijado por commit, solo lectura; no Firestore DEV. No modificar/borrar el origen ni mezclar DEV anterior.
 Conservar importador read-only independiente para el futuro corte PRO; fuera del runtime.
 Roles/contraseñas por vía controlada, offline de consulta completo tras descarga.
-No ejecutar Google ni importación/activación sin inventario y presupuesto fiable; no desplegar PRO.
+La importación/activación requiere inventario y presupuesto fiable; no desplegar PRO.
 Plan y evidencia: docs/FIRESTORE_V2_IMPLEMENTACION.md y docs/VALIDACION_FIRESTORE_V2.md.
 
 ### Integración y despliegue DEV V2 autorizados — 26/10/2026
@@ -525,3 +524,20 @@ de soporte a develop y promoción develop -> main; pedir autorización específi
 del merge a main que activa despliegue. No repetir migración ni conciliar cambios GitHub.
 El propietario añadió FIRESTORE_SERVICE_ACCOUNT_JSON al Worker PRO, republicando
 la versión antigua sin cambiar sus bindings. Conservar secretos y DO históricos.
+
+## Campaña E2E DEV — corrección del propietario 28/10/2026
+
+El propietario retira expresamente el requisito de conocer la cuota actual de Firestore y ordena continuar la campaña
+completa contra el DEV publicado. No pedir contadores de lecturas, escrituras o borrados para ejecutar o reanudar QA.
+Esta instrucción sustituye los gates históricos incompatibles de cuota, smoke mínimo y habilitación del runner para
+esta campaña. Usar Chromium/Playwright y cuentas nuevas propias de QA; conservar resultados y evidencias por intento.
+Los fallos destructivos y las pruebas de volumen siguen en entorno aislado. No autoriza modificar producción,
+facturación, secretos, reglas globales, datos ajenos a QA, ni desplegar cambios de aplicación durante la campaña.
+
+### Cierre PRO e integracion QA autorizados
+
+El propietario autorizo expresamente completar PR, merge y despliegue PRO. PR #33
+fusionada en main 1481bb7; despliegue e aislamiento DEV/PRO verificados. El nuevo
+encargo integra los cambios locales de infraestructura QA en develop por PR, sin
+publicar credenciales, catalogo privado, resultados ni evidencias. No autoriza otra
+publicacion PRO ni una nueva campana remota de QA por el mero hecho de integrar.

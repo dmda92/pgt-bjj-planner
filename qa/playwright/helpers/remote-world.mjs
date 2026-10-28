@@ -1,7 +1,7 @@
 import { chromium, expect } from '@playwright/test';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { campaign } from './case-test.mjs';
+import { campaign, manifest } from './case-test.mjs';
 let shared;
 export async function getWorld() {
     if (shared) return shared;
@@ -15,7 +15,7 @@ async function openWorld() {
     const users = existsSync(privatePath) ? JSON.parse(readFileSync(privatePath, 'utf8')) : {
         T: { ...config.trainer, role: 'entrenador' },
         ...Object.fromEntries(['A', 'B', 'C'].map(role => [role, { mail: `qa-${Date.now()}-${role.toLowerCase()}@example.test`,
-            password: 'QA-' + crypto.randomUUID(), nombre: `QA ${role}`, apellidos: 'Campaña 26 octubre', role: 'alumno' }]))
+            password: 'QA-' + crypto.randomUUID(), nombre: `QA ${role}`, apellidos: `Campaña ${manifest.campaign}`, role: 'alumno' }]))
     };
     const statePath = resolve(campaign, 'world-state.json');
     const state = existsSync(statePath) ? JSON.parse(readFileSync(statePath, 'utf8')) : { planIds: [], createdUsers: [], network: [], guards: [] };
@@ -78,7 +78,17 @@ async function openWorld() {
             if (await page.getByRole('button', { name: 'Salir', exact: true }).count()) return page;
             await page.getByLabel('Correo', { exact: true }).fill(user.mail);
             await page.getByLabel('Contraseña', { exact: true }).fill(user.password);
-            await page.getByRole('button', { name: 'Entrar', exact: true }).click();
+            for (let attempt = 0; attempt < 3; attempt++) {
+                const pending = page.waitForResponse(r => r.url().endsWith('/api/v2/auth/login') && r.request().method() === 'POST', { timeout: 60000 });
+                await page.getByRole('button', { name: 'Entrar', exact: true }).click();
+                const response = await pending;
+                if (response.status() !== 429) break;
+                const seconds = Number(response.headers()['retry-after']);
+                if (!Number.isFinite(seconds) || seconds < 1 || seconds > 120) throw Error('QA login rate limit has no bounded Retry-After');
+                state.rateLimits ||= []; state.rateLimits.push({ role, seconds, at: new Date().toISOString() }); persist();
+                if (attempt === 2) throw Error('QA login still rate limited after bounded retries');
+                await new Promise(resolve => setTimeout(resolve, seconds * 1000));
+            }
             await expect(page.getByRole('heading', { name: 'Tu repertorio' })).toBeVisible({ timeout: 60000 });
             await expect(page.locator('.sync-success')).toBeVisible({ timeout: 60000 }); return page;
         },

@@ -7,7 +7,12 @@ import { getWorld } from '../helpers/remote-world.mjs';
 import { createCompetition, ensurePlan, plan, selectStudent, describe, datePlus, madridToday, openPosition, awaitCommand } from '../helpers/remote-actions.mjs';
 import { createLocalAcademy } from '../helpers/local-academy.mjs';
 let w;
-test.beforeAll(async () => { w = await getWorld(); for (const role of ['T', 'A', 'B', 'C']) await w.login(role); });
+test.beforeEach(async ({}, info) => {
+    // PRE06 reads only this campaign's independent oracle and local evidence.
+    // Filtering that case must not register or authenticate remote users.
+    if (info.title.startsWith('PRE 06 ')) return;
+    if (!w) { w = await getWorld(); for (const role of ['T', 'A', 'B', 'C']) await w.login(role); }
+});
 test.afterAll(async () => w?.close());
 const norm = s => s.normalize('NFC').replace(/\s+/g, ' ').trim();
 const compact = s => s.normalize('NFC').replace(/\s+/g, '');
@@ -77,8 +82,7 @@ caseTest('PDF 02', { users: ['A'] }, async ({}, r) => {
         expect(pdf.pages.every(p => p.images > 0)).toBe(true); expect(pdf.text).not.toContain('pgt-github-probe-dev.david-dzm5.workers.dev');
         await r.json('layout-basics', { pages: pdf.pages.length, imageEveryPage: pdf.pages.every(p => p.images > 0), reviewedPages: [1, Math.ceil(pdf.pages.length / 2), pdf.pages.length] });
     });
-    r.result.evidence.push(resolve(campaign,'evidence','PDF-02','visual-review','visual-review.json'));
-    r.finish('APROBADO', 'Introducción literal completa, logo y ausencia de cabeceras de impresión comprobados; revisión visual independiente de páginas primera, intermedias y última adjunta, con hash del PDF original.');
+    r.finish('PARCIAL', 'Introducción literal completa, logo y ausencia de cabeceras de impresión comprobados automáticamente.', 'Pendiente de revisión visual real del PDF descargado en esta campaña; no se adjunta una evidencia visual inexistente.');
 });
 caseTest('PDF 03', { users: ['C', 'T'] }, async ({}, r) => {
     const id = await longFixture(), text = Array.from({ length: 100 }, (_, i) => `QA línea extensa ${String(i).padStart(3, '0')}: descripción completa para practicar con continuidad y conservar todo el texto.`).join('\n') + '\nFIN_TEXTO_PDF_LARGO';
@@ -114,7 +118,8 @@ caseTest('PDF 05', { environment: 'DEV real + plan legado en Worker local sinté
     const context = await browser.newContext(), p = await context.newPage();
     try {
         await r.step('Publicar solo fixture legado con descansos cero y exportar PDF', async () => {
-            const created = await a.call('commands/competition', { competition: c, expected: '1', operationId: crypto.randomUUID() }, a.trainer.token), legacyId = created.metadata.planId;
+            const catalog = await a.call('catalog', undefined, a.trainer.token);
+            const created = await a.call('commands/competition', { competition: c, expected: catalog.version, operationId: crypto.randomUUID() }, a.trainer.token), legacyId = created.metadata.planId;
             const source = (await a.call('users/' + encodeURIComponent(user.profile.mail) + '/plans/' + legacyId, undefined, user.token)).data;
             source.descanso_entre_ciclos_segundos = 0; source.descanso_entre_tecnicas_segundos = 0; await a.seedPlan(source);
             await a.login(p, user.profile.mail); await p.getByRole('button', { name: /^Mis planes/ }).click(); await p.getByLabel('Mi plan', { exact: true }).selectOption(legacyId);

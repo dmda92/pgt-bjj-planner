@@ -27,7 +27,7 @@ caseTest('PRE 01', { users: ['T','A','B'], environment: 'DEV real; tres contexto
             }
             await r.json('three-independent-stores',{chromium:browser.version(),os:process.platform,stores,physicalMobile:false});
         });
-        r.finish('APROBADO','Versión DEV/URL/Chromium registrados y tres almacenes completos independientes comprobados; sesiones autenticadas T/A/B y A2 constan en PRE02.','Windows Chromium headless; Android/iOS físicos no disponibles ni declarados probados.');
+        r.finish('APROBADO','Versión DEV/URL/Chromium registrados y tres almacenes completos independientes comprobados. La autenticación y el registro de usuarios se evalúan por separado en PRE02.','Windows Chromium headless; Android/iOS físicos no disponibles ni declarados probados.');
     } finally { for(const c of contexts) await c.close(); }
 });
 caseTest('TEC 04',{users:['A','A2','C','C2']}, async ({},r)=>{

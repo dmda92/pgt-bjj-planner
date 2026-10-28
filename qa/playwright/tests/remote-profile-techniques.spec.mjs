@@ -62,7 +62,13 @@ caseTest('PRO 04', async ({}, r) => {
     await r.step('Guardar los cinco cinturones y nacimiento opcional/válido', async () => {
         for (const belt of ['Blanco', 'Azul', 'Morado', 'Marrón', 'Negro']) {
             await p.getByLabel('Cinturón', { exact: true }).selectOption(belt); await p.locator('[name=fecha]').fill(belt === 'Blanco' ? '' : '2000-02-29');
-            await saveProfile(p); const snapshot = await w.snapshot(); expect(snapshot.profile.data.cinturon).toBe(belt); checks.push({ belt, date: snapshot.profile.data.fecha_nacimiento });
+            await expect(p.getByLabel('Cinturón', { exact: true })).toHaveValue(belt);
+            const request = p.waitForRequest(q => q.url().endsWith('/commands/profile') && q.method() === 'POST');
+            await saveProfile(p);
+            await r.json('belt-command-' + belt, { submittedBelt: (await request).postDataJSON().data.cinturon });
+            await expect(p.locator('.sync-success')).toBeVisible({ timeout: 60000 });
+            await expect.poll(async () => (await w.snapshot()).profile.data.cinturon).toBe(belt);
+            const snapshot = await w.snapshot(); checks.push({ belt, date: snapshot.profile.data.fecha_nacimiento });
         }
     });
     await r.step('Rechazar datos inválidos también en el servidor', async () => {

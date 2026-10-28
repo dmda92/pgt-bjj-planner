@@ -188,6 +188,49 @@ def evidence_text(value, output):
             displayed.append(str(reference))
     return '\n'.join(displayed)
 
+def refresh_campaign_summary(root, paragraphs, campaign, counts, total):
+    """Replace prior campaign results for raw and already-filled protocols."""
+    start = next((i for i, p in enumerate(paragraphs)
+                  if text(p).startswith('Resultados de la campaña')), None)
+    if start is None:
+        return
+    introductions = ('Este documento sustituye el protocolo antiguo',
+                     'Este documento conserva los objetivos del protocolo')
+    end = next((i for i, p in enumerate(paragraphs)
+                if i > start and text(p).startswith(introductions)), None)
+    if end is None or end < start + 3:
+        raise ValueError('Cannot safely locate the previous campaign executive summary')
+    set_text(paragraphs[start], 'Resultados de la campaña ' + campaign)
+    complete = counts['APROBADO'] + counts['FALLIDO']
+    set_text(paragraphs[start + 1], ', '.join(state + ': ' + str(counts[state]) for state in STATES))
+    set_text(paragraphs[start + 2], 'Ejecución completa: ' + f'{100 * complete / total:.2f}%' +
+             '. Aprobación sobre ejecución completa: ' +
+             (f'{100 * counts["APROBADO"] / complete:.2f}%' if complete else 'no calculable') + '.')
+    body = root.find('w:body', NS)
+    children = list(body)
+    first = children.index(paragraphs[start + 2]) + 1
+    last = children.index(paragraphs[end])
+    # Account inventories and prior evidence may also be tables.
+    for node in children[first:last]:
+        body.remove(node)
+
+
+def discard_previous_supplemental_incidents(root):
+    """Keep the blank incident form, discarding old campaign-only findings."""
+    body = root.find('w:body', NS)
+    children = list(body)
+    start = next((i for i, node in enumerate(children)
+                  if text(node).startswith('Incidencias suplementarias fuera de los ')), None)
+    if start is None:
+        return
+    end = next((i for i, node in enumerate(children)
+                if i > start and text(node).startswith('ID de incidencia')), None)
+    if end is None:
+        raise ValueError('Cannot safely locate the blank incident form after previous supplemental findings')
+    for node in children[start:end]:
+        body.remove(node)
+
+
 def fill(args):
     manifest = json.loads(Path(args.manifest).read_text(encoding='utf-8-sig'))
     source = Path(manifest['source'])
@@ -224,19 +267,7 @@ def fill(args):
                 set_text(paragraphs[record['resultParagraphs'][label]], label + ' ' + value)
     # Discard the previous campaign's executive results, evidence and account inventory.
     # This source has its immutable protocol introduction after that earlier summary.
-    start = next((i for i, p in enumerate(paragraphs) if text(p).startswith('Resultados de la campaña del ')), None)
-    end = next((i for i, p in enumerate(paragraphs) if text(p).startswith('Este documento sustituye el protocolo antiguo')), None)
-    if start is not None and end is not None and start < end:
-        body = root.find('w:body', NS)
-        set_text(paragraphs[start], 'Resultados de la campaña ' + manifest['campaign'])
-        complete = counts['APROBADO'] + counts['FALLIDO']
-        total = len(records)
-        summary = ', '.join(state + ': ' + str(counts[state]) for state in STATES)
-        set_text(paragraphs[start + 1], summary)
-        set_text(paragraphs[start + 2], 'Ejecución completa: ' + f'{100 * complete / total:.2f}%' +
-                 '. Aprobación sobre ejecución completa: ' + (f'{100 * counts["APROBADO"] / complete:.2f}%' if complete else 'no calculable') + '.')
-        for p in paragraphs[start + 3:end]:
-            body.remove(p)
+    refresh_campaign_summary(root, paragraphs, manifest['campaign'], counts, len(records))
     set_text(paragraphs[3], f'{len(records)} casos de prueba en {len(manifest["blocks"])} bloques. Resultados nuevos de la campaña {manifest["campaign"]}; ningún resultado de campañas anteriores se conserva.')
     # Explicitly remove stale campaign-only assertion outside individual result fields.
     for p in root.findall('.//w:p', NS):
@@ -253,6 +284,7 @@ def fill(args):
             adapted = adapt_persistence(value)
             if adapted != value:
                 set_text(p, adapted)
+    discard_previous_supplemental_incidents(root)
     supplemental_path = Path(args.manifest).resolve().parent / 'supplemental-incidents.json'
     if supplemental_path.exists():
         supplemental = json.loads(supplemental_path.read_text(encoding='utf-8-sig'))

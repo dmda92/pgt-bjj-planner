@@ -32,3 +32,6 @@ __pycache__/
 
 .worker-pro-build/
 .worker-validation-build/
+
+# Private official business input for QA; supplied locally, never published.
+/qa/fixtures/official-template.json
