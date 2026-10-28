@@ -1,0 +1,13 @@
+import {test,expect} from '@playwright/test';
+import {mkdirSync,writeFileSync} from 'node:fs';
+import {resolve} from 'node:path';
+import {campaign} from '../helpers/case-test.mjs';
+import {createLocalAcademy} from '../helpers/local-academy.mjs';
+import {userPath,operation,sizedTechniques} from '../helpers/fault-contracts.mjs';
+test('SUP-BLOCK-REUSE fresh CAS when returning to previous document content',async({},info)=>{
+ const a=await createLocalAcademy(),dir=resolve(campaign,'evidence','SUP-BLOCK-REUSE',new Date().toISOString().replace(/[:.]/g,'-'));mkdirSync(dir,{recursive:true});const failures=[],transport=a.f.transport;
+ a.f.transport=async(url,init)=>{const response=await transport(url,init);if(url.endsWith('/documents:commit')&&response.status===400){const body=JSON.parse(String(init.body)),bad=body.writes.filter(w=>w.currentDocument?.exists===false&&a.f.docs.has(w.update?.name)).map(w=>({immutableBlock:w.update.name.includes('/blocks/'),createOnlyAgainstExisting:true}));failures.push({status:response.status,error:(await response.clone().json()).error?.status,preconditionFailures:bad});}return response;};
+ try{
+  const user=await a.register('reusableblocks'),read=()=>a.call(userPath(user),undefined,user.token);let old=await read();const original=sizedTechniques(old.data,1200000);for(const p of original.positions)if(!p.tecnicas[0].descripcion_del_alumno)p.tecnicas[0].descripcion_del_alumno='x';await a.call('commands/repertoire',operation(original,old.version),user.token);old=await read();const changed=structuredClone(old.data);for(const p of changed.positions)p.tecnicas[0].descripcion_del_alumno='y'.repeat(p.tecnicas[0].descripcion_del_alumno.length);await a.call('commands/repertoire',operation(changed,old.version),user.token);old=await read();const direct=await a.store.read({kind:'repertoire',id:user.profile.mail});expect(direct.version).toBe(old.version);const revert=structuredClone(old.data);revert.positions=original.positions;const response=await a.response('commands/repertoire',operation(revert,old.version),user.token),value=await response.json();const proof={id:'QA-CONTENT-BLOCK-REUSE',environment:'Worker real local y Firestore sintético',status:response.status===409?'FALLIDO':'APROBADO',severity:'ALTA',freshCASVerifiedAgainstStoredHead:true,documentBytes:Buffer.byteLength(JSON.stringify(revert)),sourceContentSequence:'A -> B -> A',httpStatus:response.status,error:value.error,nativeCommitFailures:failures,realDataAffected:false};const path=resolve(dir,'proof.json');writeFileSync(path,JSON.stringify(proof,null,2));await info.attach('proof',{path,contentType:'application/json'});expect(response.status).toBe(200);
+ }finally{a.f.transport=transport;await a.close();}
+});
