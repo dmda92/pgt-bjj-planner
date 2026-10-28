@@ -9,8 +9,8 @@ import { QueryCoordinator, type QuerySession, type PlanChange } from './query-co
 import { V2Api } from './api.ts';
 import type { PreflightEnv } from '../firestore-preflight.ts';
 import { requireDev } from '../firestore-preflight.ts';
-import type { Profile } from '../../src/domain/models.ts';
 import { DEV_DATABASE_NAME } from '../firestore-auth.ts';
+import { sessionEpoch, type SessionProfile } from './session-identity.ts';
 export interface V2Env extends PreflightEnv {
     SECURITY: DurableObjectNamespace; DOMAIN_IO: DurableObjectNamespace; ASSETS: Fetcher; ALLOWED_ORIGINS: string; DEV_BUILD_SHA?: string;
 }
@@ -60,9 +60,21 @@ export class ProbeSecurity extends DurableObject<V2Env> {
             try {
                 await this.broadcast(changes, plans, operationId);
                 await this.ctx.storage.delete('v2-pending:' + operationId.toLowerCase());
-            } catch { /* Atomic receipt + pending coordination metadata recover delivery. */ }
+            } catch {
+                // No socket may retain old authorization after partial delivery.
+                // Atomic receipt + pending metadata still recover notifications.
+                this.closeForRevalidation();
+            }
         };
+        // A crash can occur after Firestore CAS but before delivery/revocation.
+        // One bounded SQLite coordination read forces reauthentication then;
+        // unrelated broadcasts never fan out into N cold Firestore profile reads.
+        if ((await this.ctx.storage.list({ prefix: 'v2-pending:', limit: 1 })).size) this.closeForRevalidation();
+        for (const ws of this.ctx.getWebSockets()) if (!ws.deserializeAttachment()?.sessionEpoch) try { ws.close(4401, 'SESSION_REVOKED'); } catch {}
         this.queries = queries; this.api = new V2Api(this.ctx.storage, queries);
+    }
+    private closeForRevalidation() {
+        for (const ws of this.ctx.getWebSockets()) try { ws.close(1012, 'REVALIDATE_VERSIONS'); } catch {}
     }
     fetch(request: Request): Promise<Response> {
         const result = this.queue.then(() => this.handle(request)); this.queue = result.catch(() => undefined); return result;
@@ -111,7 +123,7 @@ export class ProbeSecurity extends DurableObject<V2Env> {
                 await this.ctx.storage.put('v2-ticket:' + await fingerprint(ticket), { key, expires: Date.now() + 30000 });
                 return Response.json({ ticket }, { headers });
             }
-            if (url.pathname === '/api/v2/realtime') return this.open(request, url);
+            if (url.pathname === '/api/v2/realtime') return await this.open(request, url);
             this.originConnection = request.headers.get('X-PGT-Connection') || ''; this.originSession = '';
             if (request.method === 'POST' && url.pathname.startsWith('/api/v2/commands/')) {
                 const { key } = await this.session(request); this.originSession = key;
@@ -157,8 +169,10 @@ export class ProbeSecurity extends DurableObject<V2Env> {
         return new Response(null, { status: 101, webSocket: client });
     }
     private async broadcast(changes: AggregateChange[], plans: PlanChange[], operationId: string) {
-        const profiles = new Map(await Promise.all(changes.filter(c => c.ref.kind === 'profile').map(async c => [c.ref.id,
-            { role: (c.data as Profile).perfil, fingerprint: await fingerprint((c.data as Profile).pwd || '') }] as const)));
+        const profiles = new Map(await Promise.all(changes.filter(c => c.ref.kind === 'profile').map(async c => {
+            const p = c.data as SessionProfile;
+            return [c.ref.id, { role: p.perfil, fingerprint: await fingerprint(p.pwd || ''), epoch: sessionEpoch(p) }] as const;
+        })));
         const resources = changes.filter(c => c.ref.kind !== 'maintenance' && c.ref.kind !== 'template').map(c => {
             const ref = c.ref;
             if (ref.kind === 'plan-text') return { kind: 'plan', owner: ref.id.slice(38), id: ref.id.slice(0, 36) };
@@ -167,8 +181,11 @@ export class ProbeSecurity extends DurableObject<V2Env> {
         });
         resources.push(...plans.map(p => ({ kind: 'plan', owner: p.owner, id: p.planId })));
         for (const ws of this.ctx.getWebSockets()) {
-            const a = ws.deserializeAttachment() as Attachment, changed = profiles.get(a.mail);
-            if (changed && (changed.role !== a.role || changed.fingerprint !== a.pwdFingerprint)) { ws.close(4401, 'SESSION_REVOKED'); continue; }
+            const a = ws.deserializeAttachment() as Attachment;
+            const changed = profiles.get(a.mail);
+            if (!a.sessionEpoch || changed && (changed.role !== a.role || changed.fingerprint !== a.pwdFingerprint || changed.epoch !== a.sessionEpoch)) {
+                ws.close(4401, 'SESSION_REVOKED'); continue;
+            }
             if (a.connection === this.originConnection && a.sessionKey === this.originSession) continue;
             const relevant = resources.filter(r => r.owner === a.mail || a.role === 'entrenador' || r.kind === 'catalog');
             if (!relevant.length) continue;

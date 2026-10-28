@@ -6,6 +6,7 @@ import { sizeMessage } from '../domain/json-limits.ts';
 import { planIssueMessage, type PlanIssue } from '../domain/plan-issues.ts';
 import { madridDate } from '../domain/plan-text-updates.ts';
 import { SaveThrottled } from './save-throttled.ts';
+import { draftJournal } from './draft-journal.ts';
 export interface Identity { mail: string; token: string; profile: Profile }
 export interface Snapshot {
     profile: RemoteRecord<Profile>; techniques: RemoteRecord; comments: RemoteRecord; index: RemoteRecord;
@@ -19,7 +20,8 @@ export class ApiFailure extends Error {
 const API = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 const record = (value: any) => value && 'version' in value ? { data: value.data, sha: value.version } : value;
 /** Firestore is the only remote source; IndexedDB contains read-only derived copies.
- * Drafts stay with editors until a server ACK. No offline upload or merge queue exists. */
+ * Unconfirmed drafts use a separate local recovery journal until a server ACK.
+ * No offline upload or automatic merge queue exists. */
 export class FirestoreClient {
     identity: Identity | null = null;
     locked = false;
@@ -42,14 +44,24 @@ export class FirestoreClient {
     private trainerLoads = new Map<string, Promise<TrainerView>>();
     private dayLoads = new Map<string, Promise<any>>();
     private cacheEpoch = 0;
+    private cacheClears: Promise<void> = Promise.resolve();
+    private lastPrivateDenial = '';
     private seenOperations = new Set<string>();
     constructor() {
         try { this.identity = JSON.parse(localStorage.getItem('pgt-session') || 'null'); } catch { localStorage.removeItem('pgt-session'); }
-        this.channel.onmessage = () => { this.stop(); this.identity = null; this.locked = true; this.status = 'La sesión cambió en otra pestaña. Recarga para continuar.'; this.onChange(); };
+        this.channel.onmessage = () => { if (this.identity) void this.invalidateTrainerCache(this.identity.mail).catch(() => {}); this.stop(); this.identity = null; this.locked = true; this.status = 'La sesión cambió en otra pestaña. Recarga para continuar.'; this.onChange(); };
         window.addEventListener('storage', event => {
+            if (this.identity && event.key === this.cacheFenceKey(this.identity.mail)) {
+                try {
+                    const value = JSON.parse(event.newValue || 'null');
+                    if (value?.denied === true && typeof value.stamp === 'string') this.privateAccessDenied(this.identity.mail, value.stamp);
+                } catch {}
+                this.cacheEpoch++; this.trainerLoads.clear(); this.dayLoads.clear(); return;
+            }
             if (event.key !== 'pgt-session') return;
             let other: Identity | null = null; try { other = JSON.parse(event.newValue || 'null'); } catch {}
             if (other?.token !== this.identity?.token || other?.mail !== this.identity?.mail) {
+                if (this.identity) void this.invalidateTrainerCache(this.identity.mail).catch(() => {});
                 this.stop(); this.locked = true; this.identity = null; this.status = 'La sesión cambió en otra pestaña. Recarga para continuar.'; this.onChange();
             }
         });
@@ -61,6 +73,52 @@ export class FirestoreClient {
         let stored: Identity | null = null; try { stored = JSON.parse(localStorage.getItem('pgt-session') || 'null'); } catch {}
         if (!i || this.locked || stored?.token !== i.token || stored.mail !== i.mail) throw Error('Sesión cerrada o cambiada');
         return i;
+    }
+    /** Revoke in-flight cache rights synchronously, before asynchronous deletion.
+     * Reads/writes wait for the clear; a failed deletion never re-enables a copy.
+     * Editor drafts live in separate tables and are intentionally preserved. */
+    private invalidateTrainerCache(mail: string, denied = false) {
+        this.cacheEpoch++; this.trainerLoads.clear(); this.dayLoads.clear();
+        const stamp = crypto.randomUUID(), key = this.cacheFenceKey(mail);
+        // Shared by tabs and reloads. Pending stays durable if IndexedDB deletion
+        // fails, so a new client cannot reopen a previously denied cached copy.
+        if (denied) this.privateAccessDenied(mail, stamp);
+        try { localStorage.setItem(key, JSON.stringify({ stamp, pending: true, denied })); }
+        catch (error) {
+            this.stop(); this.locked = true; localStorage.removeItem('pgt-session'); this.channel.postMessage('session-changed');
+            return Promise.reject(error);
+        }
+        const clear = this.cacheClears.catch(() => {}).then(async () => {
+            await trainerCache.clear(mail);
+            if (this.cacheFence(mail).stamp === stamp) localStorage.setItem(key, JSON.stringify({ stamp, pending: false, denied }));
+        });
+        this.cacheClears = clear; return clear;
+    }
+    private cacheFenceKey(mail: string) { return 'pgt-trainer-cache-fence:' + mail; }
+    private privateAccessDenied(mail: string, stamp: string) {
+        if (this.lastPrivateDenial === stamp) return;
+        this.lastPrivateDenial = stamp;
+        window.dispatchEvent(new CustomEvent('pgt-private-access-denied', { detail: { mail } }));
+    }
+    private cacheFence(mail: string): { stamp: string; pending: boolean } {
+        const stored = localStorage.getItem(this.cacheFenceKey(mail));
+        if (!stored) return { stamp: '', pending: false };
+        try { const value = JSON.parse(stored); if (typeof value.stamp === 'string' && typeof value.pending === 'boolean') return value; } catch {}
+        return { stamp: '', pending: true };
+    }
+    private assertCacheIdentity(identity: Identity, epoch: number, stamp: string) {
+        const fence = this.cacheFence(identity.mail);
+        if (this.current().token !== identity.token || epoch !== this.cacheEpoch || fence.pending || fence.stamp !== stamp) throw Error('La autorización de la consulta ha cambiado');
+    }
+    private async cacheResult(identity: Identity, epoch: number, stamp: string, write: () => Promise<unknown>) {
+        await this.cacheClears;
+        await db.transaction('rw', db.trainerViews, db.trainerDays, async () => {
+            this.assertCacheIdentity(identity, epoch, stamp);
+            await write();
+            // Abort this transaction if revocation started while IndexedDB was
+            // committing; a later clear is serialized after this transaction.
+            this.assertCacheIdentity(identity, epoch, stamp);
+        });
     }
     private async raw<T = any>(path: string, method = 'GET', body?: unknown, credential?: string): Promise<T> {
         if (method !== 'GET' && !navigator.onLine) throw Error('Sin conexión. No se ha guardado ningún cambio.');
@@ -80,7 +138,11 @@ export class FirestoreClient {
         }
         const value: any = await response.json();
         if (!response.ok) {
-            if (response.status === 401 && this.identity?.token === token) { this.stop(); this.locked = true; await trainerCache.clear(this.identity.mail); this.onChange(); }
+            if ((response.status === 401 || response.status === 403) && this.identity?.token === token) {
+                const invalidated = this.invalidateTrainerCache(this.identity.mail, true);
+                if (response.status === 401) { this.stop(); this.locked = true; }
+                await invalidated; this.onChange();
+            }
             const retryAfter = response.headers.get('Retry-After');
             if (path.startsWith('/api/v2/commands/') && response.status === 429 && value.error === 'RATE_LIMIT' && retryAfter && /^\d+$/.test(retryAfter) &&
                 Number(retryAfter) >= 1 && Number(retryAfter) <= 3600) throw new SaveThrottled(Number(retryAfter) * 1000);
@@ -101,8 +163,7 @@ export class FirestoreClient {
             const actor = this.current();
             const { sha, ...input } = body, operationId = crypto.randomUUID();
             const result = await this.raw('/api/v2/commands/' + command[1], 'POST', { ...input, expected: sha, operationId });
-            this.cacheEpoch++;
-            await trainerCache.clear(actor.mail);
+            await this.invalidateTrainerCache(actor.mail);
             if (['competition', 'assignment', 'delete-competition'].includes(command[1])) await this.sync();
             return result as T;
         }
@@ -112,8 +173,7 @@ export class FirestoreClient {
             if (kind !== 'comments' && owner !== this.current().mail) throw Error('Solo puedes editar tus propios datos');
             const saved = await this.raw('/api/v2/commands/' + kind, 'POST', { data: body.data, expected: body.sha,
                 operationId: crypto.randomUUID(), ...(kind === 'comments' ? { owner } : {}) });
-            this.cacheEpoch++;
-            await trainerCache.clear(this.current().mail);
+            await this.invalidateTrainerCache(this.current().mail);
             return record(saved) as T;
         }
         throw Error('Operación no disponible');
@@ -156,6 +216,7 @@ export class FirestoreClient {
     private async accept(identity: Identity, snapshot: Snapshot) {
         this.validate(snapshot);
         if (snapshot.profile.data.mail !== identity.mail || this.current().token !== identity.token) throw Error('Sesión cambiada');
+        if (this.identity?.profile.perfil !== snapshot.profile.data.perfil) await this.invalidateTrainerCache(identity.mail);
         await db.transaction('rw', db.entries, db.meta, db.commentNotices, async () => {
             if (this.current().token !== identity.token) throw Error('Sesión cambiada');
             const owner = await repository.owner(), old = owner === identity.mail ? await repository.entries(identity.mail) : [];
@@ -181,9 +242,19 @@ export class FirestoreClient {
     async register(mail: string, password: string, confirm: string, nombre: string, apellidos: string) { await this.authenticate('register', { mail, password, confirm, nombre, apellidos }); }
     private async authenticate(kind: string, body: unknown) {
         if (!navigator.onLine) throw Error('La primera carga requiere conexión');
+        const mail = (body as { mail?: unknown })?.mail;
+        const priorActors = new Set([this.identity?.mail, await repository.owner()]);
+        for (const prior of priorActors) if (prior && typeof mail === 'string' && prior !== mail.trim().toLowerCase()) {
+            await draftJournal.checkpoint();
+            if ((await draftJournal.list(prior)).length) throw Error('Hay un borrador pendiente de la cuenta anterior. Vuelve a esa cuenta para resolverlo o exportarlo.');
+        }
         const auth = await this.raw<{ token: string; profile: Profile }>('/api/v2/auth/' + kind, 'POST', body, '');
         const identity = { mail: auth.profile.mail, token: auth.token, profile: auth.profile }, snapshot = await this.snapshot(identity, false);
-        this.validate(snapshot); this.stop(); this.retryGeneration++; this.identity = identity; this.locked = false;
+        this.validate(snapshot); this.stop();
+        const previous = this.identity;
+        if (previous && previous.mail !== identity.mail) await this.invalidateTrainerCache(previous.mail);
+        await this.invalidateTrainerCache(identity.mail);
+        this.retryGeneration++; this.identity = identity; this.locked = false;
         localStorage.setItem('pgt-session', JSON.stringify(identity)); this.channel.postMessage('session-changed');
         try { await this.accept(identity, snapshot); } catch (error) { this.locked = true; this.onChange(); throw error; }
         this.onChange(); void this.connect();
@@ -223,33 +294,48 @@ export class FirestoreClient {
         this.writes = save; return save;
     }
     async cachedTrainer(mail: string, section: TrainerSection, planId = '') {
-        const i = this.current(); if (i.profile.perfil !== 'entrenador') throw Error('Solo entrenadores');
-        return (await trainerCache.get(i.mail, mail, section, planId))?.data;
+        const i = this.current(), epoch = this.cacheEpoch, stamp = this.cacheFence(i.mail).stamp; if (i.profile.perfil !== 'entrenador') throw Error('Solo entrenadores');
+        await this.cacheClears;
+        this.assertCacheIdentity(i, epoch, stamp);
+        const local = await trainerCache.get(i.mail, mail, section, planId);
+        this.assertCacheIdentity(i, epoch, stamp); return local?.data;
     }
     async trainerView(mail: string, section: TrainerSection, _force = false, planId = ''): Promise<TrainerView> {
-        const i = this.current(), epoch = this.cacheEpoch, key = trainerKey(i.mail, mail, section, planId), flight = key + ':' + epoch;
+        const i = this.current(), epoch = this.cacheEpoch, stamp = this.cacheFence(i.mail).stamp, key = trainerKey(i.mail, mail, section, planId), flight = key + ':' + epoch + ':' + stamp;
         if (this.trainerLoads.has(flight)) return this.trainerLoads.get(flight)!;
         const load = (async () => {
             if (i.profile.perfil !== 'entrenador') throw Error('Solo entrenadores');
             if (!navigator.onLine) { const local = await this.cachedTrainer(mail, section, planId); if (local) return local; throw Error('Sin copia local de esta ficha'); }
-            const prefix = '/api/v2/users/' + encodeURIComponent(mail) + '/', profile = record(await this.raw(prefix + 'profile'));
-            const view: TrainerView = { profile };
-            if (section === 'techniques') { view.techniques = record(await this.raw(prefix + 'repertoire')); view.comments = record(await this.raw(prefix + 'comments')); }
-            if (section === 'plans') {
-                const index = await this.raw(prefix + 'assignment'), catalog = await this.raw('/api/v2/catalog');
+            const prefix = '/api/v2/users/' + encodeURIComponent(mail) + '/';
+            let view: TrainerView;
+            if (section === 'techniques') {
+                const [profile, techniques, comments] = await Promise.all([
+                    this.raw(prefix + 'profile'), this.raw(prefix + 'repertoire'), this.raw(prefix + 'comments')
+                ]);
+                view = { profile: record(profile), techniques: record(techniques), comments: record(comments) };
+            } else if (section === 'plans') {
+                const [profile, index, catalog] = await Promise.all([
+                    this.raw(prefix + 'profile'), this.raw(prefix + 'assignment'), this.raw('/api/v2/catalog')
+                ]);
+                view = { profile: record(profile) };
                 view.planSummaries = index.data.planIds.map((id: string) => ({ planId: id, fecha_torneo: catalog.data.plans.find((c: any) => c.planId === id)?.fecha_torneo }));
                 view.plans = [];
                 if (planId) { const value = await this.raw(prefix + 'plans/' + planId); if (value) view.plans.push({ data: value.data, sha: value.version.distribution + ':' + value.version.text }); }
-            }
+            } else view = { profile: record(await this.raw(prefix + 'profile')) };
             validateTrainerView(view, mail, section);
             if (this.current().token !== i.token || epoch !== this.cacheEpoch) throw Error('La ficha ha cambiado durante la consulta');
-            await db.trainerViews.put({ key, owner: i.mail, mail, section, data: view, checkedAt: Date.now() }); return view;
+            await this.cacheResult(i, epoch, stamp, () => db.trainerViews.put({ key, owner: i.mail, mail, section, data: view, checkedAt: Date.now() })); return view;
         })();
         this.trainerLoads.set(flight, load); try { return await load; } finally { this.trainerLoads.delete(flight); }
     }
-    async cachedTrainingDay(date: string) { const i = this.current(); if (i.profile.perfil !== 'entrenador') throw Error('Solo entrenadores'); return (await db.trainerDays.get(JSON.stringify([i.mail, date])))?.data; }
+    async cachedTrainingDay(date: string) {
+        const i = this.current(), epoch = this.cacheEpoch, stamp = this.cacheFence(i.mail).stamp; if (i.profile.perfil !== 'entrenador') throw Error('Solo entrenadores');
+        await this.cacheClears; this.assertCacheIdentity(i, epoch, stamp);
+        const local = await db.trainerDays.get(JSON.stringify([i.mail, date]));
+        this.assertCacheIdentity(i, epoch, stamp); return local?.data;
+    }
     async trainingDay(date: string) {
-        const i = this.current(), epoch = this.cacheEpoch, key = JSON.stringify([i.mail, date]), flight = key + ':' + epoch;
+        const i = this.current(), epoch = this.cacheEpoch, stamp = this.cacheFence(i.mail).stamp, key = JSON.stringify([i.mail, date]), flight = key + ':' + epoch + ':' + stamp;
         if (this.dayLoads.has(flight)) return this.dayLoads.get(flight)!;
         const load = (async () => {
             if (!navigator.onLine) { const cached = await this.cachedTrainingDay(date); if (cached) return cached; throw Error('Sin copia local para esta fecha'); }
@@ -266,7 +352,7 @@ export class FirestoreClient {
                 data = await this.raw('/api/v2/training-day?date=' + encodeURIComponent(date));
             }
             if (this.current().token !== i.token || epoch !== this.cacheEpoch) throw Error('La consulta ha cambiado');
-            await db.trainerDays.put({ key, owner: i.mail, data }); return data;
+            await this.cacheResult(i, epoch, stamp, () => db.trainerDays.put({ key, owner: i.mail, data })); return data;
         })();
         this.dayLoads.set(flight, load); try { return await load; } finally { this.dayLoads.delete(flight); }
     }
@@ -284,8 +370,7 @@ export class FirestoreClient {
                 let e: any; try { e = JSON.parse(event.data); } catch { return; }
                 if (e.type === 'ready' || e.type === 'reset') {
                     this.serverEpoch = e.epoch; this.sequence = e.sequence; this.connection = e.connection || this.connection; this.retryDelay = 500;
-                    this.cacheEpoch++;
-                    void trainerCache.clear(i.mail).then(() => this.sync()).then(() =>
+                    void this.invalidateTrainerCache(i.mail).then(() => this.sync()).then(() =>
                         window.dispatchEvent(new CustomEvent('pgt-live-update', { detail: { reset: true } }))).catch(() => {}); return;
                 }
                 if (e.type !== 'changed' || !Array.isArray(e.resources)) return;
@@ -306,7 +391,7 @@ export class FirestoreClient {
             };
             socket.onclose = event => {
                 if (epoch !== this.socketEpoch) return; this.socket = undefined; this.connection = '';
-                if (event.code === 4401) { this.locked = true; this.status = 'La sesión ha cambiado. Vuelve a entrar.'; void trainerCache.clear(i.mail); this.onChange(); return; }
+                if (event.code === 4401) { this.locked = true; this.status = 'La sesión ha cambiado. Vuelve a entrar.'; void this.invalidateTrainerCache(i.mail, true).catch(() => {}); this.onChange(); return; }
                 this.scheduleReconnect();
             };
         } catch { this.scheduleReconnect(); }
@@ -338,7 +423,8 @@ export class FirestoreClient {
     async resolve(_key?: string, _choice?: string) { throw Error('Exporta los borradores anteriores y revisa la versión actual antes de guardar.'); }
     async logout(revoked = false) {
         const i = this.identity; this.stop(); this.locked = true;
+        const invalidated = i ? this.invalidateTrainerCache(i.mail) : Promise.resolve();
         try { if (i && navigator.onLine && !revoked) await this.raw('/api/v2/auth/logout', 'POST', {}, i.token); }
-        finally { if (i) await trainerCache.clear(i.mail); this.identity = null; localStorage.removeItem('pgt-session'); this.channel.postMessage('logout'); this.status = 'Sesión cerrada'; this.onChange(); }
+        finally { await invalidated; this.identity = null; localStorage.removeItem('pgt-session'); this.channel.postMessage('logout'); this.status = 'Sesión cerrada'; this.onChange(); }
     }
 }

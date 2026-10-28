@@ -23,7 +23,7 @@ async function setup() {
     const trainer: Profile = { ...initialVersion(), mail: 'trainer@example.test', nombre: 'Trainer', apellidos: 'Synthetic',
         fecha_nacimiento: null, peso: 80.123, cinturon: 'Blanco', perfil: 'entrenador', pwd: await passwordHash(password) };
     await store.write({ kind: 'profile', id: trainer.mail }, trainer, null, crypto.randomUUID());
-    const trainerSession: QuerySession = { mail: trainer.mail, role: 'entrenador', pwdFingerprint: await fingerprint(trainer.pwd!) };
+    const trainerSession: QuerySession = { mail: trainer.mail, role: 'entrenador', pwdFingerprint: await fingerprint(trainer.pwd!), sessionEpoch: 'v2-initial' };
     const registration = { mail: 'pupil@example.test', password, confirm: password, nombre: 'Pupil', apellidos: 'Synthetic' };
     const sessionOf = async (token: string) => (await sessions.get<QuerySession>('pgt-v2-session:' + await fingerprint(token)))!;
     return { f, store, q, sessions, users, trainer, trainerSession, registration, sessionOf, password };
@@ -73,14 +73,14 @@ test('Registration atomically creates the entire account, independent UUIDs and 
     assert.throws(() => s.users.register({ ...s.registration, perfil: 'entrenador' }), /UNEXPECTED_FIELD/);
     await assert.rejects(s.users.register({ ...s.registration, password: 'different-password', confirm: 'different-password' }), /USER_EXISTS/);
 });
-test('Password commands change only pwd and revoke all existing device sessions without enumeration', async () => {
+test('Password commands change only credentials and revoke all existing device sessions without enumeration', async () => {
     const s = await setup(), a = await s.users.register(s.registration), session = await s.sessionOf(a.token);
     const ref = { kind: 'profile' as const, id: a.profile.mail }, before = (await s.store.read<Profile>(ref))!;
     await s.users.change(s.trainerSession, 'password', { mail: a.profile.mail, expected: before.version,
         password: 'new-synthetic-password', confirm: 'new-synthetic-password', operationId: crypto.randomUUID() });
     const after = (await s.store.read<Profile>(ref))!;
     assert.notEqual(after.data.pwd, before.data.pwd);
-    assert.deepEqual({ ...after.data, pwd: undefined }, { ...before.data, pwd: undefined });
+    assert.deepEqual({ ...after.data, pwd: undefined, sessionEpoch: undefined }, { ...before.data, pwd: undefined, sessionEpoch: undefined });
     await assert.rejects(s.q.user(session, { kind: 'profile', owner: session.mail }), /SESSION_REVOKED/);
     await assert.rejects(s.users.login({ mail: session.mail, password: s.password }), /LOGIN_FAILED/);
     assert.ok((await s.users.login({ mail: session.mail, password: 'new-synthetic-password' })).token);
@@ -98,11 +98,14 @@ test('Role commands enforce trainer and CAS, update roster, and invalidate earli
 });
 test('Own profile commands preserve protected fields, exact weight, validate before writing, and replay safely', async () => {
     const s = await setup(), a = await s.users.register(s.registration), session = await s.sessionOf(a.token);
-    const input = { data: { ...a.profile, peso: 81.2345, nombre: 'Changed', perfil: 'entrenador', pwd: 'forged' },
+    const input = { data: { ...a.profile, peso: 81.2345, nombre: 'Changed', perfil: 'entrenador', pwd: 'forged', sessionEpoch: 'forged' },
         expected: '1', operationId: crypto.randomUUID() };
     const saved = await s.users.change(session, 'profile', input);
     assert.equal((saved as { data: Profile }).data.peso, 81.2345);
     assert.equal((saved as { data: Profile }).data.perfil, 'alumno');
+    assert.ok(!('sessionEpoch' in (saved as { data: Profile }).data));
+    assert.equal((await s.sessionOf(a.token)).sessionEpoch,
+        (await s.store.read<{ sessionEpoch: string }>({ kind: 'profile', id: session.mail }))!.data.sessionEpoch);
     const before = s.f.metrics(); await s.users.change(session, 'profile', input);
     assert.equal(s.f.metrics().attemptedWrites, before.attemptedWrites);
     await assert.rejects(s.users.change(session, 'profile', { ...input, operationId: crypto.randomUUID(), expected: '2', data: { ...input.data, peso: 500 } }), /PROFILE_INVALID/);
@@ -120,4 +123,37 @@ test('HTTP auth issues server sessions, wrong password is denied, and logout del
     assert.equal((await call('logout', {}, auth.token)).status, 200);
     assert.equal(await s.sessions.get('pgt-v2-session:' + await fingerprint(auth.token)), undefined);
     assert.ok(await s.sessions.get('pgt-v2-session:' + await fingerprint(other.token)));
+});
+
+test('SEC-01 role cycles never revive earlier device sessions, including warm and restarted authorization caches', async () => {
+    const s = await setup(), a = await s.users.register(s.registration), old = await s.sessionOf(a.token);
+    const other = await s.sessionOf((await s.users.login({ mail: old.mail, password: s.password })).token);
+    await s.q.user(old, { kind: 'profile', owner: old.mail });
+    const ref = { kind: 'profile' as const, id: old.mail };
+    const changeRole = async (perfil: Profile['perfil']) => s.users.change(s.trainerSession, 'role', {
+        mail: old.mail, perfil, expected: (await s.store.read(ref))!.version, operationId: crypto.randomUUID()
+    });
+    await changeRole('entrenador');
+    const promoted = await s.sessionOf((await s.users.login({ mail: old.mail, password: s.password })).token);
+    await s.q.shared(promoted, { kind: 'roster' });
+    await changeRole('alumno');
+    // Never touch either old student session between transitions: an HTTP 401
+    // deleting a token must not be what prevents resurrection.
+    for (const session of [old, other, promoted])
+        await assert.rejects(s.q.user(session, { kind: 'profile', owner: old.mail }), /SESSION_REVOKED/);
+    const restarted = new QueryCoordinator(s.store, new PlanViews(new PlanRepository(s.store.db), s.store));
+    await assert.rejects(restarted.user(old, { kind: 'profile', owner: old.mail }), /SESSION_REVOKED/);
+    await changeRole('entrenador');
+    await assert.rejects(s.q.shared(promoted, { kind: 'roster' }), /SESSION_REVOKED/);
+    const fresh = await s.sessionOf((await s.users.login({ mail: old.mail, password: s.password })).token);
+    const before = s.f.metrics();
+    for (let i = 0; i < 5; i++) await s.q.user(fresh, { kind: 'profile', owner: fresh.mail });
+    assert.equal(s.f.metrics().estimatedReads, before.estimatedReads);
+});
+
+test('SEC-01 pre-epoch session format fails closed while migrated accounts can freshly log in without password reset', async () => {
+    const s = await setup(), a = await s.users.login({ mail: s.trainer.mail, password: s.password });
+    const fresh = await s.sessionOf(a.token), legacy = { mail: fresh.mail, role: fresh.role, pwdFingerprint: fresh.pwdFingerprint };
+    await assert.rejects(s.q.user(legacy, { kind: 'profile', owner: fresh.mail }), /SESSION_REVOKED/);
+    await s.q.user(fresh, { kind: 'profile', owner: fresh.mail });
 });

@@ -22,7 +22,7 @@ async function setup(repeatOneTechnique = false) {
         const p: Profile = { ...initialVersion(), mail, nombre: 'Server', apellidos: perfil, perfil,
             fecha_nacimiento: null, peso: null, cinturon: 'Blanco', pwd: 'synthetic-private-' + mail };
         await store.write({ kind: 'profile', id: mail }, p, null, crypto.randomUUID());
-        sessions.push({ mail, role: perfil, pwdFingerprint: await fingerprint(p.pwd!) });
+        sessions.push({ mail, role: perfil, pwdFingerprint: await fingerprint(p.pwd!), sessionEpoch: 'v2-initial' });
     }
     const techniques = cloneTemplate(template), comments: Comments = { ...initialVersion(), comments: [] };
     const c: Competition = { planId: crypto.randomUUID(), alumnos: [owner], fecha_comienzo: '2026-10-01', fecha_torneo: '2026-11-15',

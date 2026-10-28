@@ -74,7 +74,9 @@ export class BusinessCommands {
             for (const id of Object.keys(versions)) if (!retained.has(id)) delete versions[id];
             if (Object.keys(versions).length) next.descriptionUpdates = versions; else delete next.descriptionUpdates;
             if (blockDigest(next) !== blockDigest(old.data)) { next.revision++; next.updatedAt = stamp; }
-            if (jsonBytes(next) > MAX_JSON_BYTES) throw new ApiError(413, 'JSON_TOO_LARGE');
+            const sourceBytes = jsonBytes(next);
+            if (sourceBytes > MAX_JSON_BYTES) throw new ApiError(413, 'JSON_TOO_LARGE', undefined,
+                {file: 'tecnics.json', bytes: sourceBytes, limitBytes: MAX_JSON_BYTES, scope: 'document', exact: true});
             const notes = await read<Comments>({ kind: 'comments', id: mail }), assignments = await read<AssignmentState>({ kind: 'assignment', id: mail }),
                 catalog = await read<Catalog>({ kind: 'catalog', id: 'competitions' });
             if (!notes || !assignments || !catalog) throw new ApiError(409, 'REGISTRATION_INCOMPLETE');
@@ -156,7 +158,9 @@ export class BusinessCommands {
             if (Object.keys(versions).length) comments.commentUpdates = versions;
             const stamp = this.clock().toISOString(), today = madridDate(this.clock());
             if (blockDigest(comments) !== blockDigest(old.data)) { comments.revision++; comments.updatedAt = stamp; }
-            if (jsonBytes(comments) > MAX_JSON_BYTES) throw new ApiError(413, 'JSON_TOO_LARGE');
+            const sourceBytes = jsonBytes(comments);
+            if (sourceBytes > MAX_JSON_BYTES) throw new ApiError(413, 'JSON_TOO_LARGE', undefined,
+                {file: 'trainer_comments.json', bytes: sourceBytes, limitBytes: MAX_JSON_BYTES, scope: 'document', exact: true});
             const changes: AggregateChange[] = [{ ref, data: comments, expected: old.version }];
             const assignments = await read<AssignmentState>({ kind: 'assignment', id: owner }), catalog = await read<Catalog>({ kind: 'catalog', id: 'competitions' });
             if (!assignments || !catalog) throw new ApiError(409, 'REGISTRATION_INCOMPLETE');

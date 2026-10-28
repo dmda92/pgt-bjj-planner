@@ -30,7 +30,7 @@ for (const count of [10, 30, 100]) {
             { ref: { kind: 'comments', id: mail }, data: { ...initialVersion(), comments: [] }, expected: null },
             { ref: { kind: 'assignment', id: mail }, data: { ...initialVersion(), planIds: [] }, expected: null }
         ], crypto.randomUUID());
-        actors.push({ mail, role: p.perfil, pwdFingerprint: await fingerprint(p.pwd) });
+        actors.push({ mail, role: p.perfil, pwdFingerprint: await fingerprint(p.pwd), sessionEpoch: 'v2-initial' });
     }
     await store.write({kind:'roster',id:'users'},{users:actors.map(a=>({mail:a.mail,nombre:'Synthetic',apellidos:'',perfil:a.role}))},null,crypto.randomUUID());
     const metrics = () => ({ ...f.metrics(), wireBytes: bytes });

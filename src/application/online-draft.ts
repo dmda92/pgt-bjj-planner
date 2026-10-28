@@ -1,5 +1,10 @@
 import { SaveThrottled } from './save-throttled.ts';
-/** A volatile editor draft. Coalesces keystrokes; a failure requires explicit
+export interface DraftPersistence<T> {
+    write(value: T, base: string | null, generation: number): Promise<void>;
+    remove(generation: number): Promise<void>;
+}
+/** An online editor draft with optional local recovery checkpoints.
+ * Coalesces keystrokes; a failure requires explicit
  * retry. Reconnection cannot replay a failed draft. The base advances only on
  * this editor's own ACK, never when an unrelated remote refresh arrives.
  * One brief server throttle may retry the latest draft while still online. */
@@ -16,8 +21,10 @@ export class OnlineDraft<T> {
     private retryGeneration: () => number;
     private waitingGeneration = 0;
     private validateDraft: (value: T) => string | null;
+    private checkpoint: Promise<void> = Promise.resolve();
+    private persistence?: DraftPersistence<T>;
 
-    constructor(privateSave: (data: T, base: string | null) => Promise<string>, privateFailure: (error: unknown) => void, privateDone: () => void, delay = 1200, canRetry = () => true, retryGeneration = () => 0, validateDraft: (value: T) => string | null = () => null) {
+    constructor(privateSave: (data: T, base: string | null) => Promise<string>, privateFailure: (error: unknown) => void, privateDone: () => void, delay = 1200, canRetry = () => true, retryGeneration = () => 0, validateDraft: (value: T) => string | null = () => null, persistence?: DraftPersistence<T>) {
         this.save = privateSave;
         this.failure = privateFailure;
         this.done = privateDone;
@@ -25,6 +32,7 @@ export class OnlineDraft<T> {
         this.canRetry = canRetry;
         this.retryGeneration = retryGeneration;
         this.validateDraft = validateDraft;
+        this.persistence = persistence;
     }
 
     private save: (data: T, base: string | null) => Promise<string>;
@@ -52,6 +60,10 @@ export class OnlineDraft<T> {
         if (this.current === undefined) this.base = base;
         this.current = structuredClone(value);
         this.revision++;
+        if (this.persistence) {
+            this.checkpoint = this.persistence.write(this.current, this.base, this.revision);
+            void this.checkpoint.catch(error => {this.failed = true; this.failure(error); this.done();});
+        }
         clearTimeout(this.timer);
         if (!this.failed) this.timer = setTimeout(() => void this.flush().catch(() => {
         }), this.delay);
@@ -79,9 +91,15 @@ export class OnlineDraft<T> {
                 if (this.validationMessage) return;
                 const value = this.current, revision = this.revision, generation = this.retryGeneration();
                 try {
+                    await this.checkpoint;
                     this.base = await this.save(value, this.base);
                     this.retriedThrottle = false;
-                    if (this.revision === revision) this.current = undefined;
+                    if (this.revision === revision) {
+                        await this.persistence?.remove(revision);
+                        this.current = undefined;
+                    } else if (this.persistence && this.current !== undefined) {
+                        this.checkpoint = this.persistence.write(this.current, this.base, this.revision);
+                    }
                 } catch (error) {
                     if (error instanceof SaveThrottled) {
                         this.waitingUntil = Date.now() + error.retryAfterMs;
@@ -108,6 +126,7 @@ export class OnlineDraft<T> {
     async retry() {
         if (this.waitingUntil > Date.now()) throw new SaveThrottled(this.waitingUntil - Date.now());
         this.failed = false;
+        if (this.persistence && this.current !== undefined) this.checkpoint = this.persistence.write(this.current, this.base, this.revision);
         this.retriedThrottle = false;
         this.waitingGeneration = this.retryGeneration();
         return this.flush();
@@ -122,4 +141,12 @@ export class OnlineDraft<T> {
         this.revision++;
         this.done();
     }
+
+    restore(value: T, base: string | null, generation: number) {
+        clearTimeout(this.timer);
+        this.current = structuredClone(value); this.base = base;
+        this.revision = generation; this.failed = true;
+    }
+
+    suspend() {clearTimeout(this.timer); this.failed = this.hasDraft;}
 }

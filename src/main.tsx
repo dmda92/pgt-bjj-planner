@@ -1,5 +1,7 @@
 import {onlinePresentation} from './application/online-presentation.ts';
 import {OnlineDraft} from './application/online-draft.ts';
+import {draftJournal, type DraftRecord} from './application/draft-journal.ts';
+import {reconcileTechniqueDraft, type DraftChoice} from './application/reconcile-technique-draft.ts';
 import {DRAFT_SAVE_WAITING} from './application/save-throttled.ts';
 import {techniqueDraftMessage, POSITION_NAME_REQUIRED, TECHNIQUE_NAME_REQUIRED} from './application/technique-draft-validation.ts';
 import {ownTrainingDay} from "./domain/own-training-day.ts";
@@ -70,6 +72,11 @@ function App() {
     const techniqueSaves = useRef<Promise<void>>(Promise.resolve());
     const pendingTechniqueSaves = useRef(0);
     const onlineDraft = useRef<OnlineDraft<Techniques> | null>(null);
+    const draftOwner = useRef('');
+    const [legacyPlanReview, setLegacyPlanReview] = useState('');
+    const [recoverableDrafts, setRecoverableDrafts] = useState<DraftRecord[]>([]);
+    const [draftStorageFailed, setDraftStorageFailed] = useState(false);
+    const [draftReview, setDraftReview] = useState<{base: Techniques; local: Techniques; remote: Techniques; version: string; choices: Record<string,DraftChoice>} | null>(null);
     const loadSequence = useRef(0);
     const studentSequence = useRef(0);
     const [entries, setEntries] = useState<LocalEntry[]>([]),
@@ -107,6 +114,37 @@ function App() {
     const comments = entries.find((e) => e.key === "comments")?.data as
         Comments | undefined;
     const trainer = profile?.perfil === "entrenador";
+    useEffect(()=>{
+        const message='No se pudo conservar el borrador en IndexedDB. Mantén la aplicación abierta y copia o exporta el texto antes de salir.';
+        const changed=(event: Event)=>{
+            const failed=Boolean((event as CustomEvent<{failed:boolean}>).detail?.failed);
+            setDraftStorageFailed(failed);
+            setError(previous=>failed?message:previous===message?'':previous);
+        };
+        window.addEventListener('pgt-draft-storage-status',changed);
+        return()=>window.removeEventListener('pgt-draft-storage-status',changed);
+    },[]);
+    useEffect(() => {
+        if (!active || tab !== 'profile') {setRecoverableDrafts([]); return;}
+        const actor=client.identity!.mail; let current=true;
+        void draftJournal.list(actor).then(records => {
+            if(current && client.identity?.mail===actor && !client.locked) setRecoverableDrafts(records);
+        }).catch(e=>setError(e.message));
+        return ()=>{current=false;};
+    },[version,tab,Boolean(active)]);
+    useEffect(() => {
+        const denied = (event: Event) => {
+            if ((event as CustomEvent<{mail: string}>).detail?.mail !== client.identity?.mail) return;
+            // Retire already-rendered private copies too, including those in
+            // another tab. No fetch follows this security notification.
+            studentSequence.current++;
+            setStudent(null); setSelectedStudent(''); setStudentLoading(false);
+            setStudentRefreshing(false); setStudentLoadFailed(false);
+            setStudents([]); setCatalog(null); setTrainerSection('team');
+        };
+        window.addEventListener('pgt-private-access-denied', denied);
+        return () => window.removeEventListener('pgt-private-access-denied', denied);
+    }, []);
     useEffect(() => {
         client.onChange = () => {
             setVersion((v) => v + 1);
@@ -123,15 +161,28 @@ function App() {
             const sequence = ++loadSequence.current;
             void client
                 .load()
-                .then((data) => {
-                    if (client.identity?.mail === mail && !client.locked && pendingTechniqueSaves.current === 0 && !onlineDraft.current?.hasDraft && sequence === loadSequence.current)
-                        setEntries(data);
+                .then(async (data) => {
+                    const stored = !onlineDraft.current && await draftJournal.get<Techniques>(mail, mail, 'techniques');
+                    if (client.identity?.mail !== mail || client.locked || sequence !== loadSequence.current) return;
+                    const legacy = (await db.meta.get('legacy-drafts:' + mail))?.value || '';
+                    const reviewed = (await db.meta.get('reviewed-legacy-plans:' + mail))?.value;
+                    if (client.identity?.mail !== mail || client.locked || sequence !== loadSequence.current) return;
+                    setLegacyPlanReview(legacy.includes('plan:') && reviewed !== legacy ? legacy : '');
+                    if (stored) {
+                        onlineDraft.current = createTechniqueDraft(mail, stored.baseData);
+                        draftOwner.current = mail;
+                        onlineDraft.current.restore(stored.data, stored.base, stored.generation);
+                    }
+                    const draft = draftOwner.current === mail ? onlineDraft.current?.value : undefined;
+                    setEntries(data.map(entry => entry.key === 'techniques' && draft ? {...entry, data: draft, dirty: true} : entry));
                 })
                 .catch((e) => setError(e.message));
         } else {
             setExpandedPositions(new Set());
             setNotificationTarget("");
             setEntries([]);
+            setLegacyPlanReview('');
+            setDraftReview(null);
             studentSequence.current++;
             setStudent(null);
             setSelectedStudent("");
@@ -195,6 +246,7 @@ function App() {
     }
 
     async function saveTech(next: Techniques) {
+        setDraftReview(null);
         try {
             for (const position of next.positions) validatePriority(position.prioridad);
         } catch (e) {
@@ -208,16 +260,9 @@ function App() {
             }
             if (!onlineDraft.current) {
                 const mail = client.identity?.mail;
-                onlineDraft.current = new OnlineDraft(async (data, base) => {
-                    if (client.identity?.mail !== mail || client.locked) throw Error('Sesión cambiada');
-                    await client.edit('techniques', data, base);
-                    return client.lastConfirmedRevision.get('techniques') || base!;
-                }, error => setError(error instanceof Error ? error.message : 'No se pudo guardar'), () => {
-                    if (!onlineDraft.current?.hasDraft) setError(previous => [DRAFT_SAVE_WAITING, POSITION_NAME_REQUIRED, TECHNIQUE_NAME_REQUIRED].includes(previous) ? '' : previous);
-                    setVersion(v => v + 1);
-                },
-                    undefined, () => navigator.onLine && client.identity?.mail === mail && !client.locked, () => client.retryGeneration,
-                    techniqueDraftMessage);
+                if (!mail) return;
+                draftOwner.current = mail;
+                onlineDraft.current = createTechniqueDraft(mail, entries.find(e => e.key === 'techniques')?.base);
             }
             const previousValidation = onlineDraft.current.validationMessage;
             onlineDraft.current.update(next, entries.find(e => e.key === 'techniques')?.sha || null);
@@ -245,10 +290,28 @@ function App() {
         await techniqueSaves.current;
     }
 
-    const plans = useMemo(() => entries
+    function createTechniqueDraft(mail: string, baseData?: unknown) {
+                return new OnlineDraft<Techniques>(async (data, base) => {
+                    if (client.identity?.mail !== mail || client.locked) throw Error('Sesión cambiada');
+                    await client.edit('techniques', data, base);
+                    return client.lastConfirmedRevision.get('techniques') || base!;
+                }, error => setError(error instanceof Error ? error.message : 'No se pudo guardar'), () => {
+                    if (!onlineDraft.current?.hasDraft) setError(previous => [DRAFT_SAVE_WAITING, POSITION_NAME_REQUIRED, TECHNIQUE_NAME_REQUIRED].includes(previous) ? '' : previous);
+                    setVersion(v => v + 1);
+                },
+                    undefined, () => navigator.onLine && client.identity?.mail === mail && !client.locked, () => client.retryGeneration,
+                    techniqueDraftMessage, {
+                        write: (data, base, generation) => draftJournal.put({actor: mail, owner: mail, resource: 'techniques', data, base, baseData, generation}),
+                        remove: generation => draftJournal.remove(mail, mail, 'techniques', generation)
+                    });
+    }
+
+    const plans = useMemo(() => (legacyPlanReview ? [] : entries)
         .filter((e) => e.key.startsWith("plan:"))
-        .map((e) => e.data as TrainingPlan), [entries]);
+        .map((e) => e.data as TrainingPlan), [entries, legacyPlanReview]);
     const selectedOwnPlan = plans.find(plan => plan.planId === ownPlanId);
+    const pendingEmptyCatalogue = !techniques?.positions.some(p => p.tecnicas.length > 0) &&
+        ((entries.find(e => e.key === 'index')?.data as {planIds?: string[]})?.planIds || []).some(id => !plans.some(p => p.planId === id));
     useEffect(() => {
         if (!active || (ownPlanId && !selectedOwnPlan)) setOwnPlanId("");
     }, [active, ownPlanId, selectedOwnPlan]);
@@ -319,11 +382,13 @@ function App() {
     }, [trainer, selectedStudent, studentSection, studentPlanId]);
     useEffect(() => {
         if (!active) {
-            onlineDraft.current?.discard();
+            onlineDraft.current?.suspend();
             onlineDraft.current = null;
+            draftOwner.current = '';
         }
     }, [Boolean(active)]);
-    const syncState = (onlineMode ? onlinePresentation : syncPresentation)(client.status, entries.some(e => e.dirty) || pendingTechniqueSaves.current > 0, entries.some(e => e.key.startsWith("plan:") && Boolean((e.data as TrainingPlan).structuralUpdateError)), profileUnsaved);
+    const syncState = (onlineMode ? onlinePresentation : syncPresentation)(client.status, draftStorageFailed || entries.some(e => e.dirty) || pendingTechniqueSaves.current > 0, entries.some(e => e.key.startsWith("plan:") && Boolean((e.data as TrainingPlan).structuralUpdateError)), profileUnsaved);
+    const selectedStudentGeneration = studentSequence.current;
     return (
         <div className={`shell ${active ? "signed-in" : "signed-out"}`}>
             <a className="skip-link" href="#main-content">
@@ -356,7 +421,12 @@ function App() {
                                            }}/>
                             <button
                                 className="subtle"
-                                onClick={() => void run(() => client.logout())}
+                                onClick={() => void run(async () => {
+                                    await draftJournal.checkpoint();
+                                    if ((await draftJournal.list(client.identity!.mail)).length)
+                                        throw Error('Hay un borrador pendiente. Guarda o exporta y descarta expresamente los cambios antes de cerrar sesión.');
+                                    await client.logout();
+                                }, false)}
                             >
                                 Salir
                             </button>
@@ -372,6 +442,15 @@ function App() {
                     {error}
                 </div>
             )}
+            {active && legacyPlanReview && <section role="alert" className="conflict">
+                <p>Hay un borrador antiguo de un plan. Se conserva íntegro para exportación en Perfil.
+                    Los planes actuales son de solo lectura; revisa la copia antes de usar los planes del servidor.</p>
+                <button onClick={() => void run(async () => {
+                    const mail = client.identity!.mail;
+                    await db.meta.put({key: 'reviewed-legacy-plans:' + mail, value: legacyPlanReview});
+                    setLegacyPlanReview('');
+                }, false)}>Usar planes actuales conservando el borrador</button>
+            </section>}
             {!active ? (
                 <Auth run={run} busy={busy}/>
             ) : (
@@ -461,15 +540,47 @@ function App() {
                                         void onlineDraft.current?.retry().catch(e => setError(e.message));
                                     }}>Reintentar guardado
                                     </button>
-                                    <button onClick={() => {
-                                        if (confirm('¿Descartar este borrador y cargar la versión actual?')) {
-                                            setError('');
-                                            onlineDraft.current?.discard();
-                                            void client.sync().catch(e => setError(e.message));
-                                        }
-                                    }}>Revisar versión actual
+                                    <button onClick={() => void run(async () => {
+                                        const mail = client.identity!.mail;
+                                        await draftJournal.checkpoint();
+                                        const saved = await draftJournal.get<Techniques>(mail,mail,'techniques');
+                                        if (!saved?.baseData || !onlineDraft.current?.value) throw Error('Conserva una copia del borrador antes de revisarlo; falta su versión inicial.');
+                                        await client.sync();
+                                        const latest = (await client.load()).find(e => e.key === 'techniques');
+                                        if (client.identity?.mail !== mail || client.locked || !latest?.sha) throw Error('Sesión cambiada');
+                                        setDraftReview({base:saved.baseData as Techniques,local:structuredClone(onlineDraft.current.value),remote:latest.data as Techniques,version:latest.sha,choices:{}});
+                                    },false)}>Revisar versión actual
                                     </button>
+                                    <button onClick={() => void run(async () => {
+                                        if (!confirm('¿Descartar expresamente este borrador local? Exporta una copia desde Perfil si quieres conservarlo.')) return;
+                                        const mail=client.identity!.mail;
+                                        await draftJournal.remove(mail,mail,'techniques');
+                                        onlineDraft.current?.discard(); setDraftReview(null);
+                                        await client.sync();
+                                    },false)}>Descartar borrador local</button>
                                 </section>}
+                            {draftReview && (() => {
+                                const result = reconcileTechniqueDraft(draftReview.base,draftReview.local,draftReview.remote,draftReview.choices);
+                                return <section role="alert" className="conflict"><h3>Revisar cambios de técnicas</h3>
+                                    <p>Los cambios compatibles se conservan. Elige qué versión utilizar en cada conflicto antes de guardar.</p>
+                                    {result.conflicts.map(conflict => <fieldset key={conflict.path}><legend>{conflict.label}</legend>
+                                        <p>Mi cambio: {typeof conflict.local === 'string' ? conflict.local : 'Repertorio local completo'}</p>
+                                        <p>Versión actual: {typeof conflict.remote === 'string' ? conflict.remote : 'Repertorio remoto completo'}</p>
+                                        <button onClick={() => setDraftReview(r => r && {...r,choices:{...r.choices,[conflict.path]:'local'}})}>Usar mi versión</button>
+                                        <button onClick={() => setDraftReview(r => r && {...r,choices:{...r.choices,[conflict.path]:'remote'}})}>Usar versión remota</button>
+                                    </fieldset>)}
+                                    <button disabled={result.conflicts.length > 0} onClick={() => void run(async () => {
+                                        const mail=client.identity!.mail;
+                                        const generation=Date.now();
+                                        await draftJournal.put({actor:mail,owner:mail,resource:'techniques',data:result.merged,base:draftReview.version,baseData:draftReview.remote,generation});
+                                        onlineDraft.current?.suspend();
+                                        onlineDraft.current=createTechniqueDraft(mail,draftReview.remote);
+                                        onlineDraft.current.restore(result.merged,draftReview.version,generation);
+                                        setDraftReview(null);
+                                        await onlineDraft.current.retry();
+                                    },false)}>Guardar resolución</button>
+                                </section>;
+                            })()}
                             {entries
                                 .filter((e) => e.conflicts.length)
                                 .map((e) => (
@@ -838,8 +949,9 @@ function App() {
                                         </div>
                                         {!plans.length && (
                                             <div className="empty">
-                                                Tu entrenador puede asignarte una competición. Sincroniza
-                                                para recibirla.
+                                                {pendingEmptyCatalogue ? 'No hay técnicas entrenables. Añade técnicas a tu repertorio para poder preparar los planes asignados.' :
+                                                    legacyPlanReview ? 'Revisa el borrador antiguo antes de consultar los planes actuales.' :
+                                                    'Tu entrenador puede asignarte una competición. Sincroniza para recibirla.'}
                                             </div>
                                         )}
                                         {plans.length > 0 && <>
@@ -861,7 +973,7 @@ function App() {
                                     </section>
                                 </section>
                             )}
-                            {tab === "profile" && profile && (
+                            {tab === "profile" && profile && (<>
                                 <ProfileView
                                     profile={profile}
                                     sha={entries.find((e) => e.key === "profile")?.sha || null}
@@ -869,7 +981,30 @@ function App() {
                                     onDirty={setProfileUnsaved}
                                     run={run}
                                 />
-                            )}
+                                {recoverableDrafts.filter(d=>d.actor===client.identity?.mail).length>0 && <section className="card" aria-label="Borradores guardados">
+                                    <h3>Borradores pendientes en este dispositivo</h3>
+                                    <p>Recuperar abre una copia para revisarla. No envía cambios al servidor.</p>
+                                    {recoverableDrafts.filter(d=>d.actor===client.identity?.mail).map(d=><div key={JSON.stringify([d.owner,d.resource,d.editor])}>
+                                        <p>{d.resource==='techniques'?'Técnicas pendientes':'Comentario pendiente'}{d.volatile?' · Sin copia duradera':''}</p>
+                                        {!draftJournal.isCurrent(d) && (d.resource==='techniques' && d.owner===client.identity!.mail || trainer && d.resource.startsWith('comment:')) &&
+                                            <button onClick={()=>void run(async()=>{
+                                                const actor=client.identity!.mail;
+                                                if(d.actor!==actor) throw Error('Sesión cambiada');
+                                                if(d.resource.startsWith('comment:')) await client.trainerView(d.owner,'techniques',true);
+                                                if(client.identity?.mail!==actor || client.locked) throw Error('Sesión cambiada');
+                                                await draftJournal.recover(d);
+                                                if(d.resource==='techniques') {setTab('techniques');setVersion(v=>v+1);}
+                                                else {setTab('trainer');setTrainerSection('team');await trainers();selectStudent(d.owner);}
+                                            },false)}>Recuperar borrador de {d.resource==='techniques'?'técnicas':'comentario'}</button>}
+                                        <button className="secondary" onClick={()=>void run(async()=>{
+                                            if(!confirm('¿Descartar expresamente este borrador guardado? Conserva antes una copia si la necesitas.')) return;
+                                            if(d.actor!==client.identity?.mail) throw Error('Sesión cambiada');
+                                            await draftJournal.discardRecord(d);
+                                            if(draftJournal.isCurrent(d) && d.resource==='techniques') {onlineDraft.current?.discard();setDraftReview(null);}
+                                        },false)}>Descartar este borrador guardado</button>
+                                    </div>)}
+                                </section>}
+                            </>)}
                             {tab === "trainer" && trainer && (
                                 <section
                                     className="trainer-dashboard"
@@ -1091,7 +1226,8 @@ function App() {
                                                         run={run}
                                                         reloadTeam={trainers}
                                                         reload={async () => {
-                                                            const sequence = studentSequence.current;
+                                                            const sequence = selectedStudentGeneration;
+                                                            if (sequence !== studentSequence.current || client.locked) return;
                                                             const data = await client.trainerView(selectedStudent, studentSection, true, studentPlanId);
                                                             if (sequence === studentSequence.current && !client.locked) setStudent(data);
                                                         }}
@@ -1164,6 +1300,7 @@ function App() {
                                                             schemaVersion: 1,
                                                             mail: client.identity!.mail,
                                                             unsavedTechniques: onlineMode ? onlineDraft.current?.value : undefined,
+                                                            localDrafts: onlineMode ? (await draftJournal.list(client.identity!.mail)).filter(d=>d.owner===client.identity!.mail || trainer) : undefined,
                                                             legacyDrafts: onlineMode ? JSON.parse((await db.meta.get("legacy-drafts:" + client.identity!.mail))?.value || "null") : undefined,
                                                             entries: data.map(({key, data}) => ({
                                                                 key,
@@ -1216,6 +1353,7 @@ function App() {
                     <button
                         onClick={() =>
                             void run(async () => {
+                                await draftJournal.checkpoint();
                                 if ((await db.entries.toArray()).some((e) => e.dirty))
                                     throw Error(
                                         "Sincroniza tus cambios antes de actualizar; puedes exportar una copia",
@@ -1727,7 +1865,7 @@ function TrainerStudent({
                                 <label className="technique-label" htmlFor={`trainer-description-${tech.id}`}>Descripción del alumno</label>
                                 <textarea id={`trainer-description-${tech.id}`} className="student-description" aria-label="Descripción del alumno"
                                     readOnly value={tech.descripcion_del_alumno} placeholder="Sin descripción" rows={3}/>
-                                    <CommentEditor source={notes} version={snapshot.comments!.sha} techniqueId={tech.id} run={run}
+                                    <CommentEditor actor={client.identity!.mail} owner={snapshot.profile.data.mail} source={notes} version={snapshot.comments!.sha} techniqueId={tech.id} run={run}
                                         save={async (data, sha) => {
                                             const saved = await client.request<{ data: Comments; sha: string; planIssues?: PlanIssue[] }>(
                                                 `/api/app/users/${encodeURIComponent(snapshot.profile.data.mail)}/comments`,

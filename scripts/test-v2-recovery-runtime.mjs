@@ -9,6 +9,10 @@ import { ProbeSecurity as Base, default as entry, DomainIO } from './worker/dev.
 export default entry;
 export { DomainIO };
 export class ProbeSecurity extends Base {
+    fetch(request) {
+        if(new URL(request.url).pathname==='/api/__qa/outbox') return this.ctx.storage.list({prefix:'v2-pending:',limit:20}).then(items=>Response.json({pending:items.size}));
+        return super.fetch(request);
+    }
     constructor(...args) {
         super(...args);
         const deliver = this.broadcast.bind(this);
@@ -29,7 +33,7 @@ let ws;
 try {
     const api = async (path, body, token) => {
         const response = await runtime.dispatchFetch('https://local/api/v2/' + path, { method: body === undefined ? 'GET' : 'POST',
-            headers: { Origin: origin, ...(token ? { Authorization: 'Bearer ' + token } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) },
+            headers: { Connection: 'close', Origin: origin, ...(token ? { Authorization: 'Bearer ' + token } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) },
             ...(body ? { body: JSON.stringify(body) } : {}) });
         const result = await response.json(); assert.ok(response.ok, JSON.stringify(result)); return result;
     };
@@ -38,15 +42,22 @@ try {
     const upgraded = await runtime.dispatchFetch('https://local/api/v2/realtime?ticket=' + ticket.ticket, { headers: { Origin: origin, Upgrade: 'websocket' } });
     assert.equal(upgraded.status, 101); ws = upgraded.webSocket; const events = [];
     ws.addEventListener('message', event => events.push(JSON.parse(event.data))); ws.accept();
+    const closed = new Promise(resolve => ws.addEventListener('close', resolve, {once:true}));
     const comments = await api('users/' + mail + '/comments', undefined, actor.token);
     const operationId = crypto.randomUUID();
     await api('commands/profile', { data: { ...actor.profile, nombre: 'Recovered' }, expected: '1', operationId }, actor.token);
-    for (let i = 0; i < 60 && !events.some(e => e.operationId === operationId); i++) await new Promise(resolve => setTimeout(resolve, 100));
-    assert.ok(events.some(e => e.operationId === operationId && e.resources.some(r => r.kind === 'profile' && r.owner === mail)));
+    let pending = 1;
+    for (let i = 0; i < 60 && pending; i++) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        pending = (await (await runtime.dispatchFetch('https://local/api/__qa/outbox')).json()).pending;
+    }
+    assert.equal(pending,0,'The atomic receipt must still recover the failed outbox');
     const profile = await api('users/' + mail + '/profile', undefined, actor.token);
     assert.equal(profile.data.nombre, 'Recovered'); assert.equal(profile.version, '2');
     assert.ok(comments.data);
     const before = f.metrics(); await new Promise(resolve => setTimeout(resolve, 1300));
     assert.equal(f.metrics().estimatedReads, before.estimatedReads);
-    console.log('Actual V2 SQLite outbox recovers a failed live notification from its atomic receipt; no repeated mutation or idle polling PASS.');
+    ws.close();
+    assert.equal((await closed).code,1012,'Partial delivery forces reauthentication instead of retaining potentially stale authorization');
+    console.log('Actual V2 SQLite outbox recovers the failed delivery receipt and closes sockets for reauthentication; no repeated mutation or idle polling PASS.');
 } finally { if (ws) try { ws.close(); } catch {} await runtime.dispose(); }
