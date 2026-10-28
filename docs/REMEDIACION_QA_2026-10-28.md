@@ -309,3 +309,14 @@ Chromium. El workflow PRO permanece intacto.
 La comprobación posterior al despliegue consulta `/api/dev/runtime` y verifica
 el SHA de Worker/coordinador y proyecto. No ejecuta una campaña ni mutaciones
 Google, que siguen sujetas a su gate de cuota independiente.
+
+Primer CI de PR #31: 26/27 regresiones aprobadas; REN-02 contabilizó seis lecturas
+de GC de los planes creados en el setup dentro de su ventana de navegación. En
+Linux, más rápido, la alarma diferida coincidía con la medición; localmente ya
+había terminado. Se reprodujo determinísticamente el mismo 6 frente a 0 usando
+la alarma real. El fixture permite ahora controlar y drenar ese mantenimiento,
+registrar su coste por separado y medir después la navegación, que sigue
+exigiendo **cero lecturas y escrituras**. Un segundo drenado dentro de la ventana
+comprueba que la navegación tampoco deja trabajo diferido. No se cambia código
+de aplicación, se suprime GC real ni se relaja el presupuesto. Evidencia local:
+`.qa/deploy-2026-10-28/REN02-maintenance-{red,green}.log`.

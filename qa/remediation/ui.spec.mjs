@@ -70,12 +70,23 @@ for (const emptyPosition of [false, true]) test(`GEN10: ${emptyPosition ? 'posit
 });
 
 test('REN02: independent trainer sources start while profile response is held; plans stay on demand', async ({page}, info) => {
-  const a = await createLocalAcademy();
+  const a = await createLocalAcademy({manualMaintenance:true});
   let release = () => {};
   try {
     const u = await a.register('ren02-pupil'); await competition(a, [u]); await competition(a, [u]);
     const before = await a.call(userPath(u, 'snapshot'), undefined, u.token);
     await team(page, a);
+    // The setup's immutable-block GC is scheduled after one second. Drain that
+    // real maintenance explicitly, so faster CI cannot charge it to navigation.
+    // Report its cost separately rather than hide it or relax the zero-read gate.
+    const maintenanceBefore = a.f.metrics();
+    await a.drainMaintenance();
+    const maintenanceAfter = a.f.metrics();
+    await evidence(info,'setup-maintenance-budget',{
+      estimatedReads:maintenanceAfter.estimatedReads-maintenanceBefore.estimatedReads,
+      attemptedWrites:maintenanceAfter.attemptedWrites-maintenanceBefore.attemptedWrites,
+      attemptedDeletes:maintenanceAfter.attemptedDeletes-maintenanceBefore.attemptedDeletes
+    });
     const costBefore = a.f.metrics();
     let entered; const gate = new Promise(r => release = r), seen = new Promise(r => entered = r);
     const requests = [];
@@ -95,6 +106,7 @@ test('REN02: independent trainer sources start while profile response is held; p
     await expect(page.locator('.plan-card')).toBeVisible();
     expect(requests.filter(path => /\/plans\/[^/]+$/.test(path))).toHaveLength(1);
     expect(await a.call(userPath(u, 'snapshot'), undefined, u.token)).toEqual(before);
+    await a.drainMaintenance();
     const costAfter = a.f.metrics();
     expect(costAfter.attemptedWrites-costBefore.attemptedWrites).toBe(0);
     expect(costAfter.estimatedReads-costBefore.estimatedReads).toBe(0);
