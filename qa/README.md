@@ -5,7 +5,8 @@ Firestore sintético. No modifica la aplicación para hacer pasar pruebas ni des
 Procedimiento completo: `.agents/skills/pgt-e2e-qa/SKILL.md`.
 
 ```powershell
-npm ci
+npm.cmd ci
+$env:NODE_OPTIONS='--experimental-strip-types'
 node qa/run.mjs new --campaign mi-campana --document "C:/ruta/protocolo.docx"
 node qa/run.mjs run --campaign mi-campana
 node qa/run.mjs run --campaign mi-campana --block COM
@@ -33,6 +34,26 @@ No ejecutar en paralelo suites que abran los mismos perfiles o modifiquen un cat
 compartido. Los datos QA se conservan para reanudar y limpiar por vías soportadas.
 
 El informe HTML de cada ejecución está en `.qa/campaigns/<id>/playwright-report-*`.
+Cada fase conserva su propio directorio de blobs para que otra ejecución no lo
+borre al empezar. Los JSON y HTML de intentos anteriores también se conservan.
 Los resultados y evidencias por intento no se heredan entre campañas. Ejecutar el
 saneador de `tools/` antes de compartir cualquier artefacto, especialmente trazas.
 DOCX, inventario de incidencias y métricas: consultar `tools/README.md`.
+
+La cuota actual de Firestore no es un requisito previo para campañas DEV autorizadas
+(corrección del propietario de 28/10/2026 en AGENTS.md). Las pruebas de volumen y
+fallos destructivos siguen aisladas. Para seleccionar alumnos usar la búsqueda por
+correo único; pueden existir nombres completos repetidos entre campañas.
+
+El suplemento visual de PDF exige una revisión real y su auditoría con hashes del
+PDF y de todas sus páginas. No reutilizar el fichero visual de otra campaña; si falta,
+el caso permanece pendiente de revisión y no acredita el diseño.
+
+La referencia oficial independiente se aporta localmente en
+`qa/fixtures/official-template.json`, excluido de Git por contener el catálogo privado.
+Una copia limpia requiere recibir ese archivo por canal privado antes de iniciar la
+campaña; nunca obtener el resultado esperado de la propia aplicación probada.
+Las credenciales y los resultados permanecen en `.qa/`, también fuera de Git.
+
+Para reconstruir el índice navegable de los registros existentes sin ejecutar pruebas:
+`node qa/tools/build_report_index.mjs .qa/campaigns/<id>`.

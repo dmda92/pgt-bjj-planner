@@ -18,7 +18,8 @@ caseTest('COM 01', async ({}, r) => {
     await p.route('**/api/v2/commands/competition', async route => { await held; await route.continue(); }, { times: 1 });
     let saved;
     await r.step('Crear torneo por defecto observando spinner y bloqueo inmediato', async () => {
-        const response = p.waitForResponse(x => x.url().endsWith('/commands/competition'));
+        const response = p.waitForResponse(x => x.url().endsWith('/commands/competition'), { timeout: 90000 });
+        response.catch(() => {});
         await form.getByRole('button', { name: 'Crear competición', exact: true }).click();
         await expect(form.getByRole('button', { name: 'Crear competición', exact: true })).toBeDisabled();
         await expect(p.getByRole('status', { name: 'Creando competición', exact: true })).toBeVisible(); await r.capture(p, 'creando'); release();
@@ -136,11 +137,12 @@ caseTest('COM 09', async ({}, r) => {
     await r.json('reconnected-index', { a: (await w.snapshot()).index, a2: (await w.snapshot('A2')).index }); r.finish('APROBADO', 'Asignación confirmada con A offline; reconexión de cada perfil recibe un único plan sin borrar almacenamiento ni nuevo login.');
 });
 caseTest('COM 10', async ({}, r) => {
+    r.includePrevious();
     const id = await createCompetition(w, { end: datePlus(53), roles: ['T', 'A'] });
     const t = await plan(w, 'T', id); expect(t.mail).toBe(w.users.T.mail);
     await r.step('Entrenador participante consulta su plan de solo lectura', async () => {
         const p = w.pages.T; await p.getByRole('button', { name: /^Mis planes/ }).click(); await p.getByLabel('Mi plan', { exact: true }).selectOption(id);
-        expect(await p.locator('.plan input,.plan textarea').count()).toBe(0); await r.capture(p, 'trainer-participant');
+        await expect(p.locator('.plan-card')).toBeVisible(); await expect(p.locator('.plan-card details.session')).toHaveCount(t.sessions.length); expect(await p.locator('.plan-card input,.plan-card textarea,.plan-card [contenteditable=true]').count()).toBe(0); await expect(p.getByRole('button',{name:'Exportar PDF',exact:true})).toBeVisible(); await r.capture(p, 'trainer-participant');
     });
     await r.json('trainer-plan', t); r.finish('PARCIAL', 'T puede incluirse al crear y recibe plan propio de solo lectura.', 'La consulta desde otro entrenador y su matriz completa de textos/histórico se ejercitan en escenarios aislados, no en este plan concreto.');
 });
@@ -158,15 +160,31 @@ caseTest('COM 11', async ({}, r) => {
     await r.json('unassigned', { id, a: (await w.snapshot()).index, b: beforeB }); r.finish('APROBADO', 'Desasignación real elimina acceso/plan de A en ambos perfiles, conserva torneo y plan de B; no queda archivo visible archivado.');
 });
 caseTest('COM 12', async ({}, r) => {
-    const id = await createCompetition(w, { end: datePlus(57), roles: ['A', 'B'] });
-    await r.step('Perder respuesta tras desasignación confirmada y reasignar', async () => {
+    const id = await createCompetition(w, { end: datePlus(57), roles: ['A', 'B'] }), beforeB=await plan(w,'B',id);
+    await r.step('Perder ACK tras desasignacion confirmada, verificar reintento idempotente y reasignar', async () => {
         const { p, card } = await competitionCard(w, id); await card.locator(`[name=student][value="${w.users.A.mail}"]`).uncheck();
-        await p.route('**/api/v2/commands/assignment', async route => { const response = await route.fetch(); expect(response.status()).toBe(200); await route.abort('failed'); }, { times: 1 });
-        await awaitCommand(p, 'assignment', () => card.getByRole('button', { name: 'Guardar datos', exact: true }).click());
-        expect((await w.snapshot()).index.data.deletedPlanIds).toContain(id); await assign(id, ['A', 'B']);
-        expect((await w.snapshot()).index.data.deletedPlanIds || []).not.toContain(id); expect((await plan(w, 'A', id)).sessions.length).toBeGreaterThan(0);
+        const payloads=[],capture=req=>{if(req.url().endsWith('/api/v2/commands/assignment')&&req.method()==='POST')payloads.push(req.postDataJSON());};p.on('request',capture);
+        let committed;
+        await p.route('**/api/v2/commands/assignment', async route => { const response = await route.fetch(); expect(response.status()).toBe(200); committed=await response.json(); await route.abort('failed'); }, { times: 1 });
+        const lost=p.waitForEvent('requestfailed',{predicate:req=>req.url().endsWith('/api/v2/commands/assignment')&&req.method()==='POST',timeout:60000});
+        const recovered=p.waitForResponse(response=>response.url().endsWith('/api/v2/commands/assignment')&&response.request().method()==='POST',{timeout:60000});
+        try{
+            await card.getByRole('button', { name: 'Guardar datos', exact: true }).click();
+            const failed=await lost;expect(failed.failure()).toBeTruthy();
+            // The current contract performs exactly one immediate retry of this
+            // lost ACK with the same operationId/body; never a reconnect replay.
+            const receipt=await recovered;expect(receipt.status()).toBe(200);const replayed=await receipt.json();
+            expect(payloads).toHaveLength(2);expect(payloads[1]).toEqual(payloads[0]);expect(replayed).toEqual(committed);
+            await expect(card.getByRole('button',{name:'Guardar datos',exact:true})).toBeDisabled();
+            expect((await w.snapshot()).index.data.deletedPlanIds).toContain(id);expect(await plan(w,'B',id)).toEqual(beforeB);
+            const absent=await w.api('A','users/'+encodeURIComponent(w.users.A.mail)+'/plans/'+id);expect([403,404]).toContain(absent.status);
+            await r.capture(p,'lost-ack-recovered');await r.json('lost-ack-idempotence',{failed:failed.failure(),payloads,receipt:replayed,bPlanUnchanged:true});
+        }finally{p.off('request',capture);await p.unroute('**/api/v2/commands/assignment');}
+        await assign(id, ['A', 'B']);
+        expect((await w.snapshot()).index.data.deletedPlanIds || []).not.toContain(id); expect((await plan(w, 'A', id)).sessions.length).toBeGreaterThan(0);expect(await plan(w,'B',id)).toEqual(beforeB);
+        const catalog=(await w.api('T','catalog')).data.data;expect(catalog.plans.find(c=>c.planId===id).alumnos.sort()).toEqual([w.users.A.mail,w.users.B.mail].sort());
     });
-    await r.json('reassigned', (await w.snapshot()).index); r.finish('APROBADO', 'Pérdida de ACK se recupera idempotentemente; tombstone y reasignación coherentes.', 'El commit Firestore actual es atómico: no existe fase visible índice/JSON separada que interrumpir; se ensaya ACK perdido equivalente.');
+    await r.json('reassigned', (await w.snapshot()).index); r.finish('APROBADO', 'ACK perdido observado como requestfailed tras commit200; reintento inmediato usa exactamente mismo payload/operationId y devuelve mismo recibo. Tombstone y acceso retirado A, reasignacion elimina tombstone y recupera plan; plan B profundo intacto.', 'Commit Firestore atomico: no existe fase visible indice/JSON separada. Se inyecta perdida de ACK en Chromium; reintento y persistencia son DEV real.');
 });
 caseTest('COM 13', async ({}, r) => {
     const id = await createCompetition(w, { end: datePlus(59), roles: ['A', 'B'] }), before = await w.snapshot(), { p, card } = await competitionCard(w, id);

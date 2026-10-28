@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { prepareTemplateReference } from './tools/prepare-template-reference.mjs';
 const args = process.argv.slice(2), command = args.shift() || 'run';
 const option = name => { const index = args.indexOf('--' + name); return index < 0 ? undefined : args[index + 1]; };
 const id = option('campaign') || '2026-10-26';
@@ -13,8 +14,10 @@ if (command === 'new') {
     if (existsSync(resolve(root, 'manifest.json'))) throw Error('Campaign already exists; choose new identifier to avoid resetting results');
     mkdirSync(root, { recursive: true });
     execute('python', ['qa/tools/protocol_docx.py', 'extract', '--source', resolve(option('document')), '--campaign', id, '--output', resolve(root, 'manifest.json')]);
+    prepareTemplateReference(root);
 } else if (command === 'run') {
     if (!existsSync(resolve(root, 'manifest.json'))) throw Error('Initialize campaign with new --document');
+    prepareTemplateReference(root);
     if (option('block')) env.QA_BLOCK = option('block');
     if (option('case')) env.QA_CASES = option('case');
     if (args.includes('--pending')) env.QA_PENDING = '1';
@@ -25,7 +28,7 @@ if (command === 'new') {
     } else {
         // Lifecycle matters: register before editing, finish all scenarios before cleanup.
         // Continue after failed cases; evidence/reporting must include the entire campaign.
-        const phases=['remote-setup','remote-profile-techniques','remote-competitions','remote-trainer','remote-performance','remote-pdf','plans','faults','remote-access','remote-security','fault-role-cycle','fault-block-reuse','local-pwa-update','local-motion-followup','remote-pwa','remote-criteria-followup','reference-template','local-text-safety','deployment-audit','campaign-close','closing-verdict'];
+        const phases=['remote-setup','remote-profile-techniques','remote-competitions','remote-trainer','remote-performance','plans','remote-pdf','faults','remote-access','fault-access-template','remote-security','fault-role-cycle','fault-block-reuse','local-pwa-update','fault-preparation','local-motion-followup','fault-persistent-offline','remote-pwa','remote-criteria-followup','reference-template','remote-trainer-participant-followup','remote-a11y-followup','remote-text-safety-followup','local-text-safety','local-remediation-followup','local-criteria-audit','local-security-followup','visual-pdf-followup','deployment-audit','campaign-close','closing-verdict'];
         let failure=false;
         if (!option('case') && !option('block') && !args.includes('--pending') && !args.includes('--failed')) {
             const gates=spawnSync(process.execPath,['qa/tools/run-gates.mjs'],{stdio:'inherit',env});if(gates.error)throw gates.error;failure ||= gates.status!==0;

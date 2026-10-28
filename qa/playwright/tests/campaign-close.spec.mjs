@@ -15,7 +15,14 @@ caseTest('DEP 01',{environment:'Local Windows; Worker y transporte Firestore sin
     });r.finish('APROBADO','Instalación reproducible y todos los gates locales finalizados con código cero; logs por comando. Worker/Firestore de tests son sintéticos; comprobación remota DEV se registra por separado. No se despliega.');
 });
 caseTest('FIN 01',{users:['T','A','A2','B']},async({},r)=>{
-    w=await getWorld();for(const role of ['T','A','B'])await w.login(role);w.users.A2 ||= w.users.A;await w.login('A2','A');
+    w=await getWorld();for(const role of ['T','A','B'])await w.login(role);w.users.A2 ||= w.users.A;
+    await r.step('Autenticar de nuevo A2 tras los ensayos previos de revocacion de roles',async()=>{
+        const page=await w.page('A2');await page.goto(w.baseURL);
+        await page.getByRole('button',{name:'Salir',exact:true}).or(page.getByLabel('Correo',{exact:true})).first().waitFor({timeout:60000});
+        if(await page.getByRole('button',{name:'Salir',exact:true}).count())await page.getByRole('button',{name:'Salir',exact:true}).click();
+        await page.getByLabel('Correo',{exact:true}).waitFor({timeout:60000});await w.login('A2','A');
+        expect((await w.api('A2','users/'+encodeURIComponent(w.users.A.mail)+'/profile')).status).toBe(200);
+    });
     const id=await createCompetition(w,{start:datePlus(-2),end:datePlus(4),days:[1,2,3,4,5,6,7],roles:['A','B']}),before=await plan(w,'A',id),b=await w.snapshot('B'),source=await w.snapshot(),target=before.sessions.find(s=>s.date>madridToday()).exercises[0],position=source.techniques.data.positions.find(p=>p.id===target.positionId),tech=position.tecnicas.find(t=>t.id===target.techniqueId),text='INTEGRAL_DESCRIPCION_'+Date.now(),comment='INTEGRAL_COMENTARIO_'+Date.now();
     await r.step('Editar texto y comentario en mismo UUID y comprobar propagación real A/A2',async()=>{
         const p=await ownTech(w),pos=p.locator('[data-position-id="'+position.id+'"]');if(!await pos.evaluate(e=>e.open))await pos.locator('summary').click();await awaitCommand(p,'repertoire',()=>p.locator('[id="technique-'+tech.id+'"]').getByLabel('Descripción de técnica o enlace de vídeo').fill(text));
@@ -41,13 +48,26 @@ caseTest('FIN 02',{environment:'Auditoría de retests de esta campaña',users:['
         const attempts=readdirSync(resolve(campaign,'attempts')).filter(x=>x.endsWith('.json')),current=readdirSync(resolve(campaign,'results')).map(f=>JSON.parse(readFileSync(resolve(campaign,'results',f),'utf8')));
         const failed=current.filter(x=>x.status==='FALLIDO').map(x=>({id:x.id,incident:x.incident,evidence:x.evidence}));
         await r.json('retest-audit',{applicationFixesDuringCampaign:[],deploymentDuringCampaign:false,attemptFiles:attempts,openFailures:failed,policy:'Los reintentos corrigen únicamente selectores/precondiciones/lector QA; no cierran incidencias de aplicación sin cambio funcional posterior autorizado.'});
-        expect(failed.length).toBeGreaterThan(0);
-    });r.finish('NO APLICA','No se ha corregido ni desplegado código funcional durante la campaña, conforme al encargo. Incidencias reales quedan abiertas; fallos de infraestructura QA y sus reintentos se conservan en attempts y evidencias.','El retest tras corregir cada defecto de producto requiere un encargo y versión posterior; no se declara cierre de esas incidencias.');
+        // A new campaign may have no product defects. The audit must not require one.
+        expect(current.every(row=>typeof row.id==='string'&&typeof row.status==='string')).toBe(true);
+    });
+    const ids=['SEC 01','ISO 08','SYN 06','SYN 08','SYN 11','ISO 02','PWD 07','PWA 06','PLA 04','CON 04','CON 09','ENT 06','GEN 10','LIM 04','REN 02'];
+    const checked=[];
+    await r.step('Verificar retests nuevos de las quince correcciones ya desplegadas y bloques afectados',async()=>{
+        for(const id of ids){const path=resolve(campaign,'results',id.replaceAll(' ','-')+'.json'),row=JSON.parse(readFileSync(path,'utf8'));expect(row.executedAt).toBeTruthy();expect(row.evidence.length).toBeGreaterThan(0);r.result.evidence.push(path,...row.evidence);checked.push({id,status:row.status,executedAt:row.executedAt});}
+        const regressionPath=resolve(campaign,'supplement-remediation','fresh','results.json'),regressions=JSON.parse(readFileSync(regressionPath,'utf8'));expect(regressions.stats.expected).toBe(27);expect(regressions.stats.unexpected).toBe(0);r.result.evidence.push(regressionPath);
+        const block=resolve(campaign,'evidence','SUP-BLOCK-REUSE'),proofs=readdirSync(block).map(dir=>resolve(block,dir,'proof.json')).filter(existsSync);expect(proofs.length).toBeGreaterThan(0);const proof=JSON.parse(readFileSync(proofs.at(-1),'utf8'));expect(proof.httpStatus).toBe(200);expect(proof.freshCASVerifiedAgainstStoredHead).toBe(true);r.result.evidence.push(proofs.at(-1));
+        await r.json('deployed-remediation-retests',{build:JSON.parse(readFileSync(resolve(campaign,'build.json'),'utf8')),checked,regressions:regressions.stats,cas:proof,applicationModifiedDuringCampaign:false});
+    });
+    const incomplete=checked.filter(x=>x.status!=='APROBADO');
+    r.finish(incomplete.length?'PARCIAL':'APROBADO','Quince incidencias previamente corregidas en la versión desplegada reensayadas con evidencias nuevas de esta campaña; 27 regresiones suplementarias y CAS comprobados. No se ha corregido ni desplegado aplicación durante QA.',incomplete.length?'Quedan retests sin aprobación completa: '+incomplete.map(x=>x.id+' '+x.status).join(', '):'Los intentos anteriores de esta campaña se conservan; el cierre no reutiliza aprobaciones de campañas anteriores.');
 });
 caseTest('FIN 03',{users:['T','A','B','C']},async({},r)=>{
     test.setTimeout(600000); // Every owned competition is removed and verified individually.
     w ||= await getWorld();await w.login('T');const catalog=await w.api('T','catalog'),owned=new Set(w.state.planIds),foreign=catalog.data.data.plans.filter(p=>!owned.has(p.planId)),deleted=[];
-    const supplementaryAccounts=existsSync(resolve(campaign,'access-users.json'))?JSON.parse(readFileSync(resolve(campaign,'access-users.json'),'utf8')):{};
+    const supplementaryCandidates=existsSync(resolve(campaign,'access-users.json'))?JSON.parse(readFileSync(resolve(campaign,'access-users.json'),'utf8')):{};
+    const supplementaryCreated=existsSync(resolve(campaign,'access-users.private.json'))?new Set(JSON.parse(readFileSync(resolve(campaign,'access-users.private.json'),'utf8')).created):new Set();
+    const supplementaryAccounts=Object.fromEntries(Object.entries(supplementaryCandidates).filter(([,user])=>supplementaryCreated.has(user.mail)));
     await r.step('Inventariar y borrar exclusivamente competiciones creadas en esta campaña',async()=>{
         await r.json('cleanup-before',{createdPlanIds:[...owned],foreignBefore:foreign,users:JSON.parse(readFileSync(resolve(campaign,'users.json'),'utf8')),supplementaryAccounts});
         for(const item of catalog.data.data.plans.filter(p=>owned.has(p.planId))){

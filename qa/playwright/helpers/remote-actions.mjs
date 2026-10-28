@@ -32,6 +32,7 @@ export async function selectStudent(w, role = 'A', section = 'Técnicas') {
     const p = await trainer(w);
     const roster = await w.api('T', 'roster'); expect(roster.status).toBe(200);
     const person = roster.data.data.users.find(user => user.mail === w.users[role].mail); expect(person).toBeTruthy();
+    await p.getByLabel('Buscar alumnos', { exact: false }).fill(person.mail);
     await p.locator('.student-card').filter({ has: p.locator('.student-info strong').getByText([person.nombre, person.apellidos].filter(Boolean).join(' '), { exact: true }) }).click();
     await expect(p.locator('.student-detail')).toContainText(w.users[role].mail, { timeout: 60000 });
     if (section !== 'Técnicas') await p.getByRole('button', { name: section, exact: true }).click();
