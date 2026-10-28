@@ -1,0 +1,138 @@
+# Firestore DEV: arquitectura e instrucciones de operación
+
+## Destino y seguridad
+
+Exclusivamente `pgt-bjj-dev`, base `(default)`, Standard/Native, `europe-west1`, Spark confirmado por propietario. La
+cuenta `pgt-worker-dev` usa OAuth2 RS256 con secreto solo en Worker `pgt-github-probe-dev`. Se rechazan otros
+proyectos/identidades antes de red. El propietario aportó las reglas publicadas deny-all el 21/10/2026 (hora Madrid);
+referencia reproducible `firestore.dev.rules`. Coinciden con el rechazo anónimo real del diagnóstico. Sin nueva
+publicación de reglas ni elevación IAM. Los permisos de roles y recursos siguen en el AppApi original; la cuenta de
+servicio omite reglas web mediante IAM.
+
+PRO conserva `worker/index.ts`, `wrangler.jsonc`, workflow PRO y el backend anterior. DEV añade `worker/dev.ts`, inyecta
+`FirestoreStorage` en el mismo AppApi sin cambiar sus operaciones ni las funciones del dominio. Las rutas de viabilidad
+antiguas quedan deshabilitadas en DEV. Ninguna operación de negocio DEV utiliza GitHub, aunque el secreto histórico
+puede conservarse hasta cerrar QA. No retirar secretos de PRO.
+
+## Esquema y consistencia
+
+Decisión tras implementar: conservar por ahora las entidades lógicas completas del contrato existente, separadas de su
+representación física. Evita reescribir generación, recálculo, tombstones, permisos o recuperación de operaciones
+parciales. El adaptador consume las claves del contrato heredado, pero no almacena árboles de ficheros ni consulta
+GitHub. La versión de 40 hex es aleatoria y opaca; no un SHA Git. Es una desviación deliberada respecto a la propuesta
+inicial de descomponer cada técnica en su propio documento; permite demostrar primero equivalencia de los servicios
+existentes. El coste de cambiar una técnica depende del tamaño de su entidad y de los planes afectados.
+
+- `pgt_resources/{SHA256(clave lógica)}`: manifiesto con `owner`, `kind`, `directory` lógico para consultas, `file`,
+  `version`, `deleted`, `parts`, `bytes`, `digest`. Entidades pequeñas ≤32 KiB se incluyen como `inline.bytesValue` para
+  evitar otra lectura.
+- `pgt_resources/{id}/parts/{version}_{ordinal}`: fragmentos inmutables de hasta 192 KiB de bytes UTF-8. JSON original
+  conservado byte a byte, incluidos arrays, UUID, contraseñas ya hasheadas, snapshots y checkpoints. Cada lectura
+  verifica tamaño y SHA256 antes de parsear. Todos los fragmentos de una entidad se leen en un único batchGet; se
+  reordenan por ordinal, sin multiplicar las subpeticiones del Worker por el número de fragmentos.
+- `pgt_changes/{version}`: outbox de invalidación con propietario y tipo, publicado en el mismo Commit que el manifiesto
+  y todos sus fragmentos. No contiene textos ni credenciales.
+- `_pgt_dev_diagnostics/{UUID}`: exclusivamente diagnóstico efímero; CRUD y borrado 404 verificado antes del negocio.
+
+Límite lógico sin cambios: 4 MiB por JSON. Máximo 22 partes más manifiesto/outbox; Commit codificado acotado a 9 MiB,
+inferior al límite REST de 10 MiB. Publicación enteramente atómica, sin staging parcialmente visible. `exists:false` o
+`updateTime` protege manifiestos. Una respuesta perdida se resuelve leyendo la revisión aleatoria de esa operación,
+nunca repitiendo una escritura ni aceptando una versión ajena. Tombstone mantiene protección ABA y permite
+reasignación/create-only posteriores.
+
+Las operaciones de negocio de múltiples entidades conservan la recuperación original: catálogo fuente de verdad,
+tombstones antes de eliminar, recreación solo de planes inexistentes y proyecciones pendientes recuperables. No son una
+transacción única sobre todos los participantes; el DO serializa AppApi con blockConcurrencyWhile y cada entidad/outbox
+tiene CAS atómico. Las lecturas se reutilizan exclusivamente dentro del evento actual, incluidas las cabeceras ya
+obtenidas por consultas; no se conservan entre peticiones ni en SQLite. Cada write vuelve a comprobar el manifiesto
+remoto fresco y cada lector recibe su propia copia de los datos. Los errores de proyección siguen entregando fuentes y
+último plan válido. No declarar completada una proyección fallida.
+
+Consultas de manifiestos por un único campo `kind` o `directory`: índices automáticos, sin índices compuestos manuales.
+Recomendación de coste para un futuro volumen mayor: eximir `inline`, y collection group `parts.payload`, de índices de
+campo único en DEV. No es requisito funcional, no desplegar índices PRO. Ninguna query usa esos payloads. Las
+generaciones antiguas de entidades fragmentadas se retienen para lectores en vuelo; no hay borrado automático/TTL
+(servicio de pago). Vigilar espacio de la base DEV y limpiar únicamente fixtures autorizados con una herramienta
+revisada antes de ensayos de carga sostenidos. No ejecutar un borrado global ni recolector sobre datos reales.
+
+## Tiempo real y caché
+
+Ticket opaco de un uso, 30 segundos, emitido tras validar sesión y perfil Firestore. El WebSocket recibe solo
+invalidaciones, sin datos de negocio ni nombres de otros alumnos. SQLite guarda sesiones, tickets, límites y
+coordinación; no negocio. WebSocket Hibernation API conserva adjuntos autorizados. Cada publicación vuelve a validar
+sesión/contraseña/rol; el canal rechaza mensajes del cliente sin consumir lecturas Firestore; logout y cambios de rol
+cierran sockets revocados. Alumnos solo reciben invalidaciones propias/globales; entrenadores las autorizadas por su
+rol.
+
+Antes de cada petición de negocio se programa alarma recuperable; un crash tras Commit deja outbox durable. La respuesta
+intenta publicar/confirmar outbox; ante fallo la alarma reintenta, en páginas de 100. No hay sondeo continuo de
+Firestore en reposo ni listeners de colecciones globales. Handshake seguido de snapshot, relectura si llegan eventos
+durante carga, deduplicación acotada y backoff con jitter en reconexión.
+
+Frontera: solo las escrituras coordinadas por Worker/migrador generan invalidación. Cambios manuales en consola no
+tienen notificación automática. No habilitar escritores externos sin un puente de eventos compatible y presupuesto
+revisado.
+
+`OnlineClient` exclusivo del build DEV (`VITE_PERSISTENCE=firestore-dev`); el build sin bandera usa el cliente anterior.
+IndexedDB es caché por usuario; los avisos leídos se conservan. Los pendientes antiguos se archivan en meta como
+`legacy-drafts:<mail>` y aparecen en la copia JSON exportable, nunca se suben solos. Se archivan antes de una nueva
+autenticación, incluso si el token anterior no existe en el backend nuevo. Los archivos históricos de borradores se
+conservan al cambiar de cuenta, separados por propietario, sin sobrescribir versiones anteriores. No se suben ediciones
+manuales de planes. Las mutaciones requieren la versión de cliente online en cabecera; una PWA antigua recibe HTTP 426
+antes de ejecutar AppApi, evitando que una cola offline anterior llegue al backend nuevo. Esa versión no concede
+permisos: sesión, rol y CAS siguen siendo obligatorios.
+
+Edición online de técnicas coalescida 700 ms en memoria, con base propia del borrador. Solo se avanza esa base al
+recibir su ACK, no por una actualización externa. Fallos conservan borrador visible/exportable y requieren reintento
+explícito o descartar y cargar la versión actual. No hay cola durable ni reenvío al recuperar conexión. Desconectado
+permite consultar caché y PDF, bloquea mutaciones. Perfil conserva borradores sin guardar. Eventos actualizan también
+ficha seleccionada, catálogo, alumnos, cobertura y entrenamiento del día, con protección frente a respuestas anteriores.
+
+Límites específicos DEV para el nuevo patrón de lecturas: 180 peticiones/IP/min, 600 global/min, 30 mutaciones/min, 6
+intentos de login/registro por IP/min; ticket 12/min/sesión y máximo 4 sockets/sesión, 100 globales. Estos límites
+sustituyen exclusivamente el presupuesto de peticiones GitHub/sondeo previo en DEV, manteniendo control de abuso. No
+trasladarlos a PRO sin revisión.
+
+## Datos de prueba y migrador
+
+`POST /api/dev/synthetic-fixture` exige el mismo token de despliegue y origen DEV que el diagnóstico. Actions fija su
+huella SHA256 en la configuración del Worker al desplegar; además se comprueba acceso vigente al Worker DEV. Un token
+distinto, aunque pueda leer ajustes de Cloudflare, no puede crear cuentas de prueba. La huella no es la credencial y no
+concede acceso por sí sola; no se crean secretos manuales adicionales. Solo crea tres identidades nuevas
+`pgt-dev-<UUID>-{trainer,student,other}@example.test`, con contraseña efímera del ensayo. No permite elegir identidades
+reales, sobrescribir cuentas existentes ni asignar roles desde clientes normales. Si no existe plantilla DEV, crea **la
+plantilla sintética de pruebas**: no es el catálogo oficial ni una migración de datos reales. Cada ejecución tiene un
+marcador propio en `pgt_qa_runs`. Al terminar, el ensayo borra lógicamente sus tres cuentas y recursos, revoca sus
+sesiones y retira sus referencias del catálogo en un Commit condicionado. La limpieza exige el marcador de provisión,
+nombres derivados de ese UUID y ausencia de planes compartidos con identidades ajenas; no actúa sobre otros usuarios.
+Mantiene los tombstones físicos y generaciones antiguas para lectores en vuelo; no es un borrado global. La plantilla
+sintética permanece. Las ejecuciones manuales de revisión no se limpian automáticamente: el endpoint
+`synthetic-fixture-cleanup` requiere otra llamada administrativa explícita. No publicar contraseñas ni tokens en
+informes.
+
+`node scripts/firestore-migrate-dev.mjs --dry-run export-sintetico.json`: entrada local `[{path,data}]`, sin red.
+Informa conteos/bytes/digests sin contenido privado. Solo acepta identidades sintéticas y proyecto DEV, verifica
+referencias de perfiles/planes/asignaciones y límites. `migrateSynthetic` se ensaya contra adaptador Firestore:
+create-only, lectura de vuelta, identidad de JSON y reejecución idempotente; rechaza diferencias existentes. No existe
+exportador que lea el repositorio real en esta ejecución.
+
+## Despliegue y QA
+
+PR #6 feature nacida de main → develop; CI valida regresiones de main y pruebas adicionales DEV. El build de despliegue
+DEV fija bandera online. Tras publicar, se ejecutan preflight remoto y `scripts/test-firestore-dev-live.mjs`, con tres
+contextos Chromium aislados (dos roles, escritorio/móvil emulado). Datos exclusivos de prueba. Informes no equivalen a
+dispositivos físicos o Safari. El pipeline falla si falla cualquiera; publicar un Worker no equivale a superar QA.
+
+El informe incluye muestras de autosave → render remoto, p50/p95 y límites. Objetivo inicial de auditoría ≤2 s, a
+contrastar con las medidas; umbral de fallo del ensayo 10 s incluyendo debounce y relecturas completas. Si supera 2 s,
+registrar resultado y optimizar antes de considerar cumplido ese objetivo. Cuotas/costes facturados no se consultan:
+revisar Firebase DEV → Usage para lecturas, escrituras y espacio tras el ensayo. Spark no permite gastos automáticos por
+superar cuota; no activar Blaze.
+
+## Política vigente de consumo (21/10/2026)
+
+La orden posterior del propietario sustituye el preflight y QA reales automáticos descritos arriba.
+Ver [FIRESTORE_CONSUMO_DEV.md](FIRESTORE_CONSUMO_DEV.md): validación aislada por defecto, runtime sin CRUD en deploy,
+cuota fiable previa y presupuesto completo 200/150/50 con hasta dos usuarios. No ejecutar los scripts históricos de
+inventario/limpieza: fallan cerrados. PR sin merge automático; Google y limpieza pospuestos mientras no exista cuota
+actual fiable.

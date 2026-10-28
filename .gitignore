@@ -1,6 +1,8 @@
 node_modules/
+.idea/
 dist/
 .worker-build/
+.worker-dev-build/
 .wrangler/
 .dev.vars
 .dev.vars.*
@@ -16,3 +18,17 @@ coverage/
 data/
 
 .performance-artifacts/
+
+# Private QA credentials, campaign state and browser evidence.
+.qa/
+qa/playwright/reports/
+qa/playwright/evidence/
+qa/playwright/state/
+__pycache__/
+/debug.log
+
+# Isolated local worktrees; never package QA or independent branches.
+.worktrees/
+
+.worker-pro-build/
+.worker-validation-build/

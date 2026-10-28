@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   validate-and-deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       CI: 'true'
@@ -48,14 +48,26 @@ jobs:
       - name: Worker runtime tests
         run: npm run test:runtime
       - name: Install Chromium
-        run: npx --no-install playwright install --with-deps chromium
+        timeout-minutes: 8
+        run: bash scripts/ci-install-chromium.sh
       - name: Browser and offline PDF tests
         run: npm run test:browser
+      - name: Read-only production inspector (isolated Chromium)
+        env:
+          PGT_VALIDATION_BROWSER: '1'
+        run: node --experimental-strip-types --test tests/pro-validation.test.ts
       - name: Trainer performance regression
         run: npm run test:performance
+      - name: Production isolated runtime
+        run: node --experimental-strip-types scripts/test-v2-pro-runtime.mjs
+      - name: Check Firestore environment and production bundles (offline)
+        run: |
+          node scripts/check-dev-config.mjs
+          node scripts/check-pro-config.mjs
+          node scripts/check-pro-support.mjs
       - name: Check latest main commit
         id: head
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.CLOUDFLARE_DEPLOY_ENABLED == 'true'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.CLOUDFLARE_DEPLOY_ENABLED == 'true' && vars.FIRESTORE_PRO_READY == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -82,7 +94,7 @@ jobs:
             echo '::error::Configure CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repository secrets.'
             exit 1
           fi
-          npx --no-install wrangler deploy --config wrangler.jsonc --keep-vars
+          npx --no-install wrangler deploy --config wrangler.jsonc --keep-vars --var "WORKER_BUILD_SHA:$GITHUB_SHA"
       - name: Initial setup status
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.CLOUDFLARE_DEPLOY_ENABLED != 'true'
-        run: echo 'Validation passed. Set CLOUDFLARE_DEPLOY_ENABLED=true after configuring credentials and checking Cloudflare.' >> "$GITHUB_STEP_SUMMARY"
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && (vars.CLOUDFLARE_DEPLOY_ENABLED != 'true' || vars.FIRESTORE_PRO_READY != 'true')
+        run: echo 'Validation passed. Set CLOUDFLARE_DEPLOY_ENABLED=true and FIRESTORE_PRO_READY=true only after migration, integrity review and explicit release authorization.' >> "$GITHUB_STEP_SUMMARY"
