@@ -20,6 +20,8 @@ assert.deepEqual(config.migrations, [{
     new_sqlite_classes: ['ProbeSecurity']
 }, {tag: 'firestore-operation-dev-v1', new_sqlite_classes: ['DomainIO']}]);
 assert.deepEqual(config.vars, {
+    FIRESTORE_ENVIRONMENT: 'dev',
+    FIRESTORE_SERVICE_ACCOUNT_EMAIL: 'pgt-worker-dev@pgt-bjj-dev.iam.gserviceaccount.com',
     FIRESTORE_PROJECT_ID: 'pgt-bjj-dev',
     FIRESTORE_DATABASE_ID: '(default)',
     ALLOWED_ORIGINS: 'https://pgt-github-probe-dev.david-dzm5.workers.dev'

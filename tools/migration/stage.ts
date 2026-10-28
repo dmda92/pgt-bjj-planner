@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { verifyBundle, type MigrationBundle } from './convert.ts';
+import { verifyBundle, validImportedPasswordHash, type MigrationBundle } from './convert.ts';
 import { NativeAggregates } from '../../worker/v2/aggregates.ts';
 import { PlanRepository, nativeWrite } from '../../worker/v2/plans.ts';
 import { NativeFirestore } from '../../worker/structured/firestore.ts';
@@ -19,8 +19,6 @@ export interface StagingResult {
 }
 function prepare(bundle: MigrationBundle) {
     verifyBundle(bundle);
-    if (bundle.target !== 'pgt-bjj-dev')
-        throw Error('MIGRATION_PRODUCTION_STAGING_NOT_ENABLED');
     if (bundle.source.repository !== SOURCE_REPOSITORY || !/^[0-9a-f]{40}$/.test(bundle.source.commit))
         throw Error('MIGRATION_SOURCE_INVALID');
     if (!bundle.ready || bundle.issues.some(i => i.blocking))
@@ -30,8 +28,8 @@ function prepare(bundle: MigrationBundle) {
     const users = new Set<string>();
     for (const u of bundle.users) {
         validateProfile(u.profile);
-        if (users.has(u.profile.mail) || u.credential.state !== 'requires-dev-password' || !u.techniques || !u.comments || !u.index)
-            throw Error('MIGRATION_DEV_ACCOUNT_INVALID');
+        if (users.has(u.profile.mail) || (bundle.target === 'pgt-bjj-dev' ? u.credential.state !== 'requires-dev-password' : u.credential.state !== 'imported' || !validImportedPasswordHash(u.credential.passwordHash)) || !u.techniques || !u.comments || !u.index)
+            throw Error('MIGRATION_ACCOUNT_INVALID');
         users.add(u.profile.mail);
     }
     const plans: TrainingPlan[] = [], ids = new Set<string>();
@@ -54,18 +52,21 @@ function prepare(bundle: MigrationBundle) {
     return { namespace, plans, months };
 }
 /** Staging only: never activates a dataset, deletes old data or contacts GitHub.
- * The caller must provide the budgeted DEV transport; no default network capability exists here.
+ * The caller must provide the explicitly target-bound, budgeted transport; no default network capability exists here.
  */
 export async function stageMigration(bundle: MigrationBundle, db: NativeFirestore): Promise<StagingResult> {
     const { namespace, plans, months } = prepare(bundle);
+    if (db.project !== bundle.target) throw Error('MIGRATION_DESTINATION_TARGET_MISMATCH');
     if (!db.usage.budget)
         throw Error('MIGRATION_EXPLICIT_BUDGET_REQUIRED');
     const existing = await db.get(namespace, true);
     if (existing && (existing.data.bundleChecksum !== bundle.checksum || existing.data.active !== false))
         throw Error('MIGRATION_STAGING_CONFLICT');
     const result: StagingResult = { namespace, status: 'verified-staging', users: bundle.users.length, plans: plans.length, months: months.length, active: false };
-    if (existing?.data.phase === 'verified')
+    if (existing?.data.phase === 'verified') {
+        await verifyStagedMigration(bundle, db);
         return result;
+    }
     if (!existing) {
         await db.commit([nativeWrite(db, namespace, { format: 'pgt-import-v2', target: bundle.target, bundleChecksum: bundle.checksum,
                 sourceCommit: bundle.source.commit, sourceChecksum: bundle.source.checksum, phase: 'staging', active: false }, null)]);
@@ -81,7 +82,7 @@ export async function stageMigration(bundle: MigrationBundle, db: NativeFirestor
         return { ...u.index!, ...(pending.length ? { pendingPlanIds: pending } : {}) };
     };
     for (const u of bundle.users) {
-        await write('profile', u.profile.mail, u.profile);
+        await write('profile', u.profile.mail, migratedProfile(u));
         await write('repertoire', u.profile.mail, u.techniques);
         await write('comments', u.profile.mail, u.comments);
         await write('assignment', u.profile.mail, indexFor(u));
@@ -97,11 +98,39 @@ export async function stageMigration(bundle: MigrationBundle, db: NativeFirestor
     for (const month of months)
         await write('agenda', month, buildMonthlyAgenda(plans, month, missing));
     await write('agenda', 'calendar', { months });
+    await verifyStagedMigration(bundle, db);
+    const head = await db.get(namespace, true);
+    if (!head || head.data.bundleChecksum !== bundle.checksum || head.data.active !== false)
+        throw Error('MIGRATION_STAGING_CONFLICT');
+    await db.commit([nativeWrite(db, namespace, { ...head.data, phase: 'verified', counts: { users: result.users, plans: result.plans, months: result.months } }, head)]);
+    return result;
+}
+
+export const migratedProfile = (u: MigrationBundle['users'][number]) => ({ ...u.profile, ...(u.credential.state === 'imported' ? { pwd: u.credential.passwordHash } : {}) });
+
+/** Independent, read-only deep verification. No cached ACK can stand in for persisted content. */
+export async function verifyStagedMigration(bundle: MigrationBundle, db: NativeFirestore) {
+    const { namespace, plans, months } = prepare(bundle);
+    if (db.project !== bundle.target || !db.usage.budget) throw Error('MIGRATION_DESTINATION_TARGET_MISMATCH');
+    const manifest = await db.get(namespace, true);
+    if (!manifest || manifest.data.target !== bundle.target || manifest.data.bundleChecksum !== bundle.checksum ||
+        manifest.data.sourceCommit !== bundle.source.commit || manifest.data.sourceChecksum !== bundle.source.checksum ||
+        !['staging', 'verified'].includes(manifest.data.phase) || typeof manifest.data.active !== 'boolean')
+        throw Error('MIGRATION_MANIFEST_MISMATCH');
+    const sources = new NativeAggregates(db, namespace), planStore = new PlanRepository(db, namespace);
+    const roster = bundle.users.map(u => ({ mail: u.profile.mail, nombre: u.profile.nombre, apellidos: u.profile.apellidos, perfil: u.profile.perfil, cinturon: u.profile.cinturon }));
+    const indexFor = (u: MigrationBundle['users'][number]) => {
+        const pending = u.index!.planIds.filter(id => !plans.some(p => p.mail === u.profile.mail && p.planId === id));
+        return { ...u.index!, ...(pending.length ? { pendingPlanIds: pending } : {}) };
+    };
+    const missing = bundle.catalog!.plans.flatMap(c => c.alumnos.filter(mail => !plans.some(p => p.mail === mail && p.planId === c.planId)).map(owner => ({ owner, planId: c.planId, start: c.fecha_comienzo, end: c.fecha_torneo })));
     // Deliberately discard receipts/read cache before verification: checking an ACK in
     // memory is not independent verification of what the destination persisted.
     db.endOperation();
     db.beginOperation();
+    const expectedAggregatePaths: string[] = [];
     const compare = async (kind: Parameters<NativeAggregates['read']>[0]['kind'], id: string, expected: unknown) => {
+        expectedAggregatePaths.push(namespace + '/aggregates/' + kind + '__' + id);
         const actual = await sources.read({ kind, id });
         if (!actual || blockDigest(actual.data) !== blockDigest(expected))
             throw Error('MIGRATION_DESTINATION_MISMATCH');
@@ -109,7 +138,7 @@ export async function stageMigration(bundle: MigrationBundle, db: NativeFirestor
     await compare('template', 'official', bundle.template);
     await compare('catalog', 'competitions', bundle.catalog);
     for (const u of bundle.users) {
-        await compare('profile', u.profile.mail, u.profile);
+        await compare('profile', u.profile.mail, migratedProfile(u));
         await compare('repertoire', u.profile.mail, u.techniques);
         await compare('comments', u.profile.mail, u.comments);
         await compare('assignment', u.profile.mail, indexFor(u));
@@ -124,9 +153,12 @@ export async function stageMigration(bundle: MigrationBundle, db: NativeFirestor
     for (const month of months)
         await compare('agenda', month, buildMonthlyAgenda(plans, month, missing));
     await compare('agenda', 'calendar', { months });
-    const head = await db.get(namespace, true);
-    if (!head || head.data.bundleChecksum !== bundle.checksum || head.data.active !== false)
-        throw Error('MIGRATION_STAGING_CONFLICT');
-    await db.commit([nativeWrite(db, namespace, { ...head.data, phase: 'verified', counts: { users: result.users, plans: result.plans, months: result.months } }, head)]);
-    return result;
+    const compareInventory = async (collection: string, expected: string[]) => {
+        const actual: string[] = []; let token = '';
+        do { const page = await db.page(namespace + '/' + collection, token); actual.push(...page.rows.map(r => r.path)); token = page.nextPageToken || ''; } while (token);
+        if (blockDigest(actual.sort()) !== blockDigest(expected.sort())) throw Error('MIGRATION_DESTINATION_INVENTORY_MISMATCH');
+    };
+    await compareInventory('aggregates', expectedAggregatePaths);
+    await compareInventory('plans', plans.map(p => namespace + '/plans/' + p.planId.toLowerCase() + '__' + p.mail));
+    return { namespace, status: 'verified-read-only' as const, users: bundle.users.length, plans: plans.length, months: months.length };
 }

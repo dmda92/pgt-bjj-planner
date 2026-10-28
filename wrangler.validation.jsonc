@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pgt-firestore-pro-validation",
+  "main": "worker/validation.ts",
+  "compatibility_date": "2026-10-13",
+  "workers_dev": false,
+  "observability": { "enabled": false },
+  "vars": {
+    "FIRESTORE_ENVIRONMENT": "pro",
+    "FIRESTORE_PROJECT_ID": "pgt-bjj-pro",
+    "FIRESTORE_DATABASE_ID": "(default)",
+    "FIRESTORE_SERVICE_ACCOUNT_EMAIL": "pgt-validator-pro@pgt-bjj-pro.iam.gserviceaccount.com"
+  }
+}

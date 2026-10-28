@@ -8,6 +8,7 @@ import {template} from './template-fixture.ts';
 /** Synthetic verified import. No source extraction, Google call or production account. */
 export async function v2DevFixture(){
     const f=await structuredFixture(),db=new NativeFirestore(f.env,f.transport),namespace='pgt_v2/import-'+'c'.repeat(24),sourceCommit='d'.repeat(40);
+    Object.assign(f.env,{FIRESTORE_ENVIRONMENT:'dev',FIRESTORE_SERVICE_ACCOUNT_EMAIL:'pgt-worker-dev@pgt-bjj-dev.iam.gserviceaccount.com'});
     const store=new NativeAggregates(db,namespace),password='synthetic-v2-runtime-password',mail='trainer-v2@example.test';
     const profile={...initialVersion(),mail,nombre:'Trainer',apellidos:'Synthetic',perfil:'entrenador',cinturon:'Blanco',peso:null,fecha_nacimiento:null,pwd:await passwordHash(password)};
     await store.publish([

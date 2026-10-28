@@ -4,6 +4,7 @@ import { budgetedFirestoreRequest, type BudgetStorage } from '../../worker/struc
 import type { PreflightEnv } from '../../worker/firestore-preflight.ts';
 import type { Transport } from '../../worker/firestore-auth.ts';
 import { verifyBundle, type MigrationBundle } from './convert.ts';
+import { verifyProductionAuthorization, assertInitialDestination } from './production-policy.ts';
 import { stageMigration } from './stage.ts';
 import { activateDevMigration, type ActivationGate } from './activate.ts';
 import { MigrationBudget, type MigrationGrant } from './budget.ts';
@@ -14,16 +15,18 @@ import { MigrationBudget, type MigrationGrant } from './budget.ts';
  */
 export async function runDevMigration(input: {
     bundle: MigrationBundle; grant: MigrationGrant; storage: BudgetStorage;
-    env: PreflightEnv; transport: Transport;
+    env: PreflightEnv; transport: Transport; productionAuthorization?: unknown;
     action: { kind: 'stage' } | { kind: 'activate'; gate: ActivationGate; credentials: Readonly<Record<string, string>>; expectedPointer: string | null };
 }) {
     verifyBundle(input.bundle);
-    if (input.bundle.target !== 'pgt-bjj-dev' || input.grant.checksum !== input.bundle.checksum) throw Error('MIGRATION_GRANT_TARGET_MISMATCH');
+    if (input.bundle.target !== input.grant.project || input.bundle.target !== input.env.FIRESTORE_PROJECT_ID || input.grant.checksum !== input.bundle.checksum) throw Error('MIGRATION_GRANT_TARGET_MISMATCH');
+    if (input.bundle.target === 'pgt-bjj-pro') verifyProductionAuthorization(input.productionAuthorization, input.bundle);
     const ledger = new MigrationBudget(input.storage, input.grant);
     await ledger.open();
     const transport: Transport = (url, init = {}) => url.startsWith('https://firestore.googleapis.com/') ?
         budgetedFirestoreRequest(ledger, 'scenario', url, init, input.transport) : input.transport(url, init);
     const db = new NativeFirestore(input.env, transport, new FirestoreUsage(input.grant.limits));
+    if (input.bundle.target === 'pgt-bjj-pro') await assertInitialDestination(db, input.bundle);
     const activation = input.action.kind === 'activate' ? input.action : undefined;
     const result = !activation ? await stageMigration(input.bundle, db) :
         await activateDevMigration(input.bundle, db, { async authorize(checksum, namespace) {
@@ -32,3 +35,5 @@ export async function runDevMigration(input: {
         } }, activation.credentials, activation.expectedPointer);
     return { result, budget: await ledger.status() };
 }
+
+export const runMigration = runDevMigration;

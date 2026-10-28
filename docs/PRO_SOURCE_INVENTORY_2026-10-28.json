@@ -1,0 +1,44 @@
+{
+  "sourceCommit": "0a754e2b58a929323946217a3be495944818ce89",
+  "sourceChecksum": "51c137d162d0cccddfc417673d7e506c6e29adf97becc77a3b160a39cf7ed70f",
+  "bundleChecksum": "411e0040abe8210d6c00671cf98a3af0dd8fef02988bd200114ed75e37aae4fc",
+  "namespace": "pgt_v2/import-411e0040abe8210d6c00671c",
+  "files": 102,
+  "totalFilesUnderPGT": 102,
+  "unclassifiedFiles": 0,
+  "bytes": 1050735,
+  "fileKinds": {
+    "catalog": 1,
+    "template": 1,
+    "index": 18,
+    "techniques": 18,
+    "comments": 18,
+    "plan": 14,
+    "derived": 14,
+    "profile": 18
+  },
+  "users": 18,
+  "trainers": 3,
+  "plans": 14,
+  "competitions": 1,
+  "passwordHashesPreserved": 18,
+  "ready": true,
+  "blockingIssues": [],
+  "scope": "Original fixed GitHub source with two explicitly authorized offline assignment corrections; no remote writes.",
+  "originalBlockingIssues": [
+    "ASSIGNMENT_INDEX_INCONSISTENT",
+    "ASSIGNED_PLAN_MISSING",
+    "ASSIGNMENT_INDEX_INCONSISTENT"
+  ],
+  "previousBlockedBundleChecksum": "17464d62213764ff7a0c178e96413ca173f32b1cc8441d2d985fa164be6437fb",
+  "approvedChanges": {
+    "unassignments": 1,
+    "repairedIndexes": 1,
+    "changedSourceDocuments": 3,
+    "generatedPlans": 0
+  },
+  "originalInconsistentAssignmentIndexes": 2,
+  "originalMissingAssignedPlans": 1,
+  "inconsistentAssignmentIndexesAfterApprovedCorrections": 0,
+  "missingAssignedPlansAfterApprovedCorrections": 0
+}

@@ -10,7 +10,7 @@ const commit = 'a'.repeat(40), tree = 'b'.repeat(40);
 function source() {
     const p = JSON.parse(readFileSync(new URL('./fixtures/firestore/domain-baseline.json', import.meta.url), 'utf8')).fixtures[0].expected.generated as TrainingPlan;
     const owner = p.mail, root = 'PGT/users_data/' + owner + '/', profile = { ...initialVersion(), mail: owner, nombre: 'Synthetic', apellidos: 'Migration',
-        fecha_nacimiento: null, peso: 70.125, cinturon: 'Blanco', perfil: 'entrenador', pwd: 'pbkdf2-sha256$600000$synthetic-salt$synthetic-hash' };
+        fecha_nacimiento: null, peso: 70.125, cinturon: 'Blanco', perfil: 'entrenador', pwd: 'pbkdf2-sha256$600000$synthetic-salt$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=' };
     const catalog = { ...initialVersion(), plans: [{ ...p, alumnos: [owner] }], deletedPlanIds: [] };
     const entries = [['PGT/master_data/tecnics_base.json', template], ['PGT/master_data/plans.json', catalog], [root + 'user_data.json', profile],
         [root + 'tecnics.json', cloneTemplate(template)], [root + 'trainer_comments.json', { ...initialVersion(), comments: [] }],
@@ -63,14 +63,14 @@ test('DEV conversion preserves business records and plans but cannot copy produc
     verifyBundle(bundle);
     assert.deepEqual(decodePlan(bundle.plans[0].plan), p);
     assert.deepEqual(bundle.users[0].credential, { state: 'requires-dev-password' });
-    assert.ok(!JSON.stringify(bundle).includes('synthetic-hash'));
+    assert.ok(!JSON.stringify(bundle).includes('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='));
     assert.deepEqual(snapshot, before);
     assert.deepEqual(convertSnapshot(snapshot, 'pgt-bjj-dev'), bundle);
 });
 test('Future PRO conversion preserves compatible hashes without sessions or tokens', () => {
     const { snapshot, p } = source(), bundle = convertSnapshot(snapshot, 'pgt-bjj-pro');
     assert.equal(bundle.ready, true);
-    assert.deepEqual(bundle.users[0].credential, { state: 'imported', passwordHash: 'pbkdf2-sha256$600000$synthetic-salt$synthetic-hash' });
+    assert.deepEqual(bundle.users[0].credential, { state: 'imported', passwordHash: 'pbkdf2-sha256$600000$synthetic-salt$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=' });
     assert.deepEqual(decodePlan(bundle.plans[0].plan), p);
     const corrupted = structuredClone(bundle);
     corrupted.users[0].profile.nombre = 'Changed';
@@ -90,7 +90,7 @@ test('Missing assignment plans are recoverable; orphan stored plans block activa
 test('Private migration packages authenticate content and never expose credentials in plaintext', async () => {
     const { encryptPackage, decryptPackage } = await import('../tools/migration/private-package.ts'), key = new Uint8Array(32).fill(7), { snapshot } = source();
     const pack = encryptPackage(snapshot, key);
-    assert.ok(!JSON.stringify(pack).includes('synthetic-hash'));
+    assert.ok(!JSON.stringify(pack).includes('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='));
     assert.deepEqual(decryptPackage(pack, key), snapshot);
     assert.throws(() => decryptPackage(pack, new Uint8Array(32).fill(8)), /AUTHENTICATION/);
     pack.ciphertext = 'AA' + pack.ciphertext.slice(2);

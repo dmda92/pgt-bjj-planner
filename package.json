@@ -18,7 +18,9 @@
     "test:v2": "node --experimental-strip-types --test tests/native-packing.test.ts tests/plan-codec.test.ts tests/plan-text-projection.test.ts tests/trainer-agenda-v2.test.ts tests/version-cache.test.ts tests/v2-*.test.ts",
     "check:firestore-v2": "node scripts/check-firestore-v2.mjs",
     "benchmark:firestore-v2": "node --experimental-strip-types scripts/benchmark-firestore-v2.mjs && node --experimental-strip-types scripts/benchmark-v2-application.mjs",
-    "test:v2:runtime": "node --experimental-strip-types scripts/test-firestore-v2-runtime.mjs"
+    "test:v2:runtime": "node --experimental-strip-types scripts/test-firestore-v2-runtime.mjs",
+    "check:pro": "node scripts/check-pro-config.mjs && node scripts/check-pro-support.mjs",
+    "test:pro:runtime": "node --experimental-strip-types scripts/test-v2-pro-runtime.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261013.1",

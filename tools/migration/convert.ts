@@ -5,6 +5,7 @@ import { indexPlanText, type PlanTextProjection } from '../../src/infrastructure
 import { validateProfile, validateTechniques, validateVersion, validateCompetition, validatePlan, cloneTemplate, type Profile, type Techniques, type Comments, type Index, type Catalog, type Template, type TrainingPlan } from '../../src/domain/models.ts';
 import { MAX_TEXT_LENGTH } from '../../src/domain/json-limits.ts';
 import { normalizedMail } from '../../worker/security.ts';
+import { correctedSource, type ApprovedCorrections } from './approved-corrections.ts';
 export type MigrationTarget = 'pgt-bjj-dev' | 'pgt-bjj-pro';
 export type MigrationIssue = {
     code: string;
@@ -41,8 +42,10 @@ export interface MigrationBundle {
     }[];
     issues: MigrationIssue[];
     ready: boolean;
+    approvedCorrections?: ApprovedCorrections;
     checksum: string;
 }
+export const validImportedPasswordHash = (value: unknown): value is string => typeof value === 'string' && /^pbkdf2-sha256\$600000\$[^$]+\$[A-Za-z0-9+/]{43}=$/.test(value) && Buffer.from(value.split('$')[3], 'base64').length === 32;
 const digest = (v: unknown) => createHash('sha256').update(JSON.stringify(v)).digest('hex');
 export function verifyBundle(bundle: MigrationBundle): void {
     const { checksum, ...body } = bundle;
@@ -51,8 +54,16 @@ export function verifyBundle(bundle: MigrationBundle): void {
 }
 /** Converts captured records. Rebuilds derived assignment indexes from the
  * authoritative catalog; never regenerates or repairs saved plan snapshots. */
-export function convertSnapshot(snapshot: GithubSnapshot, target: MigrationTarget): MigrationBundle {
+export function convertSnapshot(snapshot: GithubSnapshot, target: MigrationTarget, corrections?: ApprovedCorrections): MigrationBundle {
     validateSnapshot(snapshot);
+    if (corrections) {
+        if (target !== 'pgt-bjj-pro') throw Error('MIGRATION_CORRECTION_TARGET_INVALID');
+        const converted = convertSnapshot(correctedSource(snapshot, corrections), target);
+        const { checksum, ...data } = converted;
+        const body = { ...data, source: {repository:snapshot.repository,commit:snapshot.commit,checksum:snapshot.checksum},
+            approvedCorrections: structuredClone(corrections) };
+        return {...body,checksum:digest(body)};
+    }
     if (!['pgt-bjj-dev', 'pgt-bjj-pro'].includes(target))
         throw Error('MIGRATION_TARGET_INVALID');
     const issues: MigrationIssue[] = [], users = new Map<string, ConvertedUser>(), owners = new Map<string, string>(), plans: MigrationBundle['plans'] = [];
@@ -69,7 +80,7 @@ export function convertSnapshot(snapshot: GithubSnapshot, target: MigrationTarge
                 throw Error();
             const { pwd, ...profile } = p;
             const credential: ConvertedUser['credential'] = target === 'pgt-bjj-dev' ? { state: 'requires-dev-password' } :
-                typeof pwd === 'string' && /^pbkdf2-sha256\$600000\$[^$]+\$[^$]+$/.test(pwd) ? { state: 'imported', passwordHash: pwd } : (() => { throw Error(); })();
+                validImportedPasswordHash(pwd) ? { state: 'imported', passwordHash: pwd } : (() => { throw Error(); })();
             users.set(p.mail, { profile, credential });
         }
         catch {
@@ -167,6 +178,9 @@ export function convertSnapshot(snapshot: GithubSnapshot, target: MigrationTarge
         }
         const expected = catalog?.plans.filter(c => c.alumnos.includes(owner)).map(c => c.planId).sort() ?? [];
         if (JSON.stringify([...user.index.planIds].sort()) !== JSON.stringify(expected)) {
+            if (target === 'pgt-bjj-pro') {
+                issue('ASSIGNMENT_INDEX_INCONSISTENT', -1);
+            } else {
             // The original updateIndexes() already treats catalog membership as
             // authoritative. A stale per-user index must not hide assigned plans.
             // Preserve deletion knowledge, excluding assignments restored by the catalog.
@@ -175,10 +189,11 @@ export function convertSnapshot(snapshot: GithubSnapshot, target: MigrationTarge
                 .filter(id => !expected.includes(id));
             user.index = { ...user.index, planIds: expected, deletedPlanIds: removed };
             issue('ASSIGNMENT_INDEX_REBUILT', -1, false);
+            }
         }
         for (const planId of expected)
             if (!plans.some(p => p.text.metadata.mail === owner && p.text.metadata.planId === planId))
-                issue('ASSIGNED_PLAN_MISSING', -1, false);
+                issue('ASSIGNED_PLAN_MISSING', -1, target === 'pgt-bjj-pro');
         const valid = new Set(user.techniques.positions.flatMap(p => p.tecnicas.map(t => t.id)));
         if (user.comments.comments.some(c => !valid.has(c.techniqueId)))
             issue('RETIRED_TECHNIQUE_COMMENT', -1, false);

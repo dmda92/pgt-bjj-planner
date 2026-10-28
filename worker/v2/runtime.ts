@@ -8,11 +8,11 @@ import { PlanViews } from './plan-views.ts';
 import { QueryCoordinator, type QuerySession, type PlanChange } from './query-coordinator.ts';
 import { V2Api } from './api.ts';
 import type { PreflightEnv } from '../firestore-preflight.ts';
-import { requireDev } from '../firestore-preflight.ts';
-import { DEV_DATABASE_NAME } from '../firestore-auth.ts';
+import { resolveFirestoreTarget } from '../firestore-target.ts';
+
 import { sessionEpoch, type SessionProfile } from './session-identity.ts';
 export interface V2Env extends PreflightEnv {
-    SECURITY: DurableObjectNamespace; DOMAIN_IO: DurableObjectNamespace; ASSETS: Fetcher; ALLOWED_ORIGINS: string; DEV_BUILD_SHA?: string;
+    SECURITY: DurableObjectNamespace; DOMAIN_IO: DurableObjectNamespace; ASSETS: Fetcher; ALLOWED_ORIGINS: string; DEV_BUILD_SHA?: string; WORKER_BUILD_SHA?: string;
 }
 type Attachment = QuerySession & { sessionKey: string; connection: string; sequence: number; epoch: string };
 export default {
@@ -21,7 +21,7 @@ export default {
         return env.SECURITY.get(env.SECURITY.idFromName('firestore-v2-academy')).fetch(request);
     }
 };
-/** Sole DEV business writer, volatile business cache, SQLite coordination only. */
+/** Sole environment-isolated business writer, volatile business cache, SQLite coordination only. */
 export class ProbeSecurity extends DurableObject<V2Env> {
     private api?: V2Api;
     private activationError?: ApiError;
@@ -38,12 +38,15 @@ export class ProbeSecurity extends DurableObject<V2Env> {
         if (this.activationError) throw this.activationError;
         const db = new CachedFirestore(this.env, (url, init) => url.startsWith('https://firestore.googleapis.com/') ?
             this.env.DOMAIN_IO.get(this.env.DOMAIN_IO.idFromName('v2-native-transport')).fetch(url, init) : fetch(url, init)), control = await db.get('pgt_v2/control');
-        if (!control || control.data.phase !== 'active' || control.data.project !== 'pgt-bjj-dev' ||
+        if (!control || control.data.phase !== 'active' || control.data.project !== db.target.project ||
+            db.target.environment === 'pro' && control.data.database !== db.target.database ||
             !/^[0-9a-f]{40}$/.test(control.data.sourceCommit || '')) throw (this.activationError = new ApiError(503, 'V2_MIGRATION_NOT_ACTIVATED'));
         const namespace = migrationNamespace(control.data.namespace);
-        if (!namespace.startsWith('pgt_v2/import-')) throw (this.activationError = new ApiError(503, 'V2_MIGRATION_NOT_ACTIVATED'));
+        if (!namespace.startsWith('pgt_v2/import-') || db.target.environment === 'pro' &&
+            (!/^[a-f0-9]{64}$/.test(control.data.bundleChecksum || '') || namespace !== 'pgt_v2/import-' + control.data.bundleChecksum.slice(0, 24))) throw (this.activationError = new ApiError(503, 'V2_MIGRATION_NOT_ACTIVATED'));
         const verified = await db.get(namespace);
-        if (!verified || verified.data.phase !== 'verified' || verified.data.active !== true || verified.data.sourceCommit !== control.data.sourceCommit)
+        if (!verified || verified.data.phase !== 'verified' || verified.data.active !== true || verified.data.sourceCommit !== control.data.sourceCommit || db.target.environment === 'pro' &&
+            (verified.data.bundleChecksum !== control.data.bundleChecksum || verified.data.target !== db.target.project))
             throw (this.activationError = new ApiError(503, 'V2_IMPORT_NOT_VERIFIED'));
         const store = new NativeAggregates(db, namespace), queries = new QueryCoordinator(store, new PlanViews(new PlanRepository(db, namespace), store), 32 * 1024 * 1024);
         const trackBlocks = async (target: string) => {
@@ -96,7 +99,7 @@ export class ProbeSecurity extends DurableObject<V2Env> {
     private async handle(request: Request): Promise<Response> {
         const origin = request.headers.get('Origin'), origins = allowedOrigins(this.env), url = new URL(request.url);
         const headers = new Headers({ 'Cache-Control': 'no-store', 'Vary': 'Origin' });
-        headers.set('X-PGT-Worker-Build', this.env.DEV_BUILD_SHA || 'local');
+        headers.set('X-PGT-Worker-Build', this.env.WORKER_BUILD_SHA || this.env.DEV_BUILD_SHA || 'local');
         if (origin && origins.has(origin)) headers.set('Access-Control-Allow-Origin', origin);
         try {
             if (origin && !origins.has(origin) || !origin && !['GET', 'HEAD'].includes(request.method)) throw new ApiError(403, 'ORIGIN_FORBIDDEN');
@@ -105,10 +108,10 @@ export class ProbeSecurity extends DurableObject<V2Env> {
                 headers.set('Access-Control-Allow-Headers', 'Authorization,Content-Type,X-PGT-Connection');
                 return new Response(null, { status: 204, headers });
             }
-            requireDev(this.env);
-            if (request.method === 'GET' && url.pathname === '/api/dev/runtime') return Response.json({
-                build: this.env.DEV_BUILD_SHA || 'local', domainBuild: this.env.DEV_BUILD_SHA || 'local',
-                revision: 'firestore-v2-20261026', project: 'pgt-bjj-dev'
+            const target = resolveFirestoreTarget(this.env);
+            if (request.method === 'GET' && (url.pathname === '/api/runtime' || target.environment === 'dev' && url.pathname === '/api/dev/runtime')) return Response.json({
+                build: this.env.WORKER_BUILD_SHA || this.env.DEV_BUILD_SHA || 'local', domainBuild: this.env.WORKER_BUILD_SHA || this.env.DEV_BUILD_SHA || 'local',
+                revision: 'firestore-v2-20261026', project: target.project, database: target.database, environment: target.environment
             }, { headers });
             if (/^\/api\/v2\/auth\/(login|register)$/.test(url.pathname)) {
                 const ip = await fingerprint(request.headers.get('CF-Connecting-IP') || 'local');
@@ -243,12 +246,12 @@ export class ProbeSecurity extends DurableObject<V2Env> {
  * No public route, arbitrary URL, credentials in SQLite or business persistence. */
 export class DomainIO extends DurableObject<V2Env> {
     async fetch(request: Request) {
-        requireDev(this.env);
-        const url = new URL(request.url), base = '/v1/' + DEV_DATABASE_NAME + '/documents';
+        const target = resolveFirestoreTarget(this.env);
+        const url = new URL(request.url), base = '/v1/' + target.databaseName + '/documents';
         if (url.origin !== 'https://firestore.googleapis.com' || url.hash ||
             !/^Bearer [^\s]+$/.test(request.headers.get('Authorization') || '')) return new Response(null, { status: 403 });
         const allowedName = (name: unknown) => typeof name === 'string' &&
-            name.startsWith(DEV_DATABASE_NAME + '/documents/pgt_v2/') && /^[A-Za-z0-9@._+()/\-]+$/.test(name) && !name.split('/').some(p => p === '..' || p === '.');
+            name.startsWith(target.databaseName + '/documents/pgt_v2/') && /^[A-Za-z0-9@._+()/\-]+$/.test(name) && !name.split('/').some(p => p === '..' || p === '.');
         if (request.method === 'GET') {
             if (!url.pathname.startsWith(base + '/pgt_v2/') || !allowedName(url.pathname.slice(4))) return new Response(null, { status: 403 });
         } else if (request.method === 'POST' && !url.search && [base + ':commit', base + ':batchGet'].includes(url.pathname)) {

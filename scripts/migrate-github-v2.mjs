@@ -1,5 +1,5 @@
-import {readFileSync,writeFileSync,realpathSync,existsSync} from 'node:fs';
-import {resolve,relative,isAbsolute,dirname} from 'node:path';
+import {privateLocation} from '../tools/migration/private-path.ts';
+import {readFileSync,writeFileSync} from 'node:fs';
 import {randomBytes} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {extractGithubSnapshot,validateSnapshot} from '../tools/migration/github-source.ts';
@@ -14,13 +14,7 @@ for(let i=0;i<args.length;i++){
     options.set(args[i],args[i+1]&&!args[i+1].startsWith('--')?args[++i]:true);
 }
 const option=name=>{const value=options.get('--'+name);if(typeof value!=='string'||!value)throw Error('MIGRATION_REQUIRED_OPTION');return value;};
-function privatePath(value){
-    const path=resolve(value),parent=realpathSync(dirname(path)),workspace=realpathSync(fileURLToPath(new URL('..',import.meta.url)));
-    const actual=existsSync(path)?realpathSync(path):resolve(parent,path.split(/[\\/]/).at(-1));
-    const rel=relative(workspace,actual);
-    if(!isAbsolute(rel)&&rel!=='..'&&!rel.startsWith('..\\')&&!rel.startsWith('../'))throw Error('MIGRATION_PRIVATE_PATH_MUST_BE_OUTSIDE_REPOSITORY');
-    return path;
-}
+const privatePath=value=>privateLocation(value,fileURLToPath(new URL('..',import.meta.url)));
 const readKey=()=>readFileSync(privatePath(option('key-file')));
 const writePrivate=(path,value)=>writeFileSync(privatePath(path),JSON.stringify(value),{encoding:'utf8',mode:0o600,flag:'wx'});
 const readPrivate=()=>decryptPackage(JSON.parse(readFileSync(privatePath(option('input')),'utf8')),readKey());
@@ -30,7 +24,7 @@ async function main(){
             'keygen --key-file <outside-repository>\n'+
             'extract --commit <40-hex-SHA> --allow-github-read --key-file <file> --output <file>\n'+
             'extract-local --git-directory <private-bare-clone> --commit <40-hex-SHA> --key-file <file> --output <file>\n'+
-            'convert --project <pgt-bjj-dev|pgt-bjj-pro> --key-file <file> --input <file> --output <file>\n'+
+            'convert --project <pgt-bjj-dev|pgt-bjj-pro> --key-file <file> --input <file> --output <file> [--corrections-file <private-owner-approved-file>]\n'+
             'inspect --key-file <file> --input <file>\n'+
             'extract uses PGT_MIGRATION_GITHUB_READ_TOKEN. All data packages are AES-256-GCM encrypted.\n'+
             'Conversion is offline. Activation/import are not performed by this command.');
@@ -53,7 +47,7 @@ async function main(){
         console.log(JSON.stringify({status:'SOURCE_CAPTURED_READ_ONLY',commit:snapshot.commit,files:snapshot.files.length}));return;
     }
     if(command==='convert'){
-        const source=readPrivate(),bundle=convertSnapshot(source,option('project'));
+        const source=readPrivate(),corrections=options.has('--corrections-file')?JSON.parse(readFileSync(privatePath(option('corrections-file')),'utf8')):undefined,bundle=convertSnapshot(source,option('project'),corrections);
         writePrivate(option('output'),encryptPackage(bundle,readKey()));
         console.log(JSON.stringify({status:'CONVERTED_OFFLINE',target:bundle.target,users:bundle.users.length,plans:bundle.plans.length,
             ready:bundle.ready,issues:bundle.issues.map(i=>({code:i.code,blocking:i.blocking}))}));return;

@@ -1,4 +1,5 @@
 import {ApiError} from './security.ts';
+import { LEGACY_DEV_TARGET, type FirestoreTarget } from './firestore-target.ts';
 
 export const DEV_PROJECT = 'pgt-bjj-dev';
 export const DEV_DATABASE = '(default)';
@@ -18,15 +19,15 @@ export class FirestoreIdentity {
     private cached?: { token: string; until: number };
     private pending?: Promise<string>;
 
-    constructor(serialized: string, transport: Transport = (input, init) => fetch(input, init), clock: () => number = () => Date.now()) {
+    constructor(serialized: string, transport: Transport = (input, init) => fetch(input, init), clock: () => number = () => Date.now(), target: FirestoreTarget = LEGACY_DEV_TARGET) {
         let c: any;
         try {
             c = JSON.parse(serialized);
         } catch {
             throw new ApiError(503, 'FIRESTORE_IDENTITY_NOT_CONFIGURED');
         }
-        if (c?.type !== 'service_account' || c.project_id !== DEV_PROJECT || c.client_email !== `pgt-worker-dev@${DEV_PROJECT}.iam.gserviceaccount.com` || typeof c.private_key !== 'string' || !c.private_key.startsWith('-----BEGIN PRIVATE KEY-----'))
-            throw new ApiError(503, 'FIRESTORE_DEV_IDENTITY_REQUIRED');
+        if (c?.type !== 'service_account' || c.project_id !== target.project || c.client_email !== target.serviceAccountEmail || typeof c.private_key !== 'string' || !c.private_key.startsWith('-----BEGIN PRIVATE KEY-----'))
+            throw new ApiError(503, target.environment === 'dev' ? 'FIRESTORE_DEV_IDENTITY_REQUIRED' : 'FIRESTORE_PRO_IDENTITY_REQUIRED');
         this.credential = {client_email: c.client_email, private_key: c.private_key};
         this.transport = transport;
         this.clock = clock;
