@@ -1,3 +1,4 @@
+import { verifyStagedMigration } from './stage.ts';
 import { verifyBundle, type MigrationBundle } from './convert.ts';
 import { NativeFirestore } from '../../worker/structured/firestore.ts';
 import { NativeAggregates } from '../../worker/v2/aggregates.ts';
@@ -13,21 +14,28 @@ export interface ActivationGate { authorize(checksum: string, namespace: string)
 export async function activateDevMigration(bundle: MigrationBundle, db: NativeFirestore, gate: ActivationGate,
     credentials: Readonly<Record<string, string>>, expectedPointer: string | null) {
     verifyBundle(bundle);
-    if (bundle.target !== 'pgt-bjj-dev' || !bundle.ready || !db.usage.budget) throw Error('MIGRATION_ACTIVATION_NOT_AUTHORIZED');
+    if (db.project !== bundle.target || !bundle.ready || !db.usage.budget) throw Error('MIGRATION_ACTIVATION_NOT_AUTHORIZED');
     const namespace = 'pgt_v2/import-' + bundle.checksum.slice(0, 24);
     await gate.authorize(bundle.checksum, namespace);
     const control = await db.get('pgt_v2/control', true), root = await db.get(namespace, true);
     if (!root || root.data.phase !== 'verified' || root.data.bundleChecksum !== bundle.checksum ||
         root.data.sourceCommit !== bundle.source.commit) throw Error('MIGRATION_IMPORT_NOT_VERIFIED');
+    if (control && (control.data.phase !== 'active' || control.data.project !== bundle.target ||
+        control.data.database !== db.database || control.data.sourceCommit !== bundle.source.commit))
+        throw Error('MIGRATION_ACTIVATION_CONFLICT');
     if (control?.data.namespace === namespace && control.data.bundleChecksum === bundle.checksum && root.data.active === true)
         return { namespace, status: 'already-active' as const };
     if ((control?.updateTime ?? null) !== expectedPointer || root.data.active !== false) throw Error('MIGRATION_ACTIVATION_CONFLICT');
+    if (bundle.target === 'pgt-bjj-pro') {
+        if (Object.keys(credentials).length || control || expectedPointer !== null) throw Error('MIGRATION_PRO_INITIAL_ACTIVATION_REQUIRED');
+        await verifyStagedMigration(bundle, db);
+    }
     const users = new Map(bundle.users.map(u => [u.profile.mail, u.profile]));
     for (const [mail, password] of Object.entries(credentials))
         if (normalizedMail(mail) !== mail || !users.has(mail) || typeof password !== 'string' || password.length < 12 || password.length > 128)
             throw Error('MIGRATION_DEV_CREDENTIAL_INVALID');
     const trainers = bundle.users.filter(u => u.profile.perfil === 'entrenador');
-    if (!trainers.length || trainers.some(u => !credentials[u.profile.mail])) throw Error('MIGRATION_DEV_TRAINER_CREDENTIAL_REQUIRED');
+    if (!trainers.length || bundle.target === 'pgt-bjj-dev' && trainers.some(u => !credentials[u.profile.mail])) throw Error('MIGRATION_DEV_TRAINER_CREDENTIAL_REQUIRED');
     const store = new NativeAggregates(db, namespace), prepared = [];
     // Validate every current profile and hash all supplied passwords before the first mutation.
     for (const [mail, password] of Object.entries(credentials)) {
@@ -46,8 +54,11 @@ export async function activateDevMigration(bundle: MigrationBundle, db: NativeFi
     // The pointer and active marker become visible together. No old namespace is deleted.
     await db.commit([
         nativeWrite(db, namespace, { ...root.data, active: true }, root),
-        nativeWrite(db, 'pgt_v2/control', { phase: 'active', project: 'pgt-bjj-dev', namespace,
+        nativeWrite(db, 'pgt_v2/control', { phase: 'active', project: bundle.target, database: db.database, namespace,
             sourceCommit: bundle.source.commit, bundleChecksum: bundle.checksum }, control)
     ]);
     return { namespace, status: 'activated' as const };
 }
+
+/** Same activation implementation; PRO never resets or synthesizes passwords. */
+export const activateMigration = activateDevMigration;

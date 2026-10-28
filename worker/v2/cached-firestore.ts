@@ -2,7 +2,7 @@ import { VersionCache } from '../../src/application/version-cache.ts';
 import { NativeFirestore, type NativeRow } from '../structured/firestore.ts';
 import type { PreflightEnv } from '../firestore-preflight.ts';
 import type { Transport } from '../firestore-auth.ts';
-import { DEV_DATABASE_NAME } from '../firestore-auth.ts';
+
 /** Only immutable content-addressed chunks are cached below business authorization.
  * Mutable heads/receipts always use normal reads. Migration verification deliberately
  * uses NativeFirestore instead. Fresh staging checks can never be satisfied here.
@@ -30,17 +30,17 @@ export class CachedFirestore extends NativeFirestore {
             const batch = pending.slice(offset, offset + 100);
             try {
                 if (batch.length === 1) { batch[0].resolve(await super.request(batch[0].path, {}, true)); continue; }
-                const documents = [...new Set(batch.map(p => DEV_DATABASE_NAME + p.path))];
+                const documents = [...new Set(batch.map(p => this.target.databaseName + p.path))];
                 const response = await super.request('/documents:batchGet', { method: 'POST', body: JSON.stringify({ documents }) }, true);
                 if (!response.ok) { for (const p of batch) p.resolve(response.clone()); continue; }
                 const rows = await response.json() as { found?: { name: string }; missing?: string }[];
                 const byName = new Map(rows.map(row => [row.found?.name ?? row.missing, row]));
                 for (const p of batch) {
-                    const row = byName.get(DEV_DATABASE_NAME + p.path);
+                    const row = byName.get(this.target.databaseName + p.path);
                     if (!row) throw Error('FIRESTORE_BATCH_INCOMPLETE');
                 }
                 for (const p of batch) {
-                    const row = byName.get(DEV_DATABASE_NAME + p.path)!;
+                    const row = byName.get(this.target.databaseName + p.path)!;
                     p.resolve(row.found ? Response.json(row.found) : Response.json({ error: { code: 404 } }, { status: 404 }));
                 }
             } catch (error) { for (const p of batch) p.reject(error); }

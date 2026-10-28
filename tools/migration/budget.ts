@@ -2,7 +2,7 @@ import type { BudgetStorage, BudgetEndpoint, BudgetReservation, Counts } from '.
 import { blockDigest } from '../../src/infrastructure/native-packing.ts';
 
 export type MigrationGrant = {
-    project: 'pgt-bjj-dev'; runId: string; checksum: string;
+    project: 'pgt-bjj-dev' | 'pgt-bjj-pro'; runId: string; checksum: string;
     observedAt: number; expiresAt: number; remaining: Counts; reserve: Counts; limits: Counts;
 };
 type Ledger = { grant: MigrationGrant; grantHash: string; spent: Counts; http: number; closed: boolean };
@@ -18,9 +18,10 @@ export class MigrationBudget implements BudgetEndpoint {
     private storage: BudgetStorage;
     private grant: MigrationGrant;
     constructor(storage: BudgetStorage, grant: MigrationGrant) { this.storage = storage; this.grant = structuredClone(grant); }
+    get budgetProject() { return this.grant.project; }
     async open(now = Date.now()) {
         const g = this.grant;
-        if (g.project !== 'pgt-bjj-dev' || !/^[a-f0-9]{64}$/.test(g.checksum) || !/^[a-f0-9-]{36}$/.test(g.runId) ||
+        if (!['pgt-bjj-dev', 'pgt-bjj-pro'].includes(g.project) || !/^[a-f0-9]{64}$/.test(g.checksum) || !/^[a-f0-9-]{36}$/.test(g.runId) ||
             !Number.isFinite(g.observedAt) || g.observedAt > now || now - g.observedAt > 300000 ||
             !Number.isFinite(g.expiresAt) || g.expiresAt <= now || g.expiresAt > now + 1800000 ||
             dims.some(d => !Number.isSafeInteger(g.remaining[d]) || !Number.isSafeInteger(g.reserve[d]) || !Number.isSafeInteger(g.limits[d]) ||

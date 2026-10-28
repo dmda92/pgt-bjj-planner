@@ -497,3 +497,31 @@ nombre y apellidos y tarjetas de selección adaptables, incluidos entrenadores c
 Autoriza integrar por PR a develop y desplegar DEV junto al arreglo PAYLOAD_INVALID del
 editor, tras validaciones. Sustituye la pausa anterior; no autoriza main/PRO ni modificar
 datos reales para QA. Evidencia: docs/CAMBIOS_EQUIPO_2026-10-26.md.
+
+
+## Preparacion Firestore PRO ? encargo 28/10/2026
+
+El propietario autoriza auditar y preparar soporte PRO, migrador y validador de solo lectura,
+con pruebas locales en una rama aislada basada expresamente en develop. Es una excepcion
+a la base main habitual y permite preparar posteriormente la promocion develop -> main;
+no autoriza todavia PR/merge/despliegue real. Conservar los cambios locales ajenos.
+
+Origen privado pgt-bjj-data, solo lectura y SHA fijo: la aplicacion GitHub sigue funcionando.
+No congelar escrituras, detener Worker, conciliar incrementos ni repetir la migracion para
+incorporar cambios posteriores. Estos cambios quedan excluidos por decision expresa.
+
+Detenerse antes de la primera escritura Firestore PRO, cambios activos de secretos/bindings,
+despliegues reales, merge a main u operaciones destructivas. Las reglas historicas de solo DEV
+se sustituyen exclusivamente para esta preparacion; no conceden permisos remotos adicionales.
+No reparar fuentes inconsistentes automaticamente, regenerar historico o restablecer claves PRO.
+Evidencia y pendientes en docs/PRO_PREPARACION_2026-10-28.md.
+
+### Decisiones posteriores del propietario: migración y preparación de release
+
+El propietario autorizó expresamente carga/verificación/activación del SHA fijo en
+Firestore PRO, realizada y verificada según docs/PRO_MIGRACION_RESULTADO_2026-10-28.md.
+Decidió omitir el validador temporal y avanzar hacia publicación normal. Preparar PR
+de soporte a develop y promoción develop -> main; pedir autorización específica antes
+del merge a main que activa despliegue. No repetir migración ni conciliar cambios GitHub.
+El propietario añadió FIRESTORE_SERVICE_ACCOUNT_JSON al Worker PRO, republicando
+la versión antigua sin cambiar sus bindings. Conservar secretos y DO históricos.

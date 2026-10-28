@@ -1,23 +1,55 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "pgt-github-probe",
-  "main": "worker/index.ts",
+  "main": "worker/pro.ts",
   "compatibility_date": "2026-10-13",
   "workers_dev": true,
-  "observability": { "enabled": false },
+  "observability": {
+    "enabled": false
+  },
   "vars": {
-    "DATA_BRANCH": "main",
-    "ALLOWED_ORIGINS": "https://pgt-github-probe.david-dzm5.workers.dev",
+    "FIRESTORE_ENVIRONMENT": "pro",
+    "FIRESTORE_PROJECT_ID": "pgt-bjj-pro",
+    "FIRESTORE_DATABASE_ID": "(default)",
+    "FIRESTORE_SERVICE_ACCOUNT_EMAIL": "pgt-worker-pro@pgt-bjj-pro.iam.gserviceaccount.com",
+    "ALLOWED_ORIGINS": "https://pgt-github-probe.david-dzm5.workers.dev"
   },
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*"],
+    "run_worker_first": [
+      "/api/*"
+    ]
   },
   "durable_objects": {
-    "bindings": [{ "name": "SECURITY", "class_name": "ProbeSecurity" }],
+    "bindings": [
+      {
+        "name": "LEGACY_SECURITY",
+        "class_name": "ProbeSecurity"
+      },
+      {
+        "name": "SECURITY",
+        "class_name": "FirestoreSecurity"
+      },
+      {
+        "name": "DOMAIN_IO",
+        "class_name": "DomainIO"
+      }
+    ]
   },
   "migrations": [
-    { "tag": "github-probe-v1", "new_sqlite_classes": ["ProbeSecurity"] },
-  ],
+    {
+      "tag": "github-probe-v1",
+      "new_sqlite_classes": [
+        "ProbeSecurity"
+      ]
+    },
+    {
+      "tag": "firestore-pro-v2",
+      "new_sqlite_classes": [
+        "FirestoreSecurity",
+        "DomainIO"
+      ]
+    }
+  ]
 }

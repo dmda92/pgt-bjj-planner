@@ -202,6 +202,8 @@ export class ExecutionBudget {
 }
 
 export interface BudgetEndpoint {
+    /** Only trusted migration ledgers opt into PRO. QA remains pinned to DEV. */
+    readonly budgetProject?: 'pgt-bjj-dev' | 'pgt-bjj-pro';
     budgetReserve(phase: BudgetPhase, request: {
         reads?: number;
         writes?: number;
@@ -212,12 +214,15 @@ export interface BudgetEndpoint {
     budgetSettle(id: string, actualReads?: number, uncertain?: boolean): Promise<unknown>
 }
 
-const base = 'https://firestore.googleapis.com/v1/projects/pgt-bjj-dev/databases/(default)';
+
 
 /** The shared ledger is consulted BEFORE every Google request. OAuth is outside
  * document billing; its token never reaches this ledger. Queries are capped and
  * a possibly truncated result is rejected rather than used as complete data. */
 export async function budgetedFirestoreRequest(endpoint: BudgetEndpoint, phase: BudgetPhase, input: string, init: RequestInit, send: (input: string, init: RequestInit) => Promise<Response>) {
+    const project = endpoint.budgetProject ?? 'pgt-bjj-dev';
+    if (!['pgt-bjj-dev', 'pgt-bjj-pro'].includes(project)) fail('TARGET_INVALID');
+    const database = `projects/${project}/databases/(default)`, base = 'https://firestore.googleapis.com/v1/' + database;
     const url = new URL(input);
     if (url.origin !== 'https://firestore.googleapis.com' || !url.pathname.startsWith(new URL(base).pathname + '/') || /%2f|%5c|%2e/i.test(url.pathname) || url.hash) fail('TARGET_INVALID');
     const path = url.pathname, body = init.body ? JSON.parse(String(init.body)) : undefined;
@@ -226,7 +231,7 @@ export async function budgetedFirestoreRequest(endpoint: BudgetEndpoint, phase: 
         if (!Array.isArray(body?.writes) || !body.writes.length || body.writes.some((w: any) => !w || !w.update && !w.delete)) fail('REQUEST_UNSUPPORTED');
         for (const w of body.writes) {
             const name = w.update?.name || w.delete;
-            if (typeof name !== 'string' || !name.startsWith('projects/pgt-bjj-dev/databases/(default)/documents/') || name.split('/').some((p: string) => !p || p === '.' || p === '..')) fail('TARGET_INVALID');
+            if (typeof name !== 'string' || !name.startsWith(database + '/documents/') || name.split('/').some((p: string) => !p || p === '.' || p === '..')) fail('TARGET_INVALID');
         }
         request = {
             writes: body.writes.filter((w: any) => w.update).length,

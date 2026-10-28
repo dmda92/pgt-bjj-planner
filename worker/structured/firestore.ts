@@ -1,7 +1,8 @@
+import { resolveFirestoreTarget, type FirestoreTarget } from '../firestore-target.ts';
 import {FirestoreUsage} from './usage.ts';
 import {ApiError} from '../security.ts';
 import {FirestoreIdentity, DEV_DATABASE_NAME, type Transport} from '../firestore-auth.ts';
-import {requireDev, type PreflightEnv} from '../firestore-preflight.ts';
+import {type PreflightEnv} from '../firestore-preflight.ts';
 
 export type NativeDocument = {
     name: string;
@@ -18,7 +19,7 @@ export type NativeRow = {
 };
 export const revisionOf = async (value: string) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))), v => v.toString(16).padStart(2, '0')).join('').slice(0, 40);
 const REFERENCE = Symbol('native Firestore reference');
-export const reference = (path: string) => ({[REFERENCE]: DEV_DATABASE_NAME + '/documents/' + path});
+export const reference = (path: string, databaseName = DEV_DATABASE_NAME) => ({[REFERENCE]: databaseName + '/documents/' + path});
 
 export function field(value: any, key = ''): any {
     if (value && typeof value === 'object' && typeof value[REFERENCE] === 'string')
@@ -74,10 +75,15 @@ export const nativeDocumentBytes = (doc: {
     name: string;
     fields: Record<string, any>
 }) => nameSize(doc.name) + 32 + Object.entries(doc.fields).reduce((n, [key, v]) => n + utf8(key) + valueSize(v), 0);
-const prefix = DEV_DATABASE_NAME + '/documents/';
+
 
 export class NativeFirestore {
     private identity: FirestoreIdentity;
+    readonly target: FirestoreTarget;
+    get project() { return this.target.project; }
+    get database() { return this.target.database; }
+    reference(path: string) { return reference(this.path(path), this.target.databaseName); }
+    private get prefix() { return this.target.databaseName + '/documents/'; }
     private reads?: Map<string, NativeRow | null>;
     private queries?: Map<string, NativeRow[]>;
     private receipts = new Map<string, NativeRow>();
@@ -116,8 +122,8 @@ export class NativeFirestore {
     constructor(env: PreflightEnv, transport: Transport = (url, init) => fetch(url, init), usage = new FirestoreUsage()) {
         this.usage = usage;
         this.transport = transport;
-        requireDev(env);
-        this.identity = new FirestoreIdentity(env.FIRESTORE_SERVICE_ACCOUNT_JSON || '', transport);
+        this.target = resolveFirestoreTarget(env, { legacyDev: true });
+        this.identity = new FirestoreIdentity(env.FIRESTORE_SERVICE_ACCOUNT_JSON || '', transport, () => Date.now(), this.target);
     }
 
     async request(path: string, init: RequestInit = {}, readOnly = false) {
@@ -125,7 +131,7 @@ export class NativeFirestore {
         for (let n = 0; ; n++) {
             try {
                 this.usage.totals.httpRequests++;
-                const r = await this.transport('https://firestore.googleapis.com/v1/' + DEV_DATABASE_NAME + path, {
+                const r = await this.transport('https://firestore.googleapis.com/v1/' + this.target.databaseName + path, {
                     ...init,
                     headers: {Authorization: 'Bearer ' + token, 'Content-Type': 'application/json'},
                     redirect: 'manual',
@@ -174,7 +180,8 @@ export class NativeFirestore {
     }
 
     row(d: NativeDocument): NativeRow {
-        const path = d.name.slice(prefix.length);
+        if (!d.name.startsWith(this.prefix)) throw new ApiError(502, 'FIRESTORE_DOCUMENT_TARGET_MISMATCH');
+        const path = d.name.slice(this.prefix.length);
         return {
             id: path.slice(path.lastIndexOf('/') + 1),
             path,
@@ -274,13 +281,13 @@ export class NativeFirestore {
     }
 
     update(path: string, data: unknown, previous?: NativeRow | null) {
-        const update = {name: prefix + this.path(path), fields: fields(data as any)};
+        const update = {name: this.prefix + this.path(path), fields: fields(data as any)};
         if (nativeDocumentBytes(update) > 1024 * 1024) throw new ApiError(413, 'NATIVE_DOCUMENT_TOO_LARGE');
         return {update, ...(previous !== undefined ? {currentDocument: previous ? {updateTime: previous.updateTime} : {exists: false}} : {})};
     }
 
     deletion(row: NativeRow) {
-        return {delete: prefix + this.path(row.path), ...(row.exists ? {currentDocument: {updateTime: row.updateTime}} : {})};
+        return {delete: this.prefix + this.path(row.path), ...(row.exists ? {currentDocument: {updateTime: row.updateTime}} : {})};
     }
 
     async commit(writes: any[]) {
@@ -288,7 +295,10 @@ export class NativeFirestore {
         if (!writes.length)
             return;
         for (const w of writes) {
-            const path = (w.update?.name || w.delete).slice(prefix.length);
+            const name = w.update?.name || w.delete;
+            if (typeof name !== 'string' || !name.startsWith(this.prefix)) throw new ApiError(503, 'FIRESTORE_WRITE_TARGET_MISMATCH');
+            const path = name.slice(this.prefix.length);
+            this.path(path);
             this.reads?.delete(path);
             const collection = path.slice(0, path.lastIndexOf('/'));
             this.queries?.delete(collection.slice(0, collection.lastIndexOf('/')) + '|*');

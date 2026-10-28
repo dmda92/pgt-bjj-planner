@@ -121,3 +121,18 @@ validación local no acredita permisos reales de Cloudflare.
 - https://developers.cloudflare.com/workers/ci-cd/builds/
 - https://developers.cloudflare.com/pages/configuration/git-integration/
 - https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency
+
+
+## Preparacion Firestore PRO ? 28/10/2026 (sin publicar)
+
+La descripcion anterior de GitHub y un unico binding corresponde al despliegue historico.
+El soporte PRO preparado usa worker/pro.ts, las variables de destino estrictas y conserva
+el namespace legado ProbeSecurity inerte, con FirestoreSecurity/DomainIO nuevos. Ver
+[guia vigente de preparacion](PRO_CONFIG_CLOUDFLARE.md). No se ha aplicado remotamente.
+
+El workflow preparado exige tambien FIRESTORE_PRO_READY=true para publicar desde main,
+comprueba el bundle PRO sin GitHub y ejecuta el runtime sintetico PRO. No importa datos
+ni activa Firestore. No habilitar el interruptor hasta migracion/verificacion/autorizacion.
+La autorizacion expresa futura de PR develop -> main es excepcion del propietario; preparar
+los archivos no autoriza merge ni deploy. Despues de escrituras Firestore no hacer rollback
+a GitHub a ciegas: ver PRO_EJECUCION_Y_RECUPERACION.md.

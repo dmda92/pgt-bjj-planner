@@ -1,1 +1,4 @@
 scripts/ci-install-chromium.sh text eol=lf
+
+# Frozen oracle hashes are hashes of the original Git bytes on every platform.
+tests/fixtures/firestore/domain-source/*.txt -text

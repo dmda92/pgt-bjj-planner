@@ -26,3 +26,9 @@ qa/playwright/evidence/
 qa/playwright/state/
 __pycache__/
 /debug.log
+
+# Isolated local worktrees; never package QA or independent branches.
+.worktrees/
+
+.worker-pro-build/
+.worker-validation-build/

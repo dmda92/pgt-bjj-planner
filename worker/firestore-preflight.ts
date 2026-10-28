@@ -1,7 +1,8 @@
+import { resolveFirestoreTarget, type FirestoreTargetEnv } from './firestore-target.ts';
 import {ApiError, fingerprint, equal} from './security.ts';
 import {FirestoreIdentity, DEV_PROJECT, DEV_DATABASE, DEV_DATABASE_NAME, type Transport} from './firestore-auth.ts';
 
-export interface PreflightEnv {
+export interface PreflightEnv extends FirestoreTargetEnv {
     FIRESTORE_SERVICE_ACCOUNT_JSON?: string;
     DEV_ACCOUNT_ID?: string;
     DEV_DEPLOY_TOKEN_HASH?: string;
@@ -19,7 +20,7 @@ export class PreflightFailure extends ApiError {
 }
 
 export function requireDev(env: PreflightEnv) {
-    if (env.FIRESTORE_PROJECT_ID !== DEV_PROJECT || env.FIRESTORE_DATABASE_ID !== DEV_DATABASE) throw new ApiError(503, 'FIRESTORE_DEV_TARGET_REQUIRED');
+    if (env.FIRESTORE_ENVIRONMENT !== undefined && env.FIRESTORE_ENVIRONMENT !== 'dev' || env.FIRESTORE_PROJECT_ID !== DEV_PROJECT || env.FIRESTORE_DATABASE_ID !== DEV_DATABASE) throw new ApiError(503, 'FIRESTORE_DEV_TARGET_REQUIRED');
 }
 
 const base = `https://firestore.googleapis.com/v1/${DEV_DATABASE_NAME}`;
@@ -164,4 +165,19 @@ export async function firestorePreflight(env: PreflightEnv, transport: Transport
         rulesSource: 'NOT_READ_SERVICE_ACCOUNT_HAS_DATA_ROLE_ONLY',
         billing: 'SPARK_OWNER_CONFIRMED_NOT_QUERIED'
     };
+}
+
+/** Read-only metadata check for preparation. Unlike the legacy DEV CRUD probe,
+ * this never writes diagnostics or attempts anonymous writes in production. */
+export async function firestoreTargetPreflight(env: PreflightEnv, transport: Transport = (input, init) => fetch(input, init)) {
+    const target = resolveFirestoreTarget(env);
+    const identity = new FirestoreIdentity(env.FIRESTORE_SERVICE_ACCOUNT_JSON || '', transport, () => Date.now(), target);
+    const token = await identity.token();
+    const response = await transport(`https://firestore.googleapis.com/v1/${target.databaseName}`, {
+        headers: { Authorization: 'Bearer ' + token }, redirect: 'manual', signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok) throw new ApiError(503, 'FIRESTORE_METADATA_' + response.status);
+    const database = await response.json() as any;
+    if (database.name !== target.databaseName || database.type !== 'FIRESTORE_NATIVE' || database.databaseEdition !== 'STANDARD' || typeof database.locationId !== 'string') throw new ApiError(503, 'FIRESTORE_DATABASE_CONFIGURATION_MISMATCH');
+    return { status: 'FIRESTORE_TARGET_METADATA_VERIFIED', project: target.project, database: target.database, environment: target.environment, principal: identity.principal, location: database.locationId, writesPerformed: false };
 }
