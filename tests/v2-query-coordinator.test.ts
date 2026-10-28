@@ -18,7 +18,7 @@ async function setup() {
             fecha_nacimiento: null, peso: null, cinturon: 'Blanco', pwd: 'synthetic-private-hash-' + mail };
         await store.write({ kind: 'profile', id: mail }, p, null, crypto.randomUUID());
         await store.write({ kind: 'comments', id: mail }, { ...initialVersion(), comments: [] }, null, crypto.randomUUID());
-        sessions.push({ mail, role: perfil, pwdFingerprint: await fingerprint(p.pwd!) });
+        sessions.push({ mail, role: perfil, pwdFingerprint: await fingerprint(p.pwd!), sessionEpoch: 'v2-initial' });
     }
     const create = () => new QueryCoordinator(store, new PlanViews(new PlanRepository(db), store));
     return { f, db, store, sessions, coordinator: create(), create };

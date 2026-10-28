@@ -19,6 +19,7 @@ export interface Meta {
 }
 
 export class LocalDb extends Dexie {
+    drafts!: Table<import('../application/draft-journal.ts').DraftRecord, [string, string, string, string]>;
     entries!: Table<LocalEntry, string>;
     meta!: Table<Meta, string>;
     trainerViews!: Table<import("../application/trainer-cache.ts").TrainerCacheEntry, string>;
@@ -46,6 +47,7 @@ export class LocalDb extends Dexie {
             trainerDays: "key,owner",
             commentNotices: "[owner+techniqueId],owner"
         });
+        this.version(5).stores({drafts: '[actor+owner+resource+editor],actor,owner'});
     }
 }
 

@@ -64,6 +64,8 @@ jobs:
         run: bash scripts/ci-install-chromium.sh
       - name: Browser and offline PDF tests
         run: npm run test:browser
+      - name: QA remediation regressions (isolated Chromium and Firestore)
+        run: npm run test:qa-remediation
       - name: Native V2 persistence cost regression
         run: npm run benchmark:firestore-v2
       - name: Validate DEV configuration and bundle (offline)

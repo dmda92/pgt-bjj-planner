@@ -1,3 +1,4 @@
+import { stageImmutableBlocks } from './immutable-blocks.ts';
 import { NativeFirestore, type NativeRow } from '../structured/firestore.ts';
 import { ApiError } from '../security.ts';
 import { nativeWrite } from './plans.ts';
@@ -137,14 +138,7 @@ export class NativeAggregates {
         let batch: ReturnType<typeof nativeWrite>[] = [], bytes = 0;
         const flush = async () => {
             if (!batch.length) return;
-            try { await this.db.commit(batch); }
-            catch (error) {
-                const matches = await Promise.all(batch.map(async w => {
-                    const path = w.update.name.split('/documents/')[1], saved = await this.db.get(path, true);
-                    return !!saved && blockDigest(saved.data) === path.split('/').at(-1);
-                }));
-                if (!matches.every(Boolean)) throw error;
-            }
+            await stageImmutableBlocks(this.db, batch);
             batch = []; bytes = 0;
         };
         for (const write of staged) {
@@ -222,17 +216,7 @@ export class NativeAggregates {
         const flush = async () => {
             if (!batch.length)
                 return;
-            try {
-                await this.db.commit(batch);
-            }
-            catch (error) {
-                const exists = await Promise.all(batch.map(async (w) => {
-                    const p = w.update.name.split('/documents/')[1], row = await this.db.get(p, true);
-                    return !!row && blockDigest(row.data) === p.split('/').at(-1);
-                }));
-                if (!exists.every(Boolean))
-                    throw error;
-            }
+            await stageImmutableBlocks(this.db, batch);
             batch = [];
             bytes = 0;
         };

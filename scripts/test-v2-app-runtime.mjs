@@ -13,7 +13,7 @@ const runtime=new Miniflare(convertV4MiniflareOptions({modules:true,script,compa
 const sockets=[];
 async function api(path,body,token='',expected=200){
     const response=await runtime.dispatchFetch('https://local/api/v2/'+path,{method:body===undefined?'GET':'POST',
-        headers:{Origin:origin,'CF-Connecting-IP':crypto.randomUUID(),...(token?{Authorization:'Bearer '+token}:{}),...(body===undefined?{}:{'Content-Type':'application/json'})},
+        headers:{Connection:'close',Origin:origin,'CF-Connecting-IP':crypto.randomUUID(),...(token?{Authorization:'Bearer '+token}:{}),...(body===undefined?{}:{'Content-Type':'application/json'})},
         ...(body===undefined?{}:{body:JSON.stringify(body)})});
     const value=await response.json();assert.equal(response.status,expected,JSON.stringify(value));return value;
 }
@@ -49,8 +49,23 @@ try{
     assert.equal(f.metrics().estimatedReads,metric.estimatedReads);assert.equal(changed.techniques.data.positions[0].tecnicas[0].descripcion_del_alumno,'Runtime text');
     const report=await api('training-day?date='+date(1),undefined,trainer.token);assert.ok(report.groups.length);
     metric=f.metrics();await api('training-day?date='+date(1),undefined,trainer.token);assert.equal(f.metrics().estimatedReads,metric.estimatedReads);
+    // SEC-01: leave an old bearer and an unconsumed ticket untouched through a
+    // complete role cycle. Deleting a bearer on its first 401 cannot mask revival.
+    const heldTicket=await api('realtime-ticket',{},pupil.token);
+    const closed=new Promise(resolve=>ws.addEventListener('close',resolve,{once:true}));
     const count=events.length;await api('commands/role',{mail:pupil.profile.mail,perfil:'entrenador',expected:snapshot.profile.sha,operationId:crypto.randomUUID()},trainer.token);
+    ws.close(); // Complete the close handshake for Miniflare's Node-side socket.
+    const promoted=await api('auth/login',{mail:pupil.profile.mail,password});
+    const promotedProfile=await api('users/'+pupil.profile.mail+'/profile',undefined,promoted.token);
+    await api('commands/role',{mail:pupil.profile.mail,perfil:'alumno',expected:promotedProfile.version,operationId:crypto.randomUUID()},trainer.token);
+    const rejectedUpgrade=await runtime.dispatchFetch('https://local/api/v2/realtime?ticket='+heldTicket.ticket,{headers:{Origin:origin,Upgrade:'websocket'}});
+    assert.equal(rejectedUpgrade.status,401);assert.equal((await rejectedUpgrade.json()).error,'SESSION_REVOKED');
+    await api('realtime-ticket',{},pupil.token,401);
     await api('users/'+pupil.profile.mail+'/comments',undefined,pupil.token,401);
+    await api('roster',undefined,promoted.token,401);
+    const fresh=await api('auth/login',{mail:pupil.profile.mail,password});
+    await api('users/'+pupil.profile.mail+'/comments',undefined,fresh.token);
+    const revoked=await closed;assert.equal(revoked.code,4401);
     assert.ok(events.length>=count);
     console.log('Actual DEV V2 Worker, synthetic verified import: auth, CORS, WebSockets, atomic plans, history, selective warm snapshots, zero read-after-ACK, agenda and role revocation PASS. Google/GitHub intercepted.');
 }finally{for(const ws of sockets)try{ws.close();}catch{}await runtime.dispose();}

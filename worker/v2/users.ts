@@ -4,20 +4,20 @@ import { QueryCoordinator, type QuerySession } from './query-coordinator.ts';
 import type { AggregateChange } from './aggregates.ts';
 import type { SessionLookup } from './read-api.ts';
 import { blockDigest } from '../../src/infrastructure/native-packing.ts';
+import { publicProfile, sessionEpoch, type SessionProfile } from './session-identity.ts';
 
 export interface SessionStorage extends SessionLookup { put<T>(key: string, value: T): Promise<void> }
 export type Roster = { users: { mail: string; nombre: string; apellidos: string; perfil: Profile['perfil']; cinturon?: Profile['cinturon'] }[] };
-const publicProfile = (p: Profile) => { const { pwd, probeOnly, ...safe } = p; return safe; };
 const rosterProfile = (p: Profile) => ({ mail: p.mail, nombre: p.nombre, apellidos: p.apellidos, perfil: p.perfil, cinturon: p.cinturon });
 function validate(p: Profile) { try { validateProfile(p); } catch { throw new ApiError(400, 'PROFILE_INVALID'); } }
 export class UserService {
     private readonly coordinator: QueryCoordinator;
     private readonly sessions: SessionStorage;
     constructor(coordinator: QueryCoordinator, sessions: SessionStorage) { this.coordinator = coordinator; this.sessions = sessions; }
-    private async mint(p: Profile) {
+    private async mint(p: SessionProfile) {
         const token = opaqueToken();
         await this.sessions.put('pgt-v2-session:' + await fingerprint(token), {
-            mail: p.mail, role: p.perfil, pwdFingerprint: await fingerprint(p.pwd!)
+            mail: p.mail, role: p.perfil, pwdFingerprint: await fingerprint(p.pwd!), sessionEpoch: sessionEpoch(p)
         } satisfies QuerySession);
         return { token, profile: publicProfile(p) };
     }
@@ -41,7 +41,7 @@ export class UserService {
                 if (prior.data.probeOnly || !await passwordMatches(input.password, prior.data.pwd || '')) throw new ApiError(409, 'USER_EXISTS');
                 return this.mint(prior.data);
             }
-            const p: Profile = { ...initialVersion(), mail, nombre: typeof input.nombre === 'string' ? input.nombre : '',
+            const p: SessionProfile = { ...initialVersion(), sessionEpoch: crypto.randomUUID(), mail, nombre: typeof input.nombre === 'string' ? input.nombre : '',
                 apellidos: typeof input.apellidos === 'string' ? input.apellidos : '', peso: null, fecha_nacimiento: null,
                 cinturon: 'Blanco', perfil: 'alumno' };
             validate(p);
@@ -69,7 +69,7 @@ export class UserService {
         await this.coordinator.command(session, async (actor, read) => {
             if (kind === 'profile' && mail !== actor.mail) throw new ApiError(403, 'OWN_PROFILE_ONLY');
             if ((kind === 'role' || kind === 'belt' || mail !== actor.mail) && actor.perfil !== 'entrenador') throw new ApiError(403, 'TRAINER_REQUIRED');
-            const ref = { kind: 'profile' as const, id: mail }, current = await read<Profile>(ref);
+            const ref = { kind: 'profile' as const, id: mail }, current = await read<SessionProfile>(ref);
             if (!current) throw new ApiError(404, 'USER_NOT_FOUND');
             if (input.expected !== current.version) throw new ApiError(409, 'VERSION_CONFLICT');
             let next = structuredClone(current.data);
@@ -92,6 +92,9 @@ export class UserService {
                 next.perfil = input.perfil;
             }
             const changed = JSON.stringify(next) !== JSON.stringify(current.data);
+            // Persist a new identity in the same CAS publication, never derived
+            // from role/password values that can return to an earlier value.
+            if (changed && (kind === 'password' || kind === 'role')) next.sessionEpoch = crypto.randomUUID();
             if (kind !== 'password' && changed) { next.revision++; next.updatedAt = new Date().toISOString(); }
             const changes: AggregateChange[] = [{ ref, data: next, expected: current.version }];
             if (kind !== 'password' && changed) {
@@ -103,7 +106,7 @@ export class UserService {
             return { changes, operationId };
         }, { operationId, requestHash: blockDigest([normalizedMail(session.mail), kind, input]) });
         // Credential/role changes invalidate the cached profile before another request;
-        // every existing session's fingerprint/role then fails without scanning sessions.
+        // every existing session's epoch then fails without scanning sessions.
         return kind === 'profile' || kind === 'belt' ? this.coordinator.user(session, { kind: 'profile', owner: mail }) : { status: kind === 'password' ? 'PASSWORD_CHANGED_SESSION_REVOKED' : 'ROLE_CHANGED' };
     }
 }

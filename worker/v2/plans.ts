@@ -1,3 +1,4 @@
+import { stageImmutableBlocks } from './immutable-blocks.ts';
 import type { TrainingPlan } from '../../src/domain/models.ts';
 import { validatePlan, validDate } from '../../src/domain/models.ts';
 import { MAX_JSON_BYTES, jsonBytes } from '../../src/domain/json-limits.ts';
@@ -100,14 +101,7 @@ export class PlanRepository {
         let batch: typeof staged = [], bytes = 0;
         const flush = async () => {
             if (!batch.length) return;
-            try { await this.db.commit(batch); }
-            catch (error) {
-                const matches = await Promise.all(batch.map(async w => {
-                    const p = w.update.name.split('/documents/')[1], row = await this.db.get(p, true);
-                    return !!row && hash(row.data) === p.split('/').at(-1);
-                }));
-                if (!matches.every(Boolean)) throw error;
-            }
+            await stageImmutableBlocks(this.db, batch);
             batch = []; bytes = 0;
         };
         for (const write of staged) {
@@ -252,20 +246,7 @@ export class PlanRepository {
         const flush = async () => {
             if (!batch.length)
                 return;
-            try {
-                await this.db.commit(batch);
-            }
-            catch (error) {
-                // A lost staging ACK or a concurrent identical writer is safe only
-                // after every content-addressed block is independently verified.
-                const verified = await Promise.all(batch.map(async (w) => {
-                    const blockPath = w.update.name.split('/documents/')[1];
-                    const row = await this.db.get(blockPath, true);
-                    return !!row && hash(row.data) === blockPath.split('/').at(-1);
-                }));
-                if (!verified.every(Boolean))
-                    throw error;
-            }
+            await stageImmutableBlocks(this.db, batch);
             batch = [];
             bytes = 0;
         };

@@ -108,7 +108,7 @@ try{
     ];
     response=await runtime.dispatchFetch('http://isolated/publish',{method:'POST',body:JSON.stringify({changes:setup,operationId:crypto.randomUUID()})});
     assert.equal(response.status,200,JSON.stringify(await response.json()));
-    response=await runtime.dispatchFetch('http://isolated/synthetic-session',{method:'POST',body:JSON.stringify({token,session:{mail:plan.mail,role:'alumno',pwdFingerprint:await fingerprint(pwd)}})});
+    response=await runtime.dispatchFetch('http://isolated/synthetic-session',{method:'POST',body:JSON.stringify({token,session:{mail:plan.mail,role:'alumno',pwdFingerprint:await fingerprint(pwd),sessionEpoch:'v2-initial'}})});
     assert.equal(response.status,200);await response.arrayBuffer();
     const sourcePath='http://isolated/api/v2/users/'+encodeURIComponent(plan.mail)+'/repertoire',headers={Authorization:'Bearer '+token};
     response=await runtime.dispatchFetch(sourcePath,{headers});assert.equal(response.status,200);await response.arrayBuffer();

@@ -27,12 +27,41 @@ async function setup(count = 2) {
             { ref: { kind: 'comments', id: mail }, data: { ...initialVersion(), comments: [] }, expected: null },
             { ref: { kind: 'assignment', id: mail }, data: { ...initialVersion(), planIds: [] }, expected: null }
         ], crypto.randomUUID());
-        sessions.push({ mail, role: profile.perfil, pwdFingerprint: await fingerprint(profile.pwd!) });
+        sessions.push({ mail, role: profile.perfil, pwdFingerprint: await fingerprint(profile.pwd!), sessionEpoch: 'v2-initial' });
     }
     const competition: Competition = { planId: crypto.randomUUID(), alumnos: sessions.map(s => s.mail), fecha_comienzo: '2026-10-20', fecha_torneo: '2026-11-20',
         dias_de_entrenamiento: [1, 2, 3, 4, 5, 6, 7], ejercicios_por_sesion: 5, tiempo_por_tecnica_segundos: 180,
         descanso_entre_ciclos_segundos: 10, descanso_entre_tecnicas_segundos: 20 };
     return { f, paths, store, views, q, business, sessions, repertoires, competition };
+}
+
+for (const kind of ['repertoire', 'comments'] as const) {
+    test(`LIM04: oversized ${kind} reports safe document bytes and leaves sources unchanged`, async () => {
+        const s = await setup(1), actor = s.sessions[0], source = structuredClone(s.repertoires[0]);
+        source.positions = [{...source.positions[0], tecnicas: Array.from({length: 50}, () => ({
+            ...source.positions[0].tecnicas[0], id: crypto.randomUUID(), descripcion_del_alumno: ''
+        }))}];
+        await s.store.write({kind: 'repertoire', id: actor.mail}, source, '1', crypto.randomUUID());
+        const ref = {kind, id: actor.mail}, before = await s.store.read(ref), mutations = s.f.metrics().attemptedWrites;
+        const data = kind === 'repertoire' ? {...source, positions: source.positions.map(p => ({...p,
+            tecnicas: p.tecnicas.map(t => ({...t, descripcion_del_alumno: 'x'.repeat(90000)}))}))} : {
+            ...initialVersion(), comments: source.positions[0].tecnicas.map(t => ({techniqueId: t.id, comment: 'x'.repeat(90000)}))};
+        await assert.rejects(s.business[kind](actor, {data, expected: before!.version, operationId: crypto.randomUUID()}),
+            (error: any) => {
+                assert.equal(error.status, 413);
+                assert.equal(error.message, 'JSON_TOO_LARGE');
+                assert.ok(error.size, 'Document overflow must include size details');
+                assert.equal(error.size.file, kind === 'repertoire' ? 'tecnics.json' : 'trainer_comments.json');
+                assert.equal(error.size.limitBytes, 4194304);
+                assert.ok(error.size.bytes > error.size.limitBytes);
+                assert.equal(error.size.scope, 'document');
+                assert.equal(error.size.exact, true);
+                assert.ok(!JSON.stringify(error.size).includes(actor.mail));
+                return true;
+            });
+        assert.equal(s.f.metrics().attemptedWrites, mutations);
+        assert.deepEqual(await s.store.read(ref), before);
+    });
 }
 
 test('Empty position or technique names remain invalid on the server before any database IO', async () => {

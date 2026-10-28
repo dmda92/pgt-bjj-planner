@@ -10,9 +10,10 @@ import type { Roster } from './users.ts';
 import { validDate } from '../../src/domain/models.ts';
 import { collectUnusedBlocks } from './block-cleanup.ts';
 import type { PreparedPlan } from './plans.ts';
+import { publicProfile, sessionEpoch, type SessionProfile } from './session-identity.ts';
 
 /** Issued only by authenticated session middleware, never decoded from a request body. */
-export type QuerySession = { mail: string; pwdFingerprint: string; role: Profile['perfil'] };
+export type QuerySession = { mail: string; pwdFingerprint: string; role: Profile['perfil']; sessionEpoch?: string };
 export type EntityReader = <T>(ref: AggregateRef) => Promise<{ data: T; version: string } | null>;
 export type PlanChange = { owner: string; planId: string; data: TrainingPlan | null; expected: string | null; prepared?: PreparedPlan };
 export type PreparedCommand = { changes: AggregateChange[]; operationId: string; metadata?: Record<string, string>; plans?: PlanChange[] };
@@ -71,7 +72,7 @@ export class QueryCoordinator {
             if (!profile || !techniques || !comments || !index) throw new ApiError(409, 'REGISTRATION_INCOMPLETE');
             const remote = (key: string, record: { data: unknown; version: string }) => known[key] === record.version ?
                 { unchanged: true, sha: record.version } : { data: record.data, sha: record.version };
-            const { pwd, probeOnly, ...safe } = profile.data;
+            const safe = publicProfile(profile.data);
             const plans = [];
             for (const id of index.data.planIds.filter(id => !index.data.deletedPlanIds?.includes(id))) {
                 const head = await this.pinned(owner, id), text = await this.record<PlanTextProjection>({ kind: 'plan-text', id: id + '__' + owner });
@@ -118,8 +119,9 @@ export class QueryCoordinator {
         return await this.cache.load(key, generation, () => this.store.read(ref)) as { data: T; version: string } | null;
     }
     private async actor(session: QuerySession): Promise<Profile> {
-        const mail = normalizedMail(session.mail), profile = await this.record<Profile>({ kind: 'profile', id: mail });
+        const mail = normalizedMail(session.mail), profile = await this.record<SessionProfile>({ kind: 'profile', id: mail });
         if (!profile || profile.data.mail !== mail || !profile.data.pwd ||
+            !session.sessionEpoch || session.sessionEpoch !== sessionEpoch(profile.data) ||
             profile.data.perfil !== session.role || await fingerprint(profile.data.pwd) !== session.pwdFingerprint)
             throw new ApiError(401, 'SESSION_REVOKED');
         return profile.data;
@@ -185,7 +187,7 @@ export class QueryCoordinator {
             if (!['profile', 'repertoire', 'comments', 'assignment'].includes(query.kind)) throw new ApiError(400, 'QUERY_INVALID');
             const result = await this.record<Record<string, unknown>>({ kind: query.kind, id: owner });
             if (result && query.kind === 'profile') {
-                const { pwd, probeOnly, ...data } = result.data;
+                const data = publicProfile(result.data as unknown as SessionProfile);
                 return { ...result, data };
             }
             return result;
