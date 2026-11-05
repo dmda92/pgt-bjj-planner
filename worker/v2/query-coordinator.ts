@@ -102,7 +102,7 @@ export class QueryCoordinator {
             for (const key of (calendar?.data.months ?? []).filter(m => m >= today.slice(0, 7)).sort()) {
                 const month = await this.record<MonthlyAgenda>({ kind: 'agenda', id: key });
                 if (!month) continue;
-                const next = [...new Set(month.data.calendars.filter(c => c.end >= today).flatMap(c => month.data.dateSets[c.dateSet].dates))].sort().find(d => d > today);
+                const next = [...new Set(month.data.calendars.filter(c => c.end >= today).flatMap(c => month.data.dateSets[c.dateSet].dates))].sort().find(d => d >= today);
                 if (!next || next.slice(0, 7) !== key) continue;
                 return queryMonthlyAgenda(month.data, '', today, names);
             }

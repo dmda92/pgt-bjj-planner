@@ -21,7 +21,7 @@ export function structureIndex(plan:TrainingPlan,sourceSha:string):StructureInde
 export interface DayGroup {key:string;exercises:[string,string][];students:{mail:string;name:string}[];competitions:string[]}
 export interface TrainingDay {date:string;nextDate:string;dates:string[];groups:DayGroup[];missing:number;blocked:number}
 export function trainingDay(indexes:{index:StructureIndex;name:string}[],date:string,today:string):TrainingDay{
- const dates=[...new Set(indexes.flatMap(({index})=>index.sessions.map(s=>s.date)))].sort(),nextDate=dates.find(d=>d>today)||'';
+ const dates=[...new Set(indexes.flatMap(({index})=>index.sessions.map(s=>s.date)))].sort(),nextDate=dates.find(d=>d>=today)||'';
  const chosen=date||nextDate,groups=new Map<string,{orders:Map<string,{exercises:[string,string][];votes:number}>;students:Map<string,string>;competitions:Set<string>}>();
  for(const {index,name} of indexes)for(const s of index.sessions){if(s.date!==chosen)continue;const exercises=s.items.map(id=>index.dictionary[id]);const tokens=exercises.map(e=>JSON.stringify(e));const key=JSON.stringify(tokens.slice().sort());let group=groups.get(key);if(!group){group={orders:new Map(),students:new Map(),competitions:new Set()};groups.set(key,group);}group.students.set(index.mail,name);group.competitions.add(index.planId);
   const order=JSON.stringify(tokens);let variant=group.orders.get(order);if(!variant){variant={exercises,votes:0};group.orders.set(order,variant);}variant.votes++;

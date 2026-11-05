@@ -80,11 +80,11 @@ try{
     await assert.doesNotReject(async()=>{for(let i=0;i<40;i++){if(await b.getByLabel('Descripción de técnica o enlace de vídeo').first().inputValue()===text)return;await new Promise(r=>setTimeout(r,100));}throw Error('Second device did not receive update');});
     assert.equal(throttledAttempts,2);await a.unroute('**/api/v2/commands/repertoire');
     await mkdir('.browser-artifacts',{recursive:true});await a.screenshot({path:'.browser-artifacts/v2-mobile.png',fullPage:true});await b.screenshot({path:'.browser-artifacts/v2-desktop.png',fullPage:true});
-    await a.getByRole('button',{name:/Mis planes/}).click();await a.getByLabel('Mi plan',{exact:true}).selectOption({index:1});
+    await a.getByRole('button',{name:/Mis planes/}).click();await a.getByLabel('Fecha de mis entrenamientos',{exact:true}).waitFor();assert.equal(await a.getByLabel('Fecha de mis entrenamientos',{exact:true}).inputValue(),today);await a.getByLabel('Mi plan',{exact:true}).selectOption({index:1});
     const download=a.waitForEvent('download');await a.getByRole('button',{name:'Exportar PDF',exact:true}).click();assert.ok((await download).suggestedFilename().endsWith('.pdf'));
     await a.evaluate(()=>navigator.serviceWorker.ready);
     await mobile.setOffline(true);await a.reload();await a.getByRole('button',{name:/Mis planes/}).waitFor();
-    await a.getByRole('button',{name:/Mis planes/}).click();await a.getByLabel('Mi plan',{exact:true}).selectOption({index:1});
+    await a.getByRole('button',{name:/Mis planes/}).click();await a.getByLabel('Fecha de mis entrenamientos',{exact:true}).waitFor();assert.equal(await a.getByLabel('Fecha de mis entrenamientos',{exact:true}).inputValue(),today);await a.getByLabel('Mi plan',{exact:true}).selectOption({index:1});
     const offlineDownload=a.waitForEvent('download');await a.getByRole('button',{name:'Exportar PDF',exact:true}).click();await offlineDownload;
     await mobile.setOffline(false);await a.locator('.sync-success').waitFor();
     const before=f.metrics();await b.bringToFront();await new Promise(r=>setTimeout(r,1000));

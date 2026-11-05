@@ -43,11 +43,12 @@ test('Multiple competitions preserve vote multiplicity and unique students, incl
     assert.deepEqual(queryMonthlyAgenda(agenda, '2026-02-10', '2027-01-01', names), expected);
     assert.equal(queryMonthlyAgenda(agenda, '2026-02-10', '2027-01-01', names).groups[0].students.length, 1);
 });
-test('Default date is strictly future, missing plans remain visible, and other months require explicit loading', () => {
+test('Default date includes today, missing plans remain visible, and other months require explicit loading', () => {
     const p = plan(), names = new Map([[p.mail, 'Name']]), agenda = buildMonthlyAgenda([p], '2026-02', [{ owner: 'pending@example.test', planId: crypto.randomUUID(), start: '2026-01-01', end: '2026-07-02' }]);
-    assert.equal(queryMonthlyAgenda(agenda, '', '2026-01-31', names).date, '2026-02-01');
-    assert.equal(queryMonthlyAgenda(agenda, '', '2026-01-31', names).missing, 1);
-    assert.throws(() => queryMonthlyAgenda(agenda, '', '2026-02-28', names), /MONTH_NOT_LOADED/);
+    assert.equal(queryMonthlyAgenda(agenda, '', '2026-02-01', names).date, '2026-02-01');
+    assert.equal(queryMonthlyAgenda(agenda, '', '2026-02-01', names).missing, 1);
+    assert.equal(queryMonthlyAgenda(agenda, '', '2026-02-28', names).date, '2026-02-28');
+    assert.throws(() => queryMonthlyAgenda(agenda, '', '2026-03-01', names), /MONTH_NOT_LOADED/);
 });
 test('Distinct labels remain native and can be split without losing votes or calendars', () => {
     const base = plan(), plans = Array.from({ length: 100 }, (_, i) => {

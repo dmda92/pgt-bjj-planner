@@ -1157,3 +1157,10 @@ a la corrección PAYLOAD_INVALID del editor, mediante PR a develop tras CI.
 Los planes futuros ya desactualizados se reparan al consultarlos con autorización vigente, mediante CAS y eventos
 habituales, sin inventario ni migración masiva. Tras aplicar el nombre, una consulta o guardado sin cambios no vuelve a
 escribir el plan. No se activan por esta corrección cambios de prioridad/reordenación.
+
+
+### Fecha inicial inclusiva — corrección del propietario 05/11/2026
+
+En Mis planes y Entrenador/Entrenamiento del día, seleccionar automáticamente la primera sesión con fecha mayor o igual a hoy Europe/Madrid entre planes activos. Si hoy hay entrenamiento, mostrar hoy; avanzar al próximo entrenamiento desde el día siguiente. Sustituye exclusivamente la selección inicial estrictamente posterior descrita antes. Consulta manual, snapshots, generador e histórico no cambian. Desarrollo e integración/despliegue DEV autorizados por el propietario; sin promoción PRO.
+
+Tras probar DEV, el propietario confirma «está perfecto» y autoriza expresamente pasar esta corrección a producción. La promoción es selectiva desde la feature original a main, mediante PR tras CI; no incluye los cambios de infraestructura QA exclusivos de develop.

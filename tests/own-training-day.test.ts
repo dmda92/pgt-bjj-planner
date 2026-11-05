@@ -9,9 +9,9 @@ const plan = (id: string, mail: string, end: string, dates: string[]) => ({
     fecha_torneo: end,
     sessions: dates.map(date => ({date, exercises: []}))
 } as unknown as TrainingPlan);
-test('Own day chooses strictly future active date, keeps all own sessions, and never mutates plans', () => {
+test('Own day chooses today or next active date, keeps all own sessions, and never mutates plans', () => {
     const plans = [plan('b', 'me', '2026-11-01', ['2026-10-16', '2026-10-19']), plan('a', 'me', '2026-10-30', ['2026-10-19', '2026-10-21', '2026-10-19']), plan('foreign', 'other', '2026-11-01', ['2026-10-17']), plan('old', 'me', '2026-10-15', ['2026-10-17'])];
-    const before = structuredClone(plans), day = ownTrainingDay(plans, 'me', '2026-10-16');
+    const before = structuredClone(plans), day = ownTrainingDay(plans, 'me', '2026-10-17');
     assert.equal(day.date, '2026-10-19');
     assert.deepEqual(day.sessions.map(s => [s.plan.planId, s.index]), [['a', 0], ['a', 2], ['b', 1]]);
     assert.deepEqual(plans, before);
@@ -21,8 +21,15 @@ test('Own day chooses strictly future active date, keeps all own sessions, and n
 });
 test('Own day handles no future sessions, empty dates and explicit historical/empty days', () => {
     const plans = [plan('past', 'me', '2026-10-15', ['2026-10-14']), plan('today', 'me', '2026-10-16', ['2026-10-16'])];
-    assert.deepEqual(ownTrainingDay(plans, 'me', '2026-10-16'), {date: '', sessions: []});
+    assert.equal(ownTrainingDay(plans, 'me', '2026-10-16').date, '2026-10-16');
+    assert.deepEqual(ownTrainingDay(plans, 'me', '2026-10-17'), {date: '', sessions: []});
     assert.equal(ownTrainingDay(plans, 'me', '2026-10-16', '2026-10-14').sessions.length, 1);
     assert.deepEqual(ownTrainingDay(plans, 'me', '2026-10-16', '2026-10-20'), {date: '2026-10-20', sessions: []});
     assert.deepEqual(ownTrainingDay([], 'me', '2026-10-16'), {date: '', sessions: []});
+});
+
+test('Tuesday and Thursday remain selected on their own day and advance the following day', () => {
+    const plans = [plan('weekly', 'me', '2026-12-01', ['2026-11-03', '2026-11-05', '2026-11-10'])];
+    for (const [today, expected] of [['2026-11-03', '2026-11-03'], ['2026-11-04', '2026-11-05'], ['2026-11-05', '2026-11-05'], ['2026-11-06', '2026-11-10'], ['2026-11-07', '2026-11-10'], ['2026-11-10', '2026-11-10']])
+        assert.equal(ownTrainingDay(plans, 'me', today).date, expected);
 });
