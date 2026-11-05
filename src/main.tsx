@@ -1685,7 +1685,7 @@ function OwnTrainingDay({plans, owner}: { plans: TrainingPlan[]; owner: string }
     return <section className="own-training-day" aria-label="Mis entrenamientos del día">
         <div className="section-head">
             <div><h2>Mi entrenamiento del día</h2><p>Consulta todas tus sesiones de la fecha elegida. Por defecto se
-                muestra el próximo entrenamiento posterior a hoy.</p></div>
+                muestra el entrenamiento de hoy o el próximo disponible.</p></div>
             <label>Fecha de mis entrenamientos<input type="date" value={day.date}
                                                      onChange={e => setDate(e.target.value)}/></label>
         </div>

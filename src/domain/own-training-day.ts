@@ -6,7 +6,7 @@ export function ownTrainingDay(plans: TrainingPlan[], owner: string, today: stri
     let date = selectedDate;
     if (!date) for (const plan of own) {
         if (plan.fecha_torneo < today) continue;
-        for (const session of plan.sessions) if (session.date > today && (!date || session.date < date)) date = session.date;
+        for (const session of plan.sessions) if (session.date >= today && (!date || session.date < date)) date = session.date;
     }
     const sessions = date ? own.flatMap(plan => plan.sessions.flatMap((session, index) => session.date === date ? [{
         plan,

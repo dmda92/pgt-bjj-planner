@@ -126,7 +126,7 @@ export function queryMonthlyAgenda(agenda: MonthlyAgenda, date: string, today: s
         throw Error('AGENDA_FORMAT_INVALID');
     const calendars = agenda.calendars.filter(c => date ? c.start <= date && c.end > date : c.end >= today);
     const relevantDates = [...new Set(calendars.flatMap(c => agenda.dateSets[c.dateSet].dates))].sort();
-    const chosen = date || relevantDates.find(d => d > today) || '';
+    const chosen = date || relevantDates.find(d => d >= today) || '';
     if (chosen && chosen.slice(0, 7) !== agenda.month)
         throw Error('AGENDA_MONTH_NOT_LOADED');
     const contributions = new Map(agenda.contributions.filter(c => c.date === chosen).map(c => [JSON.stringify([c.owner, c.planId]), c]));
