@@ -69,7 +69,7 @@ test('Daily equivalence ignores UUIDs/text/order/priority, preserves multiplicit
     }, {index: structureIndex(plan('y', [exercise('2', 'Café')]), 'y'), name: 'Y'}];
     assert.deepEqual(trainingDay(tied, '', '2026-10-17'), trainingDay(tied.slice().reverse(), '', '2026-10-17'));
 });
-test('Daily next date is strictly future, arbitrary dates can be empty, duplicated membership counts once', () => {
+test('Daily next date includes today, arbitrary dates can be empty, duplicated membership counts once', () => {
     const index = structureIndex(plan('one', [exercise('a')], '2026-10-17'), 'sha');
     const r = trainingDay([{index, name: 'Uno'}, {
         index: {...index, planId: 'second'},
@@ -77,7 +77,8 @@ test('Daily next date is strictly future, arbitrary dates can be empty, duplicat
     }], '2026-10-17', '2026-10-17');
     assert.equal(r.groups[0].students.length, 1);
     assert.equal(r.groups[0].competitions.length, 2);
-    assert.equal(r.nextDate, '');
+    assert.equal(r.nextDate, '2026-10-17');
+    assert.equal(trainingDay([{index, name: 'Uno'}], '', '2026-10-17').date, '2026-10-17');
     assert.equal(trainingDay([{index, name: 'Uno'}], '2026-10-18', '2026-10-17').groups.length, 0);
 });
 test('Competition filter includes today, hides strictly past and sorts dates without mutating source', () => {

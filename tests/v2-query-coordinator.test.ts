@@ -135,3 +135,17 @@ test('Atomic receipts retain selective event references for delivery recovery wi
     assert.equal(f.metrics().estimatedReads - before.estimatedReads, 1);
     assert.equal(f.metrics().attemptedWrites, before.attemptedWrites);
 });
+
+
+test('Automatic trainer query includes today and advances only the following day', async () => {
+    const s = await setup();
+    const dates = ['2026-11-03', '2026-11-05', '2026-11-10'];
+    await s.store.write({ kind: 'agenda', id: 'calendar' }, { months: ['2026-11'] }, null, crypto.randomUUID());
+    await s.store.write({ kind: 'agenda', id: '2026-11' }, {
+        format: 'pgt-trainer-month-v2', month: '2026-11', labels: [], patterns: [{items: []}],
+        dateSets: [{dates}], calendars: [{owner: s.sessions[1].mail, planId: 'weekly', start: '2026-11-01', end: '2026-12-01', dateSet: 0}],
+        contributions: dates.map(date => ({date, owner: s.sessions[1].mail, planId: 'weekly', pattern: 0})), pending: []
+    }, null, crypto.randomUUID());
+    for (const [today, expected] of [['2026-11-03', '2026-11-03'], ['2026-11-04', '2026-11-05'], ['2026-11-05', '2026-11-05'], ['2026-11-06', '2026-11-10'], ['2026-11-07', '2026-11-10'], ['2026-11-10', '2026-11-10']])
+        assert.equal((await s.coordinator.trainingDay(s.sessions[0], '', today)).date, expected);
+});
